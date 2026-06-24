@@ -1,0 +1,17 @@
+.git
+.next
+apps/web/.next
+node_modules
+**/node_modules
+coverage
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+certs/*.pem
+certs/*.key
+certs/*.cert
+certs/*.crt
+*.tsbuildinfo
+.DS_Store

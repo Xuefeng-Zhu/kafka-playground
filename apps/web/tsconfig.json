@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@kplay/contracts": ["../../packages/contracts/src/index.ts"],
+      "@kplay/scenario-engine": ["../../packages/scenario-engine/src/index.ts"],
+      "@kplay/kafka-runtime": ["../../packages/kafka-runtime/src/index.ts"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
