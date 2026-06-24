@@ -1,0 +1,1858 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kafka Playground · Playful Control Room Mockup</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #080b10;
+      --foreground: #e7edf5;
+      --muted: #91a0b5;
+      --panel: #0e131b;
+      --panel-strong: #141b25;
+      --border: #253142;
+      --accent: #38bdf8;
+      --success: #34d399;
+      --warning: #f59e0b;
+      --danger: #fb7185;
+
+      --surface-base: #05080c;
+      --surface-panel: var(--panel);
+      --surface-raised: var(--panel-strong);
+      --surface-deep: #090f16;
+      --surface-glass: rgba(12, 18, 26, 0.84);
+      --border-subtle: var(--border);
+      --border-strong: #38516e;
+      --text-main: var(--foreground);
+      --text-muted: var(--muted);
+      --text-soft: #64748b;
+      --accent-producer: var(--accent);
+      --accent-partition-a: #2f86ff;
+      --accent-partition-b: #9c6bff;
+      --accent-consumer: var(--success);
+      --accent-warning: var(--warning);
+      --accent-danger: var(--danger);
+      --accent-aiven: #ff7a18;
+      --radius-sm: 7px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.38);
+      --shadow-glow: 0 0 34px rgba(56, 189, 248, 0.18);
+      --font-body: "Aptos", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--surface-base); }
+    body {
+      margin: 0;
+      min-height: 100%;
+      color: var(--text-main);
+      font-family: var(--font-body);
+      background:
+        radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.13), transparent 34rem),
+        radial-gradient(circle at 90% 18%, rgba(156, 107, 255, 0.12), transparent 32rem),
+        linear-gradient(180deg, #06090e 0%, #020407 100%);
+    }
+
+    button, input, select { font: inherit; }
+
+    .review-nav {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(56, 81, 110, 0.72);
+      background: rgba(3, 6, 10, 0.88);
+      backdrop-filter: blur(16px);
+    }
+
+    .review-nav strong {
+      font-size: 13px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #dbeafe;
+    }
+
+    .review-nav a {
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 12px;
+      font-weight: 750;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .page {
+      width: min(1680px, calc(100vw - 32px));
+      margin: 24px auto 44px;
+    }
+
+    .mock-caption {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid rgba(56, 81, 110, 0.72);
+      border-radius: var(--radius-md);
+      background: rgba(8, 13, 19, 0.82);
+      color: #cbd5e1;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+    }
+
+    .mock-caption .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent-consumer);
+      box-shadow: 0 0 18px rgba(52, 211, 153, 0.72);
+    }
+
+    .mock-caption .num {
+      color: #7dd3fc;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+    }
+
+    .mock-caption .label {
+      color: #f8fafc;
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .mock-caption .delta {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .mock-shell {
+      overflow: hidden;
+      min-height: 960px;
+      border: 1px solid rgba(56, 81, 110, 0.88);
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(10, 16, 23, 0.96), rgba(4, 7, 11, 0.98)),
+        var(--surface-base);
+      box-shadow: var(--shadow-panel);
+    }
+
+    .m01 {
+      display: grid;
+      grid-template-rows: 68px minmax(0, 1fr);
+      min-height: 960px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+      padding: 0 18px;
+      border-bottom: 1px solid rgba(56, 81, 110, 0.72);
+      background:
+        linear-gradient(90deg, rgba(8, 13, 19, 0.98), rgba(10, 16, 23, 0.9)),
+        var(--surface-deep);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 310px;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(56, 189, 248, 0.42);
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(56, 189, 248, 0.44), transparent 48%),
+        rgba(56, 189, 248, 0.08);
+      color: #e0f2fe;
+      box-shadow: var(--shadow-glow);
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 820;
+      letter-spacing: -0.02em;
+      color: #f8fafc;
+    }
+
+    .brand-copy p {
+      margin: 2px 0 0;
+      color: #8ba2bb;
+      font-size: 12px;
+    }
+
+    .mode-pill,
+    .status-pill,
+    .metric-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      border-radius: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.36);
+      background: rgba(56, 189, 248, 0.11);
+      color: #7dd3fc;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .status-strip {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      min-width: 0;
+      margin-left: auto;
+    }
+
+    .status-card {
+      min-width: 184px;
+      padding: 0 15px 0 0;
+      border-right: 1px solid rgba(56, 81, 110, 0.84);
+    }
+
+    .status-card strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #f8fafc;
+      font-size: 13px;
+    }
+
+    .status-card span:last-child {
+      display: block;
+      margin-top: 2px;
+      color: #8ea3ba;
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: var(--accent-consumer);
+      box-shadow: 0 0 16px rgba(52, 211, 153, 0.72);
+    }
+
+    .status-pill.run {
+      border-color: rgba(52, 211, 153, 0.34);
+      background: rgba(52, 211, 153, 0.11);
+      color: #86efac;
+    }
+
+    .status-pill.warn {
+      border-color: rgba(245, 158, 11, 0.42);
+      background: rgba(245, 158, 11, 0.12);
+      color: #fcd34d;
+    }
+
+    .icon-action {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(56, 81, 110, 0.82);
+      border-radius: 999px;
+      background: rgba(13, 21, 30, 0.92);
+      color: #dbeafe;
+    }
+
+    .workbench {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 76px 294px minmax(640px, 1fr) 382px;
+      grid-template-rows: minmax(0, 1fr) 336px;
+    }
+
+    .rail {
+      grid-row: 1 / span 2;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      padding: 16px 8px;
+      border-right: 1px solid rgba(56, 81, 110, 0.64);
+      background: #06101a;
+    }
+
+    .rail button {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 68px;
+      border: 0;
+      border-radius: 10px;
+      color: #a5b4c7;
+      background: transparent;
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .rail button.active {
+      color: #7dd3fc;
+      background:
+        linear-gradient(180deg, rgba(56, 189, 248, 0.15), rgba(47, 134, 255, 0.09));
+      box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.2);
+    }
+
+    .rail svg { width: 21px; height: 21px; }
+
+    .left-panel {
+      grid-row: 1 / span 2;
+      min-height: 0;
+      overflow: hidden;
+      border-right: 1px solid rgba(56, 81, 110, 0.64);
+      background: #091018;
+    }
+
+    .panel-scroll {
+      height: 100%;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .section-kicker {
+      margin: 0 0 12px;
+      color: #8da0b6;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.17em;
+      text-transform: uppercase;
+    }
+
+    .scenario-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(56, 189, 248, 0.54);
+      border-radius: var(--radius-md);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.22), transparent 52%),
+        rgba(56, 189, 248, 0.09);
+      padding: 14px;
+    }
+
+    .scenario-card h2 {
+      margin: 0;
+      color: #e0f2fe;
+      font-size: 15px;
+    }
+
+    .scenario-card p {
+      margin: 7px 0 0;
+      color: #b7d6ea;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .learning-note,
+    .locked-card,
+    .insight-card {
+      border: 1px solid rgba(56, 81, 110, 0.58);
+      border-radius: var(--radius-md);
+      background: rgba(15, 23, 42, 0.42);
+      padding: 12px;
+    }
+
+    .learning-note { margin-top: 13px; }
+
+    .learning-note strong,
+    .insight-card strong {
+      display: block;
+      color: #f8fafc;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .learning-note p,
+    .locked-card p,
+    .insight-card p {
+      margin: 0;
+      color: #aebfd1;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .locked-stack {
+      display: grid;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .locked-card {
+      color: #64748b;
+    }
+
+    .locked-card strong {
+      display: block;
+      color: #aab6c6;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .canvas {
+      grid-column: 3;
+      grid-row: 1;
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      border-right: 1px solid rgba(56, 81, 110, 0.64);
+      background:
+        radial-gradient(circle at center, rgba(30, 41, 59, 0.78) 1px, transparent 1px),
+        radial-gradient(circle at 58% 42%, rgba(56, 189, 248, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(8, 13, 19, 0.92), rgba(4, 8, 12, 0.99));
+      background-size: 26px 26px, 100% 100%, 100% 100%;
+    }
+
+    .canvas-toolbar {
+      position: absolute;
+      z-index: 4;
+      left: 22px;
+      right: 22px;
+      top: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .canvas-title h2 {
+      margin: 0;
+      color: #f8fafc;
+      font-size: 14px;
+      font-weight: 850;
+      letter-spacing: 0.02em;
+    }
+
+    .canvas-title p {
+      margin: 4px 0 0;
+      color: #8aa0b8;
+      font-size: 12px;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tool-button {
+      min-height: 32px;
+      border: 1px solid rgba(56, 81, 110, 0.76);
+      border-radius: 8px;
+      background: rgba(5, 10, 15, 0.72);
+      color: #dbeafe;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .trace-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .trace-path {
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.2));
+    }
+
+    .trace-path.dim { stroke: rgba(145, 160, 181, 0.45); stroke-dasharray: 5 8; }
+    .trace-path.a { stroke: var(--accent-partition-a); }
+    .trace-path.b { stroke: var(--accent-partition-b); }
+    .trace-path.c { stroke: var(--accent-consumer); }
+
+    .topology-stage {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      top: 118px;
+      bottom: 62px;
+      display: grid;
+      grid-template-columns: 176px minmax(360px, 1fr) 270px;
+      align-items: center;
+      gap: 34px;
+    }
+
+    .node-card,
+    .topic-card,
+    .consumer-card {
+      position: relative;
+      border: 1px solid rgba(56, 81, 110, 0.82);
+      border-radius: var(--radius-lg);
+      background:
+        linear-gradient(180deg, rgba(17, 27, 38, 0.97), rgba(8, 13, 19, 0.96));
+      box-shadow: 0 20px 64px rgba(0, 0, 0, 0.34);
+    }
+
+    .producer-node {
+      padding: 22px 16px;
+      text-align: center;
+    }
+
+    .node-icon {
+      display: grid;
+      place-items: center;
+      width: 62px;
+      height: 62px;
+      margin: 0 auto;
+      border: 1px solid rgba(56, 189, 248, 0.52);
+      border-radius: 18px;
+      background: rgba(56, 189, 248, 0.11);
+      color: #bae6fd;
+      box-shadow: var(--shadow-glow);
+    }
+
+    .producer-node h3,
+    .topic-card h3,
+    .consumer-card h3 {
+      margin: 13px 0 0;
+      color: #f8fafc;
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .producer-node p,
+    .topic-card p,
+    .consumer-card p {
+      margin: 5px 0 0;
+      color: #91a8be;
+      font-size: 12px;
+    }
+
+    .node-meter {
+      margin-top: 15px;
+      display: grid;
+      gap: 7px;
+    }
+
+    .meter-row {
+      display: flex;
+      justify-content: space-between;
+      color: #aebfd1;
+      font-size: 11px;
+      font-family: var(--font-mono);
+    }
+
+    .meter-track {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #111827;
+      box-shadow: inset 0 0 0 1px rgba(56, 81, 110, 0.5);
+    }
+
+    .meter-fill {
+      width: 64%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent-producer), var(--accent-consumer));
+    }
+
+    .topic-card {
+      padding: 18px;
+    }
+
+    .topic-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .topic-header h3 { margin: 0; }
+
+    .topic-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .metric-pill {
+      min-height: 27px;
+      border-color: rgba(56, 81, 110, 0.7);
+      background: rgba(8, 13, 19, 0.7);
+      color: #cbd5e1;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .partition-stack {
+      display: grid;
+      gap: 13px;
+    }
+
+    .partition-lane {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(56, 81, 110, 0.74);
+      border-radius: 13px;
+      background: rgba(5, 10, 15, 0.72);
+      padding: 12px;
+    }
+
+    .partition-lane.a { border-color: rgba(47, 134, 255, 0.48); }
+    .partition-lane.b { border-color: rgba(156, 107, 255, 0.48); }
+
+    .lane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .lane-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #dbeafe;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .lane-title .bar {
+      width: 3px;
+      height: 17px;
+      border-radius: 999px;
+      background: var(--accent-partition-a);
+    }
+
+    .partition-lane.b .lane-title .bar { background: var(--accent-partition-b); }
+
+    .lane-offset {
+      color: #8fa2b7;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .message-row {
+      display: flex;
+      gap: 6px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .message-chip {
+      min-width: 42px;
+      border: 1px solid rgba(47, 134, 255, 0.44);
+      border-radius: 8px;
+      background: rgba(47, 134, 255, 0.12);
+      color: #dbeafe;
+      padding: 7px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-align: center;
+      box-shadow: 0 0 0 rgba(47, 134, 255, 0);
+    }
+
+    .partition-lane.b .message-chip {
+      border-color: rgba(156, 107, 255, 0.44);
+      background: rgba(156, 107, 255, 0.12);
+    }
+
+    .message-chip.selected {
+      color: #ffffff;
+      border-color: rgba(125, 211, 252, 0.92);
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.9), rgba(47, 134, 255, 0.72));
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.28);
+    }
+
+    .why-card {
+      position: absolute;
+      left: 26px;
+      bottom: 22px;
+      max-width: 520px;
+      border: 1px solid rgba(245, 158, 11, 0.38);
+      border-radius: 14px;
+      background:
+        linear-gradient(180deg, rgba(245, 158, 11, 0.11), rgba(8, 13, 19, 0.9));
+      padding: 13px 14px;
+      color: #fde68a;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+    }
+
+    .why-card strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .why-card p {
+      margin: 0;
+      color: #fef3c7;
+      font-size: 13px;
+      line-height: 1.48;
+    }
+
+    .consumer-card {
+      padding: 16px;
+    }
+
+    .consumer-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .consumer-unit {
+      border: 1px solid rgba(56, 81, 110, 0.7);
+      border-radius: 12px;
+      background: rgba(5, 10, 15, 0.65);
+      padding: 11px;
+    }
+
+    .consumer-unit.active {
+      border-color: rgba(52, 211, 153, 0.44);
+      background: rgba(52, 211, 153, 0.08);
+    }
+
+    .consumer-unit.rebalance {
+      border-color: rgba(245, 158, 11, 0.44);
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .consumer-unit-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .consumer-name {
+      color: #f8fafc;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .assignment {
+      border: 1px solid rgba(56, 189, 248, 0.36);
+      border-radius: 7px;
+      background: rgba(56, 189, 248, 0.09);
+      color: #bae6fd;
+      padding: 4px 7px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .consumer-unit p {
+      margin: 7px 0 0;
+      color: #9eb0c3;
+      font-size: 12px;
+    }
+
+    .inspector {
+      grid-column: 4;
+      grid-row: 1;
+      min-height: 0;
+      overflow: hidden;
+      background: #091018;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .inspector header,
+    .console header,
+    .timeline header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 52px;
+      padding: 0 16px;
+      border-bottom: 1px solid rgba(56, 81, 110, 0.58);
+      background: rgba(6, 12, 18, 0.5);
+    }
+
+    .panel-title {
+      color: #9caec2;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .inspector-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .selected-message {
+      border: 1px solid rgba(56, 189, 248, 0.42);
+      border-radius: 14px;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 14px;
+    }
+
+    .selected-message .eyebrow {
+      color: #7dd3fc;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .selected-message h2 {
+      margin: 6px 0 0;
+      color: #f8fafc;
+      font-size: 19px;
+      letter-spacing: -0.02em;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 8px 12px;
+      margin-top: 14px;
+      font-size: 13px;
+    }
+
+    .kv-grid dt { color: #8da0b6; }
+    .kv-grid dd { margin: 0; color: #e7edf5; min-width: 0; overflow-wrap: anywhere; }
+
+    .lifecycle {
+      margin-top: 16px;
+      border: 1px solid rgba(56, 81, 110, 0.56);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.36);
+      padding: 14px;
+    }
+
+    .lifecycle h3,
+    .payload-block h3 {
+      margin: 0 0 13px;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .life-step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 10px;
+      padding-bottom: 14px;
+    }
+
+    .life-step:last-child { padding-bottom: 0; }
+
+    .life-step::after {
+      content: "";
+      position: absolute;
+      left: 9px;
+      top: 22px;
+      bottom: 0;
+      width: 1px;
+      background: rgba(56, 81, 110, 0.76);
+    }
+
+    .life-step:last-child::after { display: none; }
+
+    .life-dot {
+      position: relative;
+      z-index: 1;
+      width: 19px;
+      height: 19px;
+      border-radius: 999px;
+      background: var(--accent-consumer);
+      box-shadow: 0 0 16px rgba(52, 211, 153, 0.48);
+    }
+
+    .life-step.pending .life-dot {
+      background: var(--accent-warning);
+      box-shadow: 0 0 16px rgba(245, 158, 11, 0.38);
+    }
+
+    .life-main strong {
+      display: block;
+      color: #f8fafc;
+      font-size: 13px;
+    }
+
+    .life-main span {
+      display: block;
+      margin-top: 3px;
+      color: #95a8bc;
+      font-size: 12px;
+    }
+
+    .life-time {
+      color: #64748b;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .payload-block {
+      margin-top: 16px;
+      border: 1px solid rgba(56, 81, 110, 0.56);
+      border-radius: 14px;
+      background: rgba(3, 7, 12, 0.58);
+      padding: 14px;
+    }
+
+    pre {
+      margin: 0;
+      overflow: auto;
+      color: #c4d5e8;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .console {
+      grid-column: 3;
+      grid-row: 2;
+      min-height: 0;
+      border-right: 1px solid rgba(56, 81, 110, 0.64);
+      border-top: 1px solid rgba(56, 81, 110, 0.64);
+      background: #091018;
+    }
+
+    .control-deck {
+      display: grid;
+      grid-template-columns: 268px minmax(360px, 1fr) 292px;
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .control-card {
+      border: 1px solid rgba(56, 81, 110, 0.58);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.42);
+      padding: 13px;
+    }
+
+    .control-card h3 {
+      margin: 0 0 10px;
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .command {
+      min-height: 36px;
+      border: 1px solid rgba(56, 81, 110, 0.76);
+      border-radius: 9px;
+      background: rgba(8, 13, 19, 0.72);
+      color: #e7edf5;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .command.primary {
+      border-color: rgba(56, 189, 248, 0.7);
+      background: linear-gradient(180deg, #38bdf8, #2f86ff);
+      color: #03111d;
+    }
+
+    .command.danger {
+      border-color: rgba(251, 113, 133, 0.5);
+      background: rgba(251, 113, 133, 0.1);
+      color: #fecdd3;
+    }
+
+    .slider-spec {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 11px;
+    }
+
+    .slider-label {
+      color: #98abc0;
+      font-size: 12px;
+    }
+
+    .slider-value {
+      color: #f8fafc;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .fake-slider {
+      grid-column: 1 / -1;
+      height: 7px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent) 0 46%, #1f2937 46% 100%);
+      box-shadow: inset 0 0 0 1px rgba(56, 81, 110, 0.5);
+    }
+
+    .status-line {
+      margin-top: 12px;
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      border-radius: 10px;
+      background: rgba(52, 211, 153, 0.08);
+      color: #bbf7d0;
+      padding: 9px 10px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .timeline {
+      grid-column: 4;
+      grid-row: 2;
+      min-height: 0;
+      border-top: 1px solid rgba(56, 81, 110, 0.64);
+      background: #080d13;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-chip {
+      border: 1px solid rgba(56, 81, 110, 0.76);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.48);
+      color: #cbd5e1;
+      padding: 5px 9px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .filter-chip.active {
+      border-color: rgba(56, 189, 248, 0.46);
+      background: rgba(56, 189, 248, 0.1);
+      color: #bae6fd;
+    }
+
+    .timeline-table {
+      min-height: 0;
+      overflow: auto;
+      padding: 0 12px 12px;
+    }
+
+    .tl-head {
+      display: none;
+    }
+
+    .tl-row {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 5px 10px;
+      min-width: 0;
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(56, 81, 110, 0.38);
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+
+    .tl-row > span:nth-child(1) {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .tl-row > span:nth-child(2) {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+    }
+
+    .tl-row > span:nth-child(3) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      color: #8da0b6;
+      font-size: 11px;
+    }
+
+    .tl-row > span:nth-child(4) {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      min-width: 0;
+    }
+
+    .tl-row > span:nth-child(5) {
+      grid-column: 1 / -1;
+      grid-row: 4;
+      color: #64748b;
+    }
+
+    .tl-row.selected {
+      background: rgba(56, 189, 248, 0.08);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+
+    .event-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #e2e8f0;
+      font-weight: 850;
+    }
+
+    .event-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent-producer);
+    }
+
+    .event-badge.commit::before { background: var(--accent-consumer); }
+    .event-badge.rebalance::before { background: var(--accent-warning); }
+    .event-badge.lifecycle::before { background: #22d3ee; }
+
+    .explain {
+      color: #9fb2c6;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #95a8bc;
+    }
+
+    @media (max-width: 1240px) {
+      .mock-shell, .m01 { min-height: auto; }
+      .workbench {
+        grid-template-columns: 64px minmax(230px, 310px) minmax(560px, 1fr);
+        grid-template-rows: 720px 360px auto;
+      }
+      .inspector { grid-column: 1 / -1; grid-row: 3; min-height: 520px; border-top: 1px solid rgba(56, 81, 110, 0.64); }
+      .control-deck { grid-template-columns: 1fr; }
+      .status-card { display: none; }
+    }
+  
+
+    /* STYLE 04 THEME OVERRIDE: Playful Learning Studio
+       Layout intentionally remains the same as kafka-playground-control-room.html. */
+    :root {
+      color-scheme: light;
+      --background: #fff7ed;
+      --foreground: #123047;
+      --muted: #466778;
+      --panel: #fffdf5;
+      --panel-strong: #ffffff;
+      --border: #0f766e;
+      --accent: #0ea5e9;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #e11d48;
+
+      --surface-base: #fff7ed;
+      --surface-panel: #fffdf5;
+      --surface-raised: #ffffff;
+      --surface-deep: #ecfeff;
+      --surface-glass: rgba(255, 253, 245, 0.9);
+      --border-subtle: #0f766e;
+      --border-strong: #0f766e;
+      --text-main: #123047;
+      --text-muted: #466778;
+      --text-soft: #60798d;
+      --accent-producer: #0ea5e9;
+      --accent-partition-a: #0ea5e9;
+      --accent-partition-b: #8b5cf6;
+      --accent-consumer: #10b981;
+      --accent-warning: #f59e0b;
+      --accent-danger: #e11d48;
+      --accent-aiven: #f97316;
+      --shadow-panel: 12px 12px 0 rgba(15, 118, 110, 0.28);
+      --shadow-glow: 0 0 0 4px rgba(45, 212, 191, 0.18);
+      --font-body: "Nunito Sans", "Aptos", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    html,
+    body {
+      background:
+        radial-gradient(circle at 18% 8%, rgba(251, 113, 133, 0.16), transparent 28rem),
+        radial-gradient(circle at 82% 18%, rgba(45, 212, 191, 0.20), transparent 30rem),
+        linear-gradient(135deg, #fff7ed, #ecfeff 62%, #eff6ff);
+      color: var(--text-main);
+    }
+
+    .review-nav {
+      border-bottom: 3px solid var(--border-strong);
+      background: #fff7ed;
+      box-shadow: 0 6px 0 rgba(15, 118, 110, 0.12);
+    }
+
+    .review-nav strong { color: #0f766e; }
+    .review-nav a {
+      color: #0f766e;
+      border: 2px solid #0f766e;
+      background: #ccfbf1;
+    }
+
+    .mock-caption {
+      border: 3px solid #0f766e;
+      background: #fffdf5;
+      color: #466778;
+      box-shadow: 8px 8px 0 rgba(15, 118, 110, 0.18);
+    }
+
+    .mock-caption .dot {
+      background: #fb7185;
+      box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.16);
+    }
+
+    .mock-caption .num { color: #0f766e; }
+    .mock-caption .label { color: #123047; }
+    .mock-caption .delta { color: #466778; }
+
+    .mock-shell {
+      border: 4px solid #0f766e;
+      background: #fffdf5;
+      box-shadow: 14px 14px 0 #0f766e;
+    }
+
+    .topbar {
+      border-bottom: 3px solid #0f766e;
+      background: #fff7ed;
+    }
+
+    .brand-mark {
+      border: 3px solid #0f766e;
+      background: #fde68a;
+      color: #0f766e;
+      border-radius: 16px;
+      box-shadow: 5px 5px 0 rgba(15, 118, 110, 0.18);
+    }
+
+    .brand-copy h1 { color: #123047; }
+    .brand-copy p { color: #466778; }
+
+    .mode-pill,
+    .status-pill,
+    .metric-pill,
+    .filter-chip,
+    .assignment {
+      border: 2px solid #0f766e;
+      background: #ccfbf1;
+      color: #115e59;
+      border-radius: 999px;
+    }
+
+    .status-pill.run,
+    .status-line,
+    .consumer-unit.active {
+      border-color: #10b981;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-pill.warn,
+    .consumer-unit.rebalance,
+    .why-card {
+      border-color: #f59e0b;
+      background: #fef3c7;
+      color: #78350f;
+    }
+
+    .status-card { border-right-color: #0f766e; }
+    .status-card strong { color: #123047; }
+    .status-card span:last-child { color: #466778; }
+    .live-dot { background: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18); }
+
+    .icon-action,
+    .tool-button,
+    .command {
+      border: 2px solid #0f766e;
+      background: #fffdf5;
+      color: #0f766e;
+      box-shadow: 4px 4px 0 rgba(15, 118, 110, 0.16);
+    }
+
+    .command.primary,
+    .btn-primary {
+      border-color: #0f766e;
+      background: #0f766e;
+      color: #ffffff;
+    }
+
+    .command.danger {
+      border-color: #be123c;
+      background: #ffe4e6;
+      color: #9f1239;
+    }
+
+    .rail {
+      border-right: 3px solid #0f766e;
+      background: #ecfeff;
+    }
+
+    .rail button {
+      color: #0f766e;
+      font-weight: 900;
+    }
+
+    .rail button.active {
+      background: #ccfbf1;
+      color: #0f766e;
+      box-shadow: inset 0 0 0 2px #0f766e, 4px 4px 0 rgba(15, 118, 110, 0.16);
+    }
+
+    .left-panel,
+    .inspector,
+    .console,
+    .timeline {
+      background: #fff7ed;
+    }
+
+    .left-panel { border-right: 3px solid #0f766e; }
+    .inspector { border-left: 3px solid #0f766e; }
+    .console,
+    .timeline { border-top: 3px solid #0f766e; }
+    .console { border-right: 3px solid #0f766e; }
+
+    .canvas {
+      border-right: 3px solid #0f766e;
+      background:
+        radial-gradient(circle, rgba(14, 165, 233, 0.35) 2px, transparent 3px),
+        linear-gradient(180deg, #f8fafc, #ecfeff);
+      background-size: 28px 28px, 100% 100%;
+    }
+
+    .canvas-title h2,
+    .producer-node h3,
+    .topic-card h3,
+    .consumer-card h3,
+    .selected-message h2,
+    .life-main strong,
+    .control-card h3,
+    .lifecycle h3,
+    .payload-block h3,
+    .learning-note strong,
+    .insight-card strong,
+    .scenario-card h2 {
+      color: #123047;
+    }
+
+    .canvas-title p,
+    .producer-node p,
+    .topic-card p,
+    .consumer-card p,
+    .learning-note p,
+    .locked-card p,
+    .insight-card p,
+    .life-main span,
+    .kv-grid dt,
+    .slider-label,
+    .explain,
+    .muted,
+    .lane-offset {
+      color: #466778;
+    }
+
+    .scenario-card,
+    .learning-note,
+    .locked-card,
+    .insight-card,
+    .node-card,
+    .topic-card,
+    .consumer-card,
+    .selected-message,
+    .lifecycle,
+    .payload-block,
+    .control-card,
+    .partition-lane,
+    .consumer-unit,
+    .tl-row {
+      border: 3px solid #0f766e;
+      background: #fffdf5;
+      box-shadow: 7px 7px 0 rgba(15, 118, 110, 0.14);
+    }
+
+    .scenario-card {
+      background: #ccfbf1;
+      border-color: #0f766e;
+    }
+
+    .scenario-card p { color: #115e59; }
+    .section-kicker,
+    .panel-title { color: #0f766e; }
+
+    .node-icon {
+      border: 3px solid #0f766e;
+      background: #fde68a;
+      color: #0f766e;
+      border-radius: 20px;
+      box-shadow: 5px 5px 0 rgba(15, 118, 110, 0.18);
+    }
+
+    .meter-track,
+    .fake-slider {
+      background: #dbeafe;
+      box-shadow: inset 0 0 0 2px rgba(15, 118, 110, 0.25);
+    }
+
+    .meter-fill {
+      background: linear-gradient(90deg, #0ea5e9, #10b981);
+    }
+
+    .partition-lane.a { border-color: #0ea5e9; background: #eff6ff; }
+    .partition-lane.b { border-color: #8b5cf6; background: #f5f3ff; }
+
+    .lane-title { color: #123047; }
+    .message-chip {
+      border: 2px solid #0f766e;
+      background: #ccfbf1;
+      color: #115e59;
+      border-radius: 12px;
+    }
+
+    .partition-lane.b .message-chip {
+      border-color: #8b5cf6;
+      background: #ede9fe;
+      color: #5b21b6;
+    }
+
+    .message-chip.selected {
+      border-color: #be123c;
+      background: #fb7185;
+      color: #ffffff;
+      box-shadow: 0 0 0 5px rgba(251, 113, 133, 0.16);
+    }
+
+    .why-card strong { color: #92400e; }
+    .why-card p { color: #78350f; }
+
+    .selected-message {
+      background: #ecfeff;
+      border-color: #0ea5e9;
+    }
+
+    .selected-message .eyebrow { color: #0f766e; }
+    .kv-grid dd { color: #123047; }
+    .life-dot { background: #10b981; }
+    .life-step.pending .life-dot { background: #f59e0b; }
+    .life-time,
+    .mono { color: #60798d; }
+
+    pre {
+      color: #123047;
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .tl-row.selected {
+      background: #ecfeff;
+      box-shadow: inset 5px 0 0 #0ea5e9, 5px 5px 0 rgba(15, 118, 110, 0.12);
+    }
+
+    .event-badge { color: #123047; }
+    .event-badge::before { background: #0ea5e9; }
+    .event-badge.commit::before { background: #10b981; }
+    .event-badge.rebalance::before { background: #f59e0b; }
+    .event-badge.lifecycle::before { background: #06b6d4; }
+
+    .trace-path.a { stroke: #0ea5e9; }
+    .trace-path.b { stroke: #8b5cf6; }
+    .trace-path.c { stroke: #10b981; }
+    .trace-path.dim { stroke: rgba(15, 118, 110, 0.45); }
+
+
+    /* Final Style 04 contrast fixes after screenshot review. */
+    .inspector header,
+    .console header,
+    .timeline header {
+      background: #fff7ed;
+      border-bottom: 3px solid #0f766e;
+    }
+
+    .console header,
+    .timeline header {
+      border-top: 0;
+    }
+
+    .consumer-name,
+    .consumer-unit.active .consumer-name,
+    .consumer-unit.rebalance .consumer-name {
+      color: #123047;
+    }
+
+    .consumer-unit p,
+    .consumer-unit.active p,
+    .consumer-unit.rebalance p {
+      color: #31566a;
+    }
+
+    .slider-value,
+    .tl-row,
+    .tl-row .mono,
+    .tl-row > span:nth-child(3),
+    .tl-row > span:nth-child(5) {
+      color: #123047;
+    }
+
+    .fake-slider {
+      background: linear-gradient(90deg, #0ea5e9 0 46%, #dbeafe 46% 100%);
+    }
+
+    .filter-chip.active {
+      border-color: #0ea5e9;
+      background: #e0f2fe;
+      color: #075985;
+    }
+
+    .timeline-table {
+      background: #fffdf5;
+    }
+
+    .control-card,
+    .payload-block,
+    .lifecycle,
+    .selected-message,
+    .tl-row {
+      color: #123047;
+    }
+
+  </style>
+</head>
+<body>
+  <nav class="review-nav" aria-label="Mockup navigation">
+    <strong>Kafka Playground · Style 04 Layout Match</strong>
+    <a href="#mock-1">Control-room scenario surface</a>
+  </nav>
+
+  <section id="mock-1" class="page">
+    <div class="mock-caption">
+      <span class="dot"></span>
+      <span class="num">STYLE 04</span>
+      <span class="label">PLAYFUL · SAME CONTROL-ROOM LAYOUT</span>
+      <span class="delta">Same layout as the control-room mock, restyled with the playful learning-studio palette, rounded cards, chunky borders, and coaching-friendly tone.</span>
+    </div>
+
+    <div class="mock-shell m01">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden>
+            <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+              <path d="M7 9h18M7 16h18M7 23h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <circle cx="11" cy="9" r="3" fill="currentColor" />
+              <circle cx="20" cy="16" r="3" fill="currentColor" />
+              <circle cx="14" cy="23" r="3" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="brand-copy">
+            <h1>Kafka Visual Playground</h1>
+            <p>Partitioning · rebalances · manual commits</p>
+          </div>
+        </div>
+
+        <span class="mode-pill">Demo mode</span>
+        <span class="status-pill warn">Aiven-compatible</span>
+
+        <div class="status-strip">
+          <div class="status-card">
+            <strong><span class="live-dot"></span> Connected</strong>
+            <span>demo.aivencloud.com:9092</span>
+          </div>
+          <span class="status-pill run">Run: running</span>
+          <span class="metric-pill">4 msg/s</span>
+          <span class="metric-pill">2 active / 3 consumers</span>
+          <button class="icon-action" aria-label="Reset run">↻</button>
+        </div>
+      </header>
+
+      <main class="workbench">
+        <nav class="rail" aria-label="Workspace views">
+          <button class="active">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16M4 12h16M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+            Events
+          </button>
+          <button>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M7 8h10M7 16h10M7 8v8m10-8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+            Topology
+          </button>
+          <button>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 8h14M7 16h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+            Config
+          </button>
+        </nav>
+
+        <aside class="left-panel">
+          <div class="panel-scroll">
+            <p class="section-kicker">Scenario</p>
+            <section class="scenario-card">
+              <h2>Partitioning, Ordering, and Consumer Rebalancing</h2>
+              <p>Watch a fixed key route to the same partition, then add consumers to see ownership change without losing ordering guarantees.</p>
+            </section>
+
+            <section class="learning-note">
+              <strong>Current lesson</strong>
+              <p>Kafka guarantees ordering only inside a partition. This run highlights why the selected message lands on partition 0 and why consumer-3 is idle.</p>
+            </section>
+
+            <section class="insight-card" style="margin-top: 13px;">
+              <strong>Run facts</strong>
+              <p>Topic has 2 partitions. Consumer group has 3 members. One member must remain idle until another member leaves or partition count changes.</p>
+            </section>
+
+            <p class="section-kicker" style="margin-top: 20px;">Coming next</p>
+            <div class="locked-stack">
+              <div class="locked-card"><strong>Manual offset commits</strong><p>Replay failures and see committed positions.</p></div>
+              <div class="locked-card"><strong>Rebalance storms</strong><p>Throttle consumers and visualize group churn.</p></div>
+              <div class="locked-card"><strong>Exactly-once pipeline</strong><p>Connect producer transactions to consumer isolation.</p></div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="canvas">
+          <div class="canvas-toolbar">
+            <div class="canvas-title">
+              <h2>Live topology canvas</h2>
+              <p>Message path: producer → topic partition → assigned consumer → offset commit</p>
+            </div>
+            <div class="toolbar-actions">
+              <button class="tool-button">Auto layout</button>
+              <button class="tool-button">100%</button>
+              <button class="tool-button">Fit view</button>
+            </div>
+          </div>
+
+          <svg class="trace-svg" viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true">
+            <path class="trace-path a" d="M155 308 C265 308 250 255 375 255" />
+            <path class="trace-path b" d="M155 308 C275 308 255 365 375 365" />
+            <path class="trace-path c" d="M645 255 C740 255 720 210 820 210" />
+            <path class="trace-path dim" d="M645 365 C740 365 720 315 820 315" />
+            <path class="trace-path dim" d="M645 365 C740 365 720 435 820 435" />
+          </svg>
+
+          <div class="topology-stage">
+            <section class="node-card producer-node">
+              <div class="node-icon" aria-hidden>
+                <svg viewBox="0 0 32 32" width="28" height="28" fill="none"><path d="M7 10h18M7 16h14M7 22h18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg>
+              </div>
+              <h3>Producer</h3>
+              <p>key = user-1</p>
+              <div class="node-meter">
+                <div class="meter-row"><span>throughput</span><span>4/s</span></div>
+                <div class="meter-track"><div class="meter-fill"></div></div>
+              </div>
+            </section>
+
+            <section class="topic-card">
+              <div class="topic-header">
+                <div>
+                  <h3>Topic · kplay.partitioning.20260624.ab12cd</h3>
+                  <p>Append-only partition logs with selected offset highlighted.</p>
+                </div>
+                <div class="topic-meta">
+                  <span class="metric-pill">2 partitions</span>
+                  <span class="metric-pill">latest: 108</span>
+                </div>
+              </div>
+
+              <div class="partition-stack">
+                <div class="partition-lane a">
+                  <div class="lane-head">
+                    <div class="lane-title"><span class="bar"></span>Partition 0</div>
+                    <div class="lane-offset">committed offset 109</div>
+                  </div>
+                  <div class="message-row">
+                    <span class="message-chip">102</span><span class="message-chip">103</span><span class="message-chip">104</span><span class="message-chip selected">105</span><span class="message-chip">106</span><span class="message-chip">107</span><span class="message-chip">108</span>
+                  </div>
+                </div>
+
+                <div class="partition-lane b">
+                  <div class="lane-head">
+                    <div class="lane-title"><span class="bar"></span>Partition 1</div>
+                    <div class="lane-offset">committed offset 87</div>
+                  </div>
+                  <div class="message-row">
+                    <span class="message-chip">81</span><span class="message-chip">82</span><span class="message-chip">83</span><span class="message-chip">84</span><span class="message-chip">85</span><span class="message-chip">86</span><span class="message-chip">87</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="consumer-card">
+              <h3>Consumer group</h3>
+              <p>kplay.partitioning.workers</p>
+              <div class="consumer-list">
+                <div class="consumer-unit active">
+                  <div class="consumer-unit-head"><span class="consumer-name">Consumer 1</span><span class="assignment">P0</span></div>
+                  <p>Processing selected message · commit pending</p>
+                </div>
+                <div class="consumer-unit active">
+                  <div class="consumer-unit-head"><span class="consumer-name">Consumer 2</span><span class="assignment">P1</span></div>
+                  <p>Healthy · latest commit acknowledged</p>
+                </div>
+                <div class="consumer-unit rebalance">
+                  <div class="consumer-unit-head"><span class="consumer-name">Consumer 3</span><span class="assignment">idle</span></div>
+                  <p>No partition available because the topic has only 2 partitions.</p>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="why-card">
+            <strong>Why this message is here</strong>
+            <p>Fixed key <span class="mono">user-1</span> hashes to partition 0, preserving per-user ordering. Consumer 1 owns P0, so it receives offset 105 and commits offset 106 after processing.</p>
+          </aside>
+        </section>
+
+        <aside class="inspector">
+          <header>
+            <span class="panel-title">Message lifecycle inspector</span>
+            <span class="metric-pill">selected #105</span>
+          </header>
+          <div class="inspector-body">
+            <section class="selected-message">
+              <div class="eyebrow">PARTITION 0 / OFFSET 105</div>
+              <h2>Message user-1.checkout</h2>
+              <dl class="kv-grid">
+                <dt>Topic</dt><dd>kplay.partitioning.20260624.ab12cd</dd>
+                <dt>Key</dt><dd>user-1</dd>
+                <dt>Consumer</dt><dd>consumer-1</dd>
+                <dt>State</dt><dd style="color:#86efac;font-weight:850;">commit requested</dd>
+              </dl>
+            </section>
+
+            <section class="lifecycle">
+              <h3>Lifecycle</h3>
+              <div class="life-step">
+                <span class="life-dot"></span>
+                <div class="life-main"><strong>Produced</strong><span>Delivery report confirmed partition 0 offset 105.</span></div>
+                <span class="life-time">10:24:11</span>
+              </div>
+              <div class="life-step">
+                <span class="life-dot"></span>
+                <div class="life-main"><strong>Received</strong><span>consumer-1 fetched the record from partition 0.</span></div>
+                <span class="life-time">10:24:12</span>
+              </div>
+              <div class="life-step pending">
+                <span class="life-dot"></span>
+                <div class="life-main"><strong>Processing</strong><span>Simulated handler latency: 800 ms.</span></div>
+                <span class="life-time">now</span>
+              </div>
+              <div class="life-step pending">
+                <span class="life-dot"></span>
+                <div class="life-main"><strong>Commit next offset</strong><span>Manual commit will store offset 106 for partition 0.</span></div>
+                <span class="life-time">next</span>
+              </div>
+            </section>
+
+            <section class="payload-block">
+              <h3>Payload</h3>
+              <pre>{
+  "key": "user-1",
+  "value": {
+    "event": "checkout",
+    "amount": 129.00
+  },
+  "headers": {
+    "scenario": "partitioning"
+  }
+}</pre>
+            </section>
+          </div>
+        </aside>
+
+        <section class="console">
+          <header>
+            <span class="panel-title">Scenario console</span>
+            <span class="status-pill run">Producer running</span>
+          </header>
+          <div class="control-deck">
+            <section class="control-card">
+              <h3>Run controls</h3>
+              <div class="button-row">
+                <button class="command primary">Produce one</button>
+                <button class="command">Pause</button>
+                <button class="command danger">Stop</button>
+              </div>
+              <div class="status-line">Producer: running · Last delivery: partition 0 offset 105</div>
+            </section>
+
+            <section class="control-card">
+              <h3>Live knobs</h3>
+              <div class="slider-spec">
+                <span class="slider-label">Production rate</span><span class="slider-value">4 msg/s</span><div class="fake-slider"></div>
+                <span class="slider-label">Processing latency</span><span class="slider-value">800 ms</span><div class="fake-slider" style="background:linear-gradient(90deg,var(--accent-warning) 0 28%,#1f2937 28% 100%)"></div>
+              </div>
+              <div class="status-line">Key strategy: fixed key <span class="mono">user-1</span> · ordering preserved in partition 0</div>
+            </section>
+
+            <section class="control-card">
+              <h3>Consumers</h3>
+              <div class="button-row">
+                <button class="command primary">Add consumer</button>
+                <button class="command">Stop C3</button>
+              </div>
+              <div class="status-line">2 active / 3 total · Max active consumers equals partition count.</div>
+            </section>
+          </div>
+        </section>
+
+        <section class="timeline">
+          <header>
+            <span class="panel-title">Event timeline</span>
+            <div class="filter-row">
+              <span class="filter-chip active">Message lifecycle</span>
+              <span class="filter-chip active">Rebalances</span>
+              <span class="filter-chip active">Commits</span>
+              <span class="filter-chip">Raw only</span>
+            </div>
+          </header>
+          <div class="timeline-table">
+            <div class="tl-head"><span>Time</span><span>Event</span><span>Actor</span><span>Explanation</span><span>Raw</span></div>
+            <div class="tl-row selected"><span class="mono">10:24:12</span><span class="event-badge">message.received</span><span>consumer-1</span><span class="explain">Consumer 1 owns P0, so it fetched offset 105.</span><span class="mono">seq #143</span></div>
+            <div class="tl-row"><span class="mono">10:24:12</span><span class="event-badge commit">offset.commit_requested</span><span>consumer-1</span><span class="explain">After handling, the group commits the next offset: 106.</span><span class="mono">seq #144</span></div>
+            <div class="tl-row"><span class="mono">10:24:09</span><span class="event-badge rebalance">consumer.partitions_assigned</span><span>coordinator</span><span class="explain">Kafka redistributed ownership after consumer-3 joined.</span><span class="mono">seq #139</span></div>
+            <div class="tl-row"><span class="mono">10:24:08</span><span class="event-badge lifecycle">producer.started</span><span>producer</span><span class="explain">Producer loop resumed at 4 messages per second.</span><span class="mono">seq #137</span></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </section>
+</body>
+</html>
