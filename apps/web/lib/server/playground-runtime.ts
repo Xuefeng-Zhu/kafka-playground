@@ -123,6 +123,7 @@ export class PlaygroundRuntime {
       this.emit("run.started", { message: "Scenario run started." });
       return this.snapshot(run.runId);
     } catch (error) {
+      logger.error({ err: error, runId: run.runId }, "Failed to start scenario run");
       run.status = "error";
       this.emit("run.error", { message: "Failed to start run." });
       await this.cleanup(run, "failed");

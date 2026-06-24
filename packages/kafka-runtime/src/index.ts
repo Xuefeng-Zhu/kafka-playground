@@ -4,6 +4,7 @@ import type {
   KeyStrategy,
   KafkaMode
 } from "@kplay/contracts";
+import type { SASLOptions } from "kafkajs";
 import { z } from "zod";
 
 export type RuntimeEventSink = (event: {
@@ -235,10 +236,10 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
 
     let admin: any;
     try {
-      const kafka = await import("@confluentinc/kafka-javascript");
-      admin = createConfluentKafka(kafka).admin(createClientConfig(this.env));
+      const kafka = await createAivenKafkaClient(this.env);
+      admin = kafka.admin();
       await admin.connect();
-      const topics = (await admin.listTopics?.().catch(() => null)) as string[] | null;
+      const topics = (await admin.listTopics().catch(() => null)) as string[] | null;
       return {
         status: "connected",
         mode: "aiven",
@@ -267,22 +268,23 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
 
   async createRun(input: CreateRunInput) {
     assertAivenConfigured(this.env);
-    const kafka = await import("@confluentinc/kafka-javascript");
-    const admin = createConfluentKafka(kafka).admin(createClientConfig(this.env));
+    const kafka = await createAivenKafkaClient(this.env);
+    const admin = kafka.admin();
     try {
       await admin.connect();
-      await admin.createTopics?.({
+      await admin.createTopics({
+        waitForLeaders: true,
         topics: [{ topic: input.topicName, numPartitions: input.partitionCount }]
       });
     } finally {
-      await admin.disconnect?.().catch(() => undefined);
+      await admin.disconnect().catch(() => undefined);
     }
   }
 
   async produce(input: ProduceInput): Promise<ProduceResult> {
     assertAivenConfigured(this.env);
-    const kafka = await import("@confluentinc/kafka-javascript");
-    const producer = createConfluentKafka(kafka).producer(createClientConfig(this.env));
+    const kafka = await createAivenKafkaClient(this.env);
+    const producer = kafka.producer();
     try {
       await producer.connect();
       const result = await producer.send({
@@ -296,17 +298,19 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         ]
       });
       const report = Array.isArray(result) ? result[0] : result;
-      if (report?.partition === undefined || report?.offset === undefined) {
+      const partition = report?.partition;
+      const offset = report?.offset ?? report?.baseOffset;
+      if (partition === undefined || offset === undefined) {
         throw new Error("Kafka delivery report did not include a partition and offset.");
       }
       return {
-        topic: report.topicName ?? report.topic ?? input.topicName,
-        partition: Number(report.partition),
-        offset: String(report.offset),
+        topic: report.topicName ?? input.topicName,
+        partition: Number(partition),
+        offset: String(offset),
         timestamp: report.timestamp ? String(report.timestamp) : new Date().toISOString()
       };
     } finally {
-      await producer.disconnect?.().catch(() => undefined);
+      await producer.disconnect().catch(() => undefined);
     }
   }
 
@@ -316,58 +320,31 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     callbacks: PlaygroundConsumerCallbacks
   ): Promise<PlaygroundConsumerHandle> {
     assertAivenConfigured(this.env);
-    const kafka = await import("@confluentinc/kafka-javascript");
-    const kafkaJs = kafka.KafkaJS ?? (kafka as any).default?.KafkaJS;
-    const errorCodes = kafkaJs?.ErrorCodes ?? {};
-    const consumer = createConfluentKafka(kafka).consumer({
-      ...createClientConfig(this.env),
-      "group.id": run.consumerGroupId,
-      "client.id": consumerId,
-      "auto.offset.reset": "earliest",
-      "enable.auto.commit": false,
-      rebalance_cb: (
-        error: { code?: string | number; message?: string },
-        assignment: Array<{ topic: string; partition: number }>,
-        assignmentFns?: {
-          assign?: (assignment: Array<{ topic: string; partition: number }>) => void;
-          unassign?: () => void;
-        }
-      ) => {
-        const assignments = normalizeAssignments(assignment);
-        if (error.code === errorCodes.ERR__ASSIGN_PARTITIONS) {
-          void callbacks.onAssigned(assignments);
-          assignmentFns?.assign?.(assignment);
-          return;
-        }
-        if (error.code === errorCodes.ERR__REVOKE_PARTITIONS) {
-          void callbacks.onRevoked(assignments);
-          assignmentFns?.unassign?.();
-          return;
-        }
-        void callbacks.onError({
-          code: String(error.code ?? "REBALANCE_ERROR"),
-          message: error.message ?? "Kafka rebalance failed."
-        });
-      }
+    const kafka = await createAivenKafkaClient(this.env, consumerId);
+    const consumer = kafka.consumer({
+      groupId: run.consumerGroupId,
+      allowAutoTopicCreation: false
+    });
+    consumer.on(consumer.events.GROUP_JOIN, (event) => {
+      const partitions = event.payload.memberAssignment[run.topicName] ?? [];
+      void callbacks.onAssigned(
+        partitions.map((partition: number) => ({ topic: run.topicName, partition }))
+      );
+    });
+    consumer.on(consumer.events.REBALANCING, () => {
+      void callbacks.onRevoked([]);
+    });
+    consumer.on(consumer.events.CRASH, (event) => {
+      void callbacks.onError({
+        code: "CONSUMER_CRASH",
+        message: event.payload.error.message
+      });
     });
     await consumer.connect();
-    await consumer.subscribe({ topics: [run.topicName] });
+    await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
     void consumer.run({
-      eachMessage: async ({
-        topic,
-        partition,
-        message
-      }: {
-        topic: string;
-        partition: number;
-        message: {
-          offset: string;
-          key?: Buffer | string | null;
-          value?: Buffer | string | null;
-          headers?: Record<string, Buffer | string | Array<Buffer | string>>;
-          timestamp?: string;
-        };
-      }) => {
+      autoCommit: false,
+      eachMessage: async ({ topic, partition, message }) => {
         await callbacks.onMessage({
           topic,
           partition,
@@ -400,12 +377,12 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
 
   async deleteRunResources(input: CreateRunInput): Promise<CleanupResult> {
     assertAivenConfigured(this.env);
-    const kafka = await import("@confluentinc/kafka-javascript");
-    const admin = createConfluentKafka(kafka).admin(createClientConfig(this.env));
+    const kafka = await createAivenKafkaClient(this.env);
+    const admin = kafka.admin();
     const steps: CleanupResult["steps"] = [];
     try {
       await admin.connect();
-      await admin.deleteTopics?.({ topics: [input.topicName] });
+      await admin.deleteTopics({ topics: [input.topicName] });
       steps.push({ name: "topic.delete", status: "requested", resourceName: input.topicName });
       return { status: "requested", steps };
     } catch (error) {
@@ -417,7 +394,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       });
       return { status: "failed", steps };
     } finally {
-      await admin.disconnect?.().catch(() => undefined);
+      await admin.disconnect().catch(() => undefined);
     }
   }
 
@@ -447,21 +424,54 @@ function assertAivenConfigured(env: ServerEnv) {
   }
 }
 
-function createConfluentKafka(kafkaModule: any) {
-  const Kafka = kafkaModule.KafkaJS?.Kafka ?? kafkaModule.default?.KafkaJS?.Kafka;
-  if (!Kafka) throw new Error("Confluent KafkaJS promise API is unavailable.");
-  return new Kafka();
+async function createAivenKafkaClient(env: ServerEnv, clientId = "kafka-visual-playground") {
+  const [{ Kafka, logLevel }] = await Promise.all([
+    import("kafkajs"),
+  ]);
+  const ca = await readCaCertificate(env.AIVEN_KAFKA_CA_PATH);
+  return new Kafka({
+    clientId,
+    brokers: parseBrokerList(env.AIVEN_KAFKA_BROKERS),
+    ssl: { ca: [ca] },
+    sasl: createSaslOptions(env),
+    logLevel: logLevel.NOTHING
+  });
 }
 
-function createClientConfig(env: ServerEnv) {
-  return {
-    "bootstrap.servers": parseBrokerList(env.AIVEN_KAFKA_BROKERS).join(","),
-    "security.protocol": "sasl_ssl",
-    "sasl.mechanisms": env.AIVEN_KAFKA_SASL_MECHANISM,
-    "sasl.username": env.AIVEN_KAFKA_USERNAME,
-    "sasl.password": env.AIVEN_KAFKA_PASSWORD,
-    "ssl.ca.location": env.AIVEN_KAFKA_CA_PATH
+async function readCaCertificate(caPath: string) {
+  const [{ readFile }, path] = await Promise.all([
+    import("node:fs/promises"),
+    import("node:path")
+  ]);
+  const candidates = path.isAbsolute(caPath)
+    ? [caPath]
+    : [
+        path.resolve(process.cwd(), caPath),
+        path.resolve(process.cwd(), "../..", caPath)
+      ];
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate, "utf8");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function createSaslOptions(env: ServerEnv): SASLOptions {
+  const credentials = {
+    username: env.AIVEN_KAFKA_USERNAME,
+    password: env.AIVEN_KAFKA_PASSWORD
   };
+  if (env.AIVEN_KAFKA_SASL_MECHANISM === "PLAIN") {
+    return { mechanism: "plain", ...credentials };
+  }
+  if (env.AIVEN_KAFKA_SASL_MECHANISM === "SCRAM-SHA-512") {
+    return { mechanism: "scram-sha-512", ...credentials };
+  }
+  return { mechanism: "scram-sha-256", ...credentials };
 }
 
 export function stablePartition(key: string, partitionCount: number) {
@@ -482,7 +492,7 @@ function normalizeAssignments(
 }
 
 function normalizeHeaders(
-  headers: Record<string, Buffer | string | Array<Buffer | string>> | undefined
+  headers: Record<string, Buffer | string | Array<Buffer | string> | undefined> | undefined
 ) {
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers ?? {})) {

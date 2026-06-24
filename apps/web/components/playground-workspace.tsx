@@ -28,6 +28,7 @@ function reducer(state: typeof initialVisualizationState, action: Action) {
 export function PlaygroundWorkspace() {
   const [state, dispatch] = useReducer(reducer, initialVisualizationState);
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const {
     selectedMessageId,
     selectedEventSequence,
@@ -109,24 +110,30 @@ export function PlaygroundWorkspace() {
   );
 
   async function startRun() {
-    const snapshot = await api<RunSnapshot>("/api/v1/runs", {
-      method: "POST",
-      body: JSON.stringify({ scenarioId: "partitioning" })
+    await runAction(async () => {
+      const snapshot = await api<RunSnapshot>("/api/v1/runs", {
+        method: "POST",
+        body: JSON.stringify({ scenarioId: "partitioning" })
+      });
+      dispatch({ type: "snapshot", snapshot });
     });
-    dispatch({ type: "snapshot", snapshot });
   }
 
   async function resetRun() {
     if (!run) return;
-    await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
-    resetSelection();
-    dispatch({ type: "clear" });
+    await runAction(async () => {
+      await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
+      resetSelection();
+      dispatch({ type: "clear" });
+    });
   }
 
   async function mutate(path: string, init?: RequestInit) {
     if (!run) return;
-    const snapshot = await api<RunSnapshot>(`/api/v1/runs/${run.runId}${path}`, init);
-    dispatch({ type: "snapshot", snapshot });
+    await runAction(async () => {
+      const snapshot = await api<RunSnapshot>(`/api/v1/runs/${run.runId}${path}`, init);
+      dispatch({ type: "snapshot", snapshot });
+    });
   }
 
   async function updateSettings(settings: {
@@ -138,6 +145,15 @@ export function PlaygroundWorkspace() {
       method: "PATCH",
       body: JSON.stringify(settings)
     });
+  }
+
+  async function runAction(action: () => Promise<void>) {
+    setActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Action failed.");
+    }
   }
 
   return (
@@ -168,6 +184,11 @@ export function PlaygroundWorkspace() {
           </Button>
         </div>
       </header>
+      {actionError && (
+        <div role="alert" className="border-b border-rose-400/40 bg-rose-950 px-5 py-2 text-sm text-rose-100">
+          {actionError}
+        </div>
+      )}
 
       <div className="grid min-h-[calc(100vh-4rem)] grid-cols-[280px_minmax(680px,1fr)_360px] grid-rows-[1fr_270px]">
         <aside className="row-span-2 border-r border-slate-800 bg-[#0b0f16] p-4">

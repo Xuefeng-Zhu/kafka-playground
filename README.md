@@ -95,6 +95,12 @@ npm test
 npm run test:e2e
 ```
 
+To run the optional live Aiven smoke test after configuring `.env.local` and `certs/ca.pem`:
+
+```bash
+set -a; source .env.local; set +a; npm test -- packages/kafka-runtime/src/aiven-smoke.test.ts
+```
+
 ## Security Notes
 
 - Do not commit `.env` files or Kafka certificates.

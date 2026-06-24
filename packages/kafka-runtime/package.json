@@ -9,8 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@confluentinc/kafka-javascript": "^1.4.0",
     "@kplay/contracts": "0.1.0",
+    "kafkajs": "^2.2.4",
     "zod": "^4.2.1"
   },
   "devDependencies": {
