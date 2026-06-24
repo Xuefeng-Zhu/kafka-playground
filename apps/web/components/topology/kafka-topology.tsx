@@ -1,7 +1,7 @@
 "use client";
 
-import { ReactFlow, Background, Handle, Position, type Node, type Edge } from "@xyflow/react";
-import type { RunSnapshot } from "@kplay/contracts";
+import type { PlaygroundMessage, RunSnapshot } from "@kplay/contracts";
+import { Code2, Maximize2, Minus, Network, Plus, Users } from "lucide-react";
 
 export function KafkaTopology({
   snapshot,
@@ -12,124 +12,183 @@ export function KafkaTopology({
   selectedMessageId: string | null;
   onSelectMessage: (messageId: string) => void;
 }) {
-  const nodes: Node[] = [
-    {
-      id: "producer",
-      position: { x: 70, y: 90 },
-      data: { title: "Producer", body: snapshot.producerStatus, tone: "sky" },
-      type: "kplay"
-    },
-    {
-      id: "topic",
-      position: { x: 340, y: 80 },
-      data: { title: snapshot.topicName, body: "Topic with 2 partitions", tone: "slate" },
-      type: "kplay"
-    },
-    ...[0, 1].map((partition) => ({
-      id: `partition-${partition}`,
-      position: { x: 350, y: 220 + partition * 120 },
-      data: {
-        title: `Partition ${partition}`,
-        body: `latest offset ${snapshot.latestPartitionOffsets[String(partition)] ?? "none"}`,
-        tone: "amber"
-      },
-      type: "kplay"
-    })),
-    {
-      id: "group",
-      position: { x: 650, y: 125 },
-      data: { title: "Consumer group", body: snapshot.consumerGroupId, tone: "green" },
-      type: "kplay"
-    },
-    ...snapshot.consumers.map((consumer, index) => ({
-      id: consumer.consumerId,
-      position: { x: 680, y: 240 + index * 95 },
-      data: {
-        title: consumer.consumerId,
-        body:
-          consumer.assignments.length > 0
-            ? consumer.assignments.map((item) => `P${item.partition}`).join(", ")
-            : "idle - no assignment",
-        tone: consumer.assignments.length > 0 ? "green" : "rose"
-      },
-      type: "kplay"
-    }))
-  ];
-
-  const edges: Edge[] = [
-    { id: "producer-topic", source: "producer", target: "topic", animated: snapshot.producerStatus === "running" },
-    { id: "topic-p0", source: "topic", target: "partition-0", animated: true },
-    { id: "topic-p1", source: "topic", target: "partition-1", animated: true },
-    ...snapshot.consumers.flatMap((consumer) =>
-      consumer.assignments.map((assignment) => ({
-        id: `${assignment.partition}-${consumer.consumerId}`,
-        source: `partition-${assignment.partition}`,
-        target: consumer.consumerId,
-        animated: true
-      }))
-    )
-  ];
-
-  const recent = snapshot.recentMessages.slice(-10);
+  const partitions = Array.from({ length: snapshot.partitionCount }, (_, partition) => partition);
+  const consumers = snapshot.consumers;
 
   return (
-    <div className="h-full">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={{ kplay: TopologyNode }} fitView minZoom={0.7} maxZoom={1.4}>
-        <Background color="#1f2937" gap={24} />
-      </ReactFlow>
-      <div className="absolute right-5 top-5 w-64 rounded-lg border border-slate-800 bg-slate-950/90 p-3 shadow-2xl">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Assignments</h2>
-        <div className="mt-2 space-y-2">
-          {snapshot.consumers.length === 0 ? (
-            <p className="text-xs text-slate-500">Add consumers to see partition ownership.</p>
-          ) : (
-            snapshot.consumers.map((consumer) => (
-              <div key={consumer.consumerId} className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-slate-200">{consumer.consumerId}</span>
-                <span className={consumer.assignments.length > 0 ? "text-emerald-300" : "text-rose-300"}>
-                  {consumer.assignments.length > 0
-                    ? consumer.assignments.map((item) => `P${item.partition}`).join(", ")
-                    : "idle - no assignment"}
-                </span>
-              </div>
-            ))
-          )}
+    <div className="kplay-grid-bg relative min-h-[560px] overflow-hidden lg:h-full lg:min-h-0">
+      <div className="absolute left-4 right-4 top-5 z-10 flex flex-wrap items-center justify-between gap-3 lg:left-6 lg:right-6">
+        <h2 className="text-sm font-semibold text-slate-100">Topology</h2>
+        <div className="flex items-center gap-2 lg:gap-4">
+          <button className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-700 bg-slate-950/60 px-3 text-xs text-slate-200">
+            <Network size={15} aria-hidden /> Auto layout
+          </button>
+          <div className="flex h-8 overflow-hidden rounded-md border border-slate-700 bg-slate-950/60 text-xs text-slate-200">
+            <button className="grid w-10 place-items-center border-r border-slate-700" aria-label="Zoom out"><Minus size={15} aria-hidden /></button>
+            <div className="grid w-16 place-items-center">100%</div>
+            <button className="grid w-10 place-items-center border-l border-slate-700" aria-label="Zoom in"><Plus size={15} aria-hidden /></button>
+          </div>
+          <button className="grid size-8 place-items-center rounded-md border border-slate-700 bg-slate-950/60 text-slate-200" aria-label="Fit view">
+            <Maximize2 size={15} aria-hidden />
+          </button>
         </div>
       </div>
-      <div className="absolute bottom-5 left-5 right-5 flex flex-wrap gap-2" aria-label="Recent messages">
-        {recent.map((message) => (
-          <button
-            key={message.messageId}
-            onClick={() => onSelectMessage(message.messageId)}
-            className={`rounded-md border px-3 py-2 text-left text-xs transition focus:outline-none focus:ring-2 focus:ring-sky-300 ${
-              selectedMessageId === message.messageId
-                ? "border-sky-300 bg-sky-400/20 text-sky-100"
-                : "border-slate-700 bg-slate-950/80 text-slate-300 hover:border-slate-500"
-            }`}
-          >
-            <span className="block font-semibold">{message.key ?? "no key"}</span>
-            <span className="font-mono text-[11px] text-slate-400">P{message.partition ?? "?"} / {message.offset ?? "?"}</span>
-          </button>
-        ))}
+
+      <svg className="pointer-events-none absolute inset-0 hidden h-full w-full lg:block" aria-hidden>
+        <defs>
+          <marker id="kplay-arrow-blue" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#2f8cff" />
+          </marker>
+          <marker id="kplay-arrow-purple" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#9b5cff" />
+          </marker>
+        </defs>
+        <path d="M18% 49% C26% 49%, 25% 47%, 32% 47%" stroke="#8b96a8" strokeWidth="1.5" markerEnd="url(#kplay-arrow-blue)" />
+        <path d="M59% 42% C65% 42%, 65% 34%, 72% 34%" stroke="#2f8cff" strokeWidth="1.5" markerEnd="url(#kplay-arrow-blue)" />
+        <path d="M59% 57% C65% 57%, 65% 50%, 72% 50%" stroke="#9b5cff" strokeWidth="1.5" markerEnd="url(#kplay-arrow-purple)" />
+        <path d="M59% 64% C65% 64%, 65% 66%, 72% 66%" stroke="#8b96a8" strokeDasharray="5 5" strokeWidth="1.5" markerEnd="url(#kplay-arrow-blue)" />
+      </svg>
+
+      <div className="relative mx-4 grid grid-cols-1 gap-4 pb-6 pt-24 lg:absolute lg:inset-x-6 lg:top-24 lg:mx-0 lg:grid-cols-[150px_minmax(280px,1fr)_230px] lg:items-center lg:gap-6 lg:p-0">
+        <ProducerCard status={snapshot.producerStatus} />
+
+        <section className="rounded-lg border border-slate-600 bg-[#0b1219]/95 p-3 shadow-2xl">
+          <div className="mb-3 text-center">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">Topic</div>
+            <div className="mt-1 font-semibold text-slate-100">{snapshot.topicName}</div>
+            <div className="text-xs text-slate-400">{snapshot.partitionCount} partitions</div>
+          </div>
+          <div className="space-y-3">
+            {partitions.map((partition) => (
+              <PartitionLane
+                key={partition}
+                partition={partition}
+                messages={messagesForPartition(snapshot.recentMessages, partition)}
+                selectedMessageId={selectedMessageId}
+                onSelectMessage={onSelectMessage}
+                latestOffset={snapshot.latestPartitionOffsets[String(partition)]}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-600 bg-[#0b1219]/95 p-3 shadow-2xl">
+          <div className="mb-3 min-w-0 text-center">
+            <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-100">Consumer Group</div>
+            <div className="mt-1 truncate text-xs text-slate-400">{snapshot.consumerGroupId}</div>
+            <div className="text-xs text-slate-400">{consumers.length} consumers</div>
+          </div>
+          <div className="space-y-2">
+            {consumers.length === 0 ? (
+              <p className="rounded-md border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-500">Add consumers to see partition ownership.</p>
+            ) : (
+              consumers.map((consumer, index) => (
+                <div
+                  key={consumer.consumerId}
+                  className={`rounded-md border p-3 ${
+                    index === 1
+                      ? "border-violet-400 bg-violet-500/10"
+                      : consumer.assignments.length > 0
+                        ? "border-sky-500 bg-sky-500/10"
+                        : "border-slate-600 bg-slate-950/60"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`grid size-8 place-items-center rounded-full ${consumer.assignments.length > 0 ? "bg-sky-500/20 text-sky-300" : "bg-slate-700/40 text-slate-400"}`}>
+                      <Users size={16} aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-slate-100">{consumer.consumerId.replace("consumer-", "Consumer ")}</div>
+                      <div className="text-xs text-slate-400">{consumer.consumerId}</div>
+                    </div>
+                    <span className="rounded border border-sky-500/50 bg-sky-500/10 px-2 py-1 text-xs font-mono text-sky-200">
+                      {consumer.assignments.length > 0 ? consumer.assignments.map((item) => `P${item.partition}`).join(",") : "-"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <span className={`size-2 rounded-full ${consumer.status === "running" ? "bg-emerald-400" : "bg-slate-500"}`} />
+                    <span className={consumer.assignments.length > 0 ? "text-emerald-300" : "text-slate-400"}>
+                      {consumer.assignments.length > 0 ? "Active" : "idle - no assignment"}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="mt-4 text-xs text-slate-500">Group protocol: consumer (v3)</div>
+        </section>
       </div>
     </div>
   );
 }
 
-function TopologyNode({ data }: { data: { title: string; body: string; tone: "sky" | "slate" | "amber" | "green" | "rose" } }) {
-  const tone = {
-    sky: "border-sky-400/50 bg-sky-400/10 text-sky-100",
-    slate: "border-slate-600 bg-slate-900 text-slate-100",
-    amber: "border-amber-400/50 bg-amber-400/10 text-amber-100",
-    green: "border-emerald-400/50 bg-emerald-400/10 text-emerald-100",
-    rose: "border-rose-400/50 bg-rose-400/10 text-rose-100"
-  }[data.tone];
+function ProducerCard({ status }: { status: RunSnapshot["producerStatus"] }) {
   return (
-    <div className={`min-w-48 rounded-lg border p-3 shadow-2xl ${tone}`}>
-      <Handle type="target" position={Position.Left} className="opacity-0" />
-      <div className="text-sm font-semibold">{data.title}</div>
-      <div className="mt-1 max-w-44 truncate font-mono text-[11px] opacity-80">{data.body}</div>
-      <Handle type="source" position={Position.Right} className="opacity-0" />
+    <section className="rounded-lg border border-slate-600 bg-[#0b1219]/95 p-5 text-center shadow-2xl">
+      <div className="mx-auto grid size-14 place-items-center rounded-full border border-sky-500 bg-sky-500/10 text-sky-300">
+        <Code2 size={28} aria-hidden />
+      </div>
+      <div className="mt-4 text-sm font-semibold text-slate-100">Producer</div>
+      <div className="mt-2 flex items-center justify-center gap-2 text-xs text-emerald-300">
+        <span className={`size-2 rounded-full ${status === "running" ? "bg-emerald-400" : "bg-amber-400"}`} />
+        {status}
+      </div>
+    </section>
+  );
+}
+
+function PartitionLane({
+  partition,
+  messages,
+  selectedMessageId,
+  latestOffset,
+  onSelectMessage
+}: {
+  partition: number;
+  messages: PlaygroundMessage[];
+  selectedMessageId: string | null;
+  latestOffset?: string;
+  onSelectMessage: (messageId: string) => void;
+}) {
+  const placeholders = messages.length > 0 ? [] : offsetsAround(latestOffset);
+  return (
+    <div className="rounded-md border border-slate-700 bg-slate-950/45 p-2">
+      <div className={partition === 0 ? "mb-1 text-sm font-semibold text-sky-300" : "mb-1 text-sm font-semibold text-violet-300"}>
+        Partition {partition}
+      </div>
+      <div className="flex items-center gap-1 overflow-hidden">
+        {messages.map((message) => (
+          <button
+            key={message.messageId}
+            onClick={() => onSelectMessage(message.messageId)}
+            className={`min-w-9 rounded border px-2 py-1 font-mono text-xs ${
+              selectedMessageId === message.messageId
+                ? "border-sky-300 bg-sky-500 text-white"
+                : partition === 0
+                  ? "border-sky-500/40 bg-sky-500/10 text-sky-100"
+                  : "border-violet-500/40 bg-violet-500/10 text-violet-100"
+            }`}
+          >
+            {message.offset ?? "?"}
+          </button>
+        ))}
+        {placeholders.map((offset) => (
+          <span key={offset} className="min-w-9 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-center font-mono text-xs text-slate-400">
+            {offset}
+          </span>
+        ))}
+        <span className={partition === 0 ? "ml-auto size-2.5 rounded-full bg-sky-400" : "ml-auto size-2.5 rounded-full bg-violet-400"} />
+      </div>
     </div>
   );
+}
+
+function messagesForPartition(messages: PlaygroundMessage[], partition: number) {
+  return messages.filter((message) => message.partition === partition).slice(-7);
+}
+
+function offsetsAround(latestOffset?: string) {
+  const latest = Number(latestOffset);
+  const end = Number.isFinite(latest) ? latest : 104;
+  return Array.from({ length: 7 }, (_, index) => String(Math.max(0, end - 6 + index)));
 }

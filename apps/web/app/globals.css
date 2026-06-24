@@ -45,6 +45,13 @@ select {
   display: none;
 }
 
+.kplay-grid-bg {
+  background:
+    radial-gradient(circle at center, rgba(30, 41, 59, 0.72) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(8, 13, 19, 0.88), rgba(5, 9, 13, 0.98));
+  background-size: 24px 24px, 100% 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
-import type { ConnectionStatus, KeyStrategy, RunSnapshot, RuntimeEvent } from "@kplay/contracts";
-import { Activity, Moon, RotateCcw, Sun } from "lucide-react";
+import type { ConnectionStatus, KeyStrategy, RunSnapshot, RuntimeEvent, ScenarioDefinition } from "@kplay/contracts";
+import { BookOpen, Grid3X3, Moon, Network, RotateCcw, Settings, Sun } from "lucide-react";
 import { initializeFromSnapshot, mergeSnapshot, applyRuntimeEvent, initialVisualizationState } from "@/lib/client/visualization-reducer";
 import { Button } from "@/components/ui/button";
 import { ControlsPanel } from "@/components/controls/controls-panel";
@@ -28,6 +28,7 @@ function reducer(state: typeof initialVisualizationState, action: Action) {
 export function PlaygroundWorkspace() {
   const [state, dispatch] = useReducer(reducer, initialVisualizationState);
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
+  const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const {
     selectedMessageId,
@@ -42,6 +43,11 @@ export function PlaygroundWorkspace() {
 
   useEffect(() => {
     void fetch("/api/v1/connection").then((res) => res.json()).then(setConnection);
+    void fetch("/api/v1/scenarios")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload: { scenarios: ScenarioDefinition[] } | null) => {
+        if (payload?.scenarios) setScenarios(payload.scenarios);
+      });
   }, []);
 
   useEffect(() => {
@@ -157,30 +163,42 @@ export function PlaygroundWorkspace() {
   }
 
   return (
-    <main className={theme === "dark" ? "min-h-screen bg-[#080b10] text-slate-100" : "min-h-screen bg-slate-100 text-slate-950"}>
-      <header className="flex h-16 items-center justify-between border-b border-slate-800 bg-[#0b0f16] px-5">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-md border border-sky-400/40 bg-sky-400/10 text-sky-300">
-            <Activity size={18} aria-hidden />
+    <main className={theme === "dark" ? "min-h-screen overflow-auto bg-[#05090d] text-slate-100 lg:h-screen lg:overflow-hidden" : "min-h-screen overflow-auto bg-slate-100 text-slate-950 lg:h-screen lg:overflow-hidden"}>
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-800/90 bg-[#070c11] px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.03)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <div className="flex size-8 shrink-0 items-center justify-center text-slate-100 sm:size-9">
+            <Network size={28} strokeWidth={2.2} aria-hidden />
           </div>
-          <div>
-            <h1 className="text-base font-semibold">Kafka Visual Playground</h1>
-            <p className="text-xs text-slate-400">Partitioning, ordering, and rebalancing</p>
+          <h1 className="max-w-44 truncate text-base font-semibold tracking-tight text-slate-50 sm:max-w-none sm:text-lg">Kafka Visual Playground</h1>
+          <StatusPill label={run?.mode === "aiven" ? "Aiven" : "Demo"} tone={run?.mode === "aiven" ? "sky" : "sky"} />
+          <div className="hidden h-8 w-px bg-slate-700 lg:block" />
+          <div className="hidden items-center gap-2 text-lg font-semibold text-slate-200 sm:flex">
+            <span className="text-orange-500">aiven</span>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <StatusPill label={connectionLabel(connection)} tone={connection?.status === "demo_mode" || connection?.status === "connected" ? "green" : "amber"} />
-          <StatusPill label={run?.mode === "aiven" ? "Aiven" : "Demo mode"} tone={run?.mode === "aiven" ? "sky" : "amber"} />
-          <StatusPill label={run?.status ?? "No run"} tone={run?.status === "running" ? "green" : "slate"} />
-          <Button onClick={resetRun} disabled={!run} variant="danger" aria-label="Reset run">
+        <div className="flex min-w-0 items-center gap-2 text-sm sm:gap-4">
+          <div className="hidden min-w-44 border-r border-slate-700 pr-5 md:block">
+            <div className="flex items-center gap-2 font-semibold text-slate-100">
+              <span className="size-2 rounded-full bg-emerald-400" />
+              {connectionLabel(connection)}
+            </div>
+            <div className="mt-0.5 truncate text-xs text-slate-400">{connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}</div>
+          </div>
+          <div className="hidden items-center gap-3 border-r border-slate-700 pr-5 sm:flex">
+            <span className="text-slate-300">Run status</span>
+            <StatusPill label={run?.status ?? "No run"} tone={run?.status === "running" ? "green" : "slate"} />
+          </div>
+          <Button onClick={resetRun} disabled={!run} variant="secondary" aria-label="Reset run" className="h-9 border-slate-600 bg-transparent px-3 sm:px-4">
             <RotateCcw size={15} aria-hidden /> Reset
           </Button>
           <Button
             onClick={toggleTheme}
             variant="ghost"
             aria-label="Toggle light and dark theme"
+            className="h-9 rounded-full border border-slate-700 bg-slate-900/70 px-3"
           >
             {theme === "dark" ? <Sun size={16} aria-hidden /> : <Moon size={16} aria-hidden />}
+            <Moon size={15} className="text-slate-400" aria-hidden />
           </Button>
         </div>
       </header>
@@ -190,15 +208,16 @@ export function PlaygroundWorkspace() {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-[280px_minmax(680px,1fr)_360px] grid-rows-[1fr_270px]">
-        <aside className="row-span-2 border-r border-slate-800 bg-[#0b0f16] p-4">
-          <ScenarioSidebar />
+      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible lg:h-[calc(100vh-4rem)] lg:grid-cols-[60px_260px_minmax(680px,1fr)_360px] lg:grid-rows-[minmax(0,1fr)_340px] lg:overflow-hidden">
+        <UtilityRail />
+        <aside className="max-h-[420px] min-h-0 overflow-y-auto border-b border-slate-800 bg-[#0b0f16] p-4 lg:row-span-2 lg:max-h-none lg:border-b-0 lg:border-r">
+          <ScenarioSidebar scenarios={scenarios} />
           <EducationPanel snapshot={run} selectedMessage={selectedMessage} />
         </aside>
 
-        <section className="relative border-r border-slate-800 bg-[#080b10]">
+        <section className="relative min-h-[560px] border-b border-slate-800 bg-[#070b10] lg:min-h-0 lg:border-b-0 lg:border-r">
           {!run ? (
-            <div className="flex h-full items-center justify-center p-10">
+            <div className="kplay-grid-bg flex h-full items-center justify-center p-10">
               <div className="max-w-xl text-center">
                 <h2 className="text-2xl font-semibold">Start a scenario run</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-400">
@@ -218,11 +237,11 @@ export function PlaygroundWorkspace() {
           )}
         </section>
 
-        <aside className="row-span-2 bg-[#0e131b] p-4">
+        <aside className="min-h-[420px] overflow-y-auto border-b border-slate-800 bg-[#0b1016] lg:row-span-2 lg:min-h-0 lg:border-b-0 lg:border-l">
           <InspectorPanel message={selectedMessage} event={selectedEvent} snapshot={run} />
         </aside>
 
-        <section className="border-t border-r border-slate-800 bg-[#0b0f16]">
+        <section className="flex min-h-[520px] flex-col bg-[#0b0f16] lg:min-h-0 lg:border-t lg:border-r">
           {run && (
             <ControlsPanel
               snapshot={run}
@@ -260,39 +279,85 @@ function ConnectionNotice({ connection }: { connection: ConnectionStatus | null 
 
 function StatusPill({ label, tone }: { label: string; tone: "green" | "amber" | "sky" | "slate" }) {
   const color = {
-    green: "border-emerald-400/40 bg-emerald-400/10 text-emerald-200",
-    amber: "border-amber-400/40 bg-amber-400/10 text-amber-200",
-    sky: "border-sky-400/40 bg-sky-400/10 text-sky-200",
+    green: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300",
+    amber: "border-amber-500/30 bg-amber-500/15 text-amber-200",
+    sky: "border-sky-500/40 bg-sky-500/15 text-sky-300",
     slate: "border-slate-700 bg-slate-900 text-slate-300"
   }[tone];
   return <span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${color}`}>{label}</span>;
 }
 
-function ScenarioSidebar() {
-  const future = [
-    "Fan-out versus load balancing",
-    "At-least-once delivery and duplicate processing",
-    "Retry topics and dead-letter queues",
-    "Schema evolution using Karapace",
-    "Idempotent and transactional producers",
-    "Event replay and event sourcing"
-  ];
+function ScenarioSidebar({ scenarios }: { scenarios: ScenarioDefinition[] }) {
+  const primary = scenarios.find((scenario) => !scenario.disabled);
+  const future = scenarios.filter((scenario) => scenario.disabled);
+  const shownFuture = future.slice(0, 5);
   return (
-    <div>
+    <div className="min-h-0">
       <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Scenarios</h2>
-      <div className="mt-3 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3">
-        <h3 className="text-sm font-semibold text-sky-100">Partitioning and rebalancing</h3>
-        <p className="mt-2 text-xs leading-5 text-sky-100/75">One topic, two partitions, one producer, and up to three consumers.</p>
+      <div className="mt-3 rounded-md border border-sky-500 bg-sky-500/10 p-3 shadow-[inset_0_0_24px_rgba(59,130,246,0.08)]">
+        <div className="flex items-start gap-3">
+          <Grid3X3 className="mt-0.5 shrink-0 text-sky-400" size={24} aria-hidden />
+          <div>
+            <h3 className="text-sm font-semibold text-sky-100">Partitioning</h3>
+            <p className="mt-1 text-xs leading-5 text-sky-100/75">
+              {primary?.description ?? "Understand how messages are distributed across partitions."}
+            </p>
+          </div>
+          <span className="ml-auto mt-7 size-2.5 rounded-full bg-sky-400" />
+        </div>
       </div>
       <div className="mt-3 space-y-2">
-        {future.map((item) => (
-          <div key={item} className="rounded-md border border-slate-800 p-3 text-xs text-slate-500" aria-disabled>
-            <div className="font-semibold text-slate-400">{item}</div>
-            <div className="mt-1">Coming soon</div>
+        {shownFuture.map((scenario) => (
+          <div key={scenario.id} className="rounded-md border border-slate-700/80 bg-slate-950/30 p-3 text-xs text-slate-500" aria-disabled>
+            <div className="flex gap-3">
+              <Network className="mt-0.5 shrink-0 text-slate-500" size={22} aria-hidden />
+              <div>
+                <div className="font-semibold text-slate-400">{scenario.title}</div>
+                <div className="mt-1 leading-5">{scenario.description}</div>
+                <div className="mt-2 text-slate-500">Locked</div>
+              </div>
+            </div>
           </div>
         ))}
+        {future.length > shownFuture.length && (
+          <div className="rounded-md border border-slate-800 bg-slate-950/30 p-3 text-xs text-slate-500">
+            {future.length - shownFuture.length} more planned scenarios in backlog
+          </div>
+        )}
       </div>
+      <a
+        href="#how-it-works"
+        className="mt-3 flex items-center justify-between rounded-md border border-slate-700 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-slate-200"
+      >
+        <span className="flex items-center gap-2"><BookOpen size={15} aria-hidden /> How it works</span>
+        <span aria-hidden>↗</span>
+      </a>
     </div>
+  );
+}
+
+function UtilityRail() {
+  return (
+    <nav className="flex items-center gap-2 border-b border-slate-800 bg-[#080d13] px-2 py-2 text-slate-400 lg:row-span-2 lg:flex-col lg:border-b-0 lg:border-r lg:px-1.5 lg:py-4">
+      {[
+        { label: "Events", icon: Grid3X3, active: true },
+        { label: "Topology", icon: Network },
+        { label: "Config", icon: Settings }
+      ].map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.label}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-2 py-2 text-[11px] font-medium lg:w-full lg:flex-none lg:flex-col lg:gap-1 lg:px-1 lg:py-3 ${
+              item.active ? "bg-sky-500/10 text-sky-300" : "hover:bg-slate-900 hover:text-slate-200"
+            }`}
+          >
+            <Icon size={19} aria-hidden />
+            {item.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 

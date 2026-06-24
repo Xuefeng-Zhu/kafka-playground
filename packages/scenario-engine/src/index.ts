@@ -22,17 +22,69 @@ export const PRIMARY_SCENARIO: ScenarioDefinition = {
   }
 };
 
-export const FUTURE_SCENARIOS: ScenarioDefinition[] = [
-  "Fan-out versus load balancing",
-  "At-least-once delivery and duplicate processing",
-  "Retry topics and dead-letter queues",
-  "Schema evolution using Karapace",
-  "Idempotent and transactional producers",
-  "Event replay and event sourcing"
-].map((title, index) => ({
+const FUTURE_SCENARIO_CATALOG = [
+  {
+    title: "Fan-out versus load balancing",
+    description: "Compare independent consumer groups with members that divide partitions inside one group."
+  },
+  {
+    title: "At-least-once delivery and duplicate processing",
+    description: "Pause commits and replay messages to see why idempotent handlers matter."
+  },
+  {
+    title: "Retry topics and dead-letter queues",
+    description: "Route failed events through retries, backoff, and a terminal dead-letter topic."
+  },
+  {
+    title: "Schema evolution using Karapace",
+    description: "Publish compatible and incompatible payloads against a schema registry-backed topic."
+  },
+  {
+    title: "Idempotent and transactional producers",
+    description: "Observe producer sequence numbers, transactions, and exactly-once boundaries."
+  },
+  {
+    title: "Event replay and event sourcing",
+    description: "Rebuild derived state by resetting offsets and replaying an immutable event log."
+  },
+  {
+    title: "Consumer lag and backpressure",
+    description: "Increase production rate and processing latency to watch lag build and recover."
+  },
+  {
+    title: "Hot partitions and key skew",
+    description: "Send uneven keys to reveal overloaded partitions and poor distribution choices."
+  },
+  {
+    title: "Log compaction and tombstones",
+    description: "Produce updates and deletes to see how compacted topics retain latest state."
+  },
+  {
+    title: "Retention windows and data loss",
+    description: "Expire old records and inspect what consumers can and cannot replay afterward."
+  },
+  {
+    title: "Rebalance strategies and cooperative sticky assignment",
+    description: "Compare eager and cooperative rebalances as consumers join and leave."
+  },
+  {
+    title: "Kafka Streams joins and windows",
+    description: "Join two event streams and visualize window boundaries, late data, and grace periods."
+  },
+  {
+    title: "Outbox pattern and CDC",
+    description: "Move database changes into Kafka while preserving atomic writes and delivery order."
+  },
+  {
+    title: "ACLs, users, and least privilege",
+    description: "Apply topic permissions and see how producer, consumer, and admin operations fail safely."
+  }
+];
+
+export const FUTURE_SCENARIOS: ScenarioDefinition[] = FUTURE_SCENARIO_CATALOG.map((scenario, index) => ({
   id: `future-${index + 1}`,
-  title,
-  description: "Coming soon",
+  title: scenario.title,
+  description: scenario.description,
   disabled: true,
   learningObjectives: [],
   topic: { partitions: 2 },

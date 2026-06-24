@@ -54,4 +54,10 @@ describe("scenario engine", () => {
       expect(() => scenarioDefinitionSchema.parse(scenario)).not.toThrow();
     }
   });
+
+  it("keeps future scenarios disabled until implemented", () => {
+    const future = SCENARIOS.filter((scenario) => scenario.disabled);
+    expect(future).toHaveLength(14);
+    expect(future.every((scenario) => scenario.description !== "Coming soon")).toBe(true);
+  });
 });
