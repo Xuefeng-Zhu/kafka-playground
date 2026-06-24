@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useReducer, useState } from "react";
 import type { ConnectionStatus, KeyStrategy, RunSnapshot, RuntimeEvent, ScenarioDefinition } from "@kplay/contracts";
-import { BookOpen, Grid3X3, Moon, Network, RotateCcw, Settings, Sun } from "lucide-react";
+import { BookOpen, Grid3X3, Moon, Network, RotateCcw, Settings, Sun, SlidersHorizontal } from "lucide-react";
 import { initializeFromSnapshot, mergeSnapshot, applyRuntimeEvent, initialVisualizationState } from "@/lib/client/visualization-reducer";
 import { Button } from "@/components/ui/button";
 import { ControlsPanel } from "@/components/controls/controls-panel";
@@ -163,64 +163,66 @@ export function PlaygroundWorkspace() {
   }
 
   return (
-    <main className={theme === "dark" ? "min-h-screen overflow-auto bg-[#05090d] text-slate-100 lg:h-screen lg:overflow-hidden" : "min-h-screen overflow-auto bg-slate-100 text-slate-950 lg:h-screen lg:overflow-hidden"}>
-      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-800/90 bg-[#070c11] px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.03)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
+    <main className="min-h-screen overflow-auto bg-[var(--kplay-bg)] text-[var(--kplay-text)] lg:h-screen lg:overflow-hidden">
+      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b-[3px] border-teal-700 bg-[#fff7ed] px-3 py-3 shadow-[0_6px_0_rgba(15,118,110,0.12)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <div className="flex size-8 shrink-0 items-center justify-center text-slate-100 sm:size-9">
-            <Network size={28} strokeWidth={2.2} aria-hidden />
+          <div className="grid size-10 shrink-0 place-items-center rounded-2xl border-[3px] border-teal-700 bg-amber-200 text-teal-700 shadow-[5px_5px_0_rgba(15,118,110,0.18)]">
+            <SlidersHorizontal size={22} strokeWidth={2.6} aria-hidden />
           </div>
-          <h1 className="max-w-44 truncate text-base font-semibold tracking-tight text-slate-50 sm:max-w-none sm:text-lg">Kafka Visual Playground</h1>
-          <StatusPill label={run?.mode === "aiven" ? "Aiven" : "Demo"} tone={run?.mode === "aiven" ? "sky" : "sky"} />
-          <div className="hidden h-8 w-px bg-slate-700 lg:block" />
-          <div className="hidden items-center gap-2 text-lg font-semibold text-slate-200 sm:flex">
-            <span className="text-orange-500">aiven</span>
+          <div className="min-w-0">
+            <h1 className="max-w-44 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">Kafka Visual Playground</h1>
+            <p className="hidden text-xs text-[#466778] sm:block">Partitioning · rebalances · manual commits</p>
+          </div>
+          <StatusPill label={run?.mode === "aiven" ? "Aiven" : "Demo mode"} tone="sky" />
+          <div className="hidden h-8 w-px bg-teal-700 lg:block" />
+          <div className="hidden items-center gap-2 text-sm font-extrabold text-orange-700 sm:flex">
+            Aiven-compatible
           </div>
         </div>
         <div className="flex min-w-0 items-center gap-2 text-sm sm:gap-4">
-          <div className="hidden min-w-44 border-r border-slate-700 pr-5 md:block">
-            <div className="flex items-center gap-2 font-semibold text-slate-100">
-              <span className="size-2 rounded-full bg-emerald-400" />
+          <div className="hidden min-w-44 border-r-2 border-teal-700 pr-5 md:block">
+            <div className="flex items-center gap-2 font-extrabold text-[#123047]">
+              <span className="size-2.5 rounded-full bg-emerald-500" />
               {connectionLabel(connection)}
             </div>
-            <div className="mt-0.5 truncate text-xs text-slate-400">{connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}</div>
+            <div className="mt-0.5 truncate text-xs text-[#466778]">{connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}</div>
           </div>
-          <div className="hidden items-center gap-3 border-r border-slate-700 pr-5 sm:flex">
-            <span className="text-slate-300">Run status</span>
+          <div className="hidden items-center gap-3 border-r-2 border-teal-700 pr-5 sm:flex">
+            <span className="font-semibold text-[#466778]">Run status</span>
             <StatusPill label={run?.status ?? "No run"} tone={run?.status === "running" ? "green" : "slate"} />
           </div>
-          <Button onClick={resetRun} disabled={!run} variant="secondary" aria-label="Reset run" className="h-9 border-slate-600 bg-transparent px-3 sm:px-4">
+          <Button onClick={resetRun} disabled={!run} variant="secondary" aria-label="Reset run" className="h-9 px-3 sm:px-4">
             <RotateCcw size={15} aria-hidden /> Reset
           </Button>
           <Button
             onClick={toggleTheme}
             variant="ghost"
             aria-label="Toggle light and dark theme"
-            className="h-9 rounded-full border border-slate-700 bg-slate-900/70 px-3"
+            className="h-9 rounded-full px-3"
           >
             {theme === "dark" ? <Sun size={16} aria-hidden /> : <Moon size={16} aria-hidden />}
-            <Moon size={15} className="text-slate-400" aria-hidden />
           </Button>
         </div>
       </header>
       {actionError && (
-        <div role="alert" className="border-b border-rose-400/40 bg-rose-950 px-5 py-2 text-sm text-rose-100">
+        <div role="alert" className="border-b-[3px] border-rose-700 bg-rose-100 px-5 py-2 text-sm font-semibold text-rose-800">
           {actionError}
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible lg:h-[calc(100vh-4rem)] lg:grid-cols-[60px_260px_minmax(680px,1fr)_360px] lg:grid-rows-[minmax(0,1fr)_340px] lg:overflow-hidden">
+      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[60px_260px_minmax(680px,1fr)_360px] lg:grid-rows-[minmax(0,1fr)_340px] lg:overflow-hidden">
         <UtilityRail />
-        <aside className="max-h-[420px] min-h-0 overflow-y-auto border-b border-slate-800 bg-[#0b0f16] p-4 lg:row-span-2 lg:max-h-none lg:border-b-0 lg:border-r">
+        <aside className="max-h-[420px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 lg:row-span-2 lg:max-h-none lg:border-b-0 lg:border-r-[3px]">
           <ScenarioSidebar scenarios={scenarios} />
           <EducationPanel snapshot={run} selectedMessage={selectedMessage} />
         </aside>
 
-        <section className="relative min-h-[560px] border-b border-slate-800 bg-[#070b10] lg:min-h-0 lg:border-b-0 lg:border-r">
+        <section className="relative min-h-[560px] border-b-[3px] border-teal-700 bg-[#ecfeff] lg:min-h-0 lg:border-b-0 lg:border-r-[3px]">
           {!run ? (
             <div className="kplay-grid-bg flex h-full items-center justify-center p-10">
-              <div className="max-w-xl text-center">
-                <h2 className="text-2xl font-semibold">Start a scenario run</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-400">
+              <div className="max-w-xl rounded-3xl border-[3px] border-teal-700 bg-[#fffdf5] p-8 text-center shadow-[12px_12px_0_rgba(15,118,110,0.22)]">
+                <h2 className="text-2xl font-extrabold text-[#123047]">Start a scenario run</h2>
+                <p className="mt-3 text-sm leading-6 text-[#466778]">
                   Demo mode creates a two-partition topic model and uses simulated Kafka behavior. Aiven mode
                   creates real resources and only displays observed delivery reports and assignments.
                 </p>
@@ -237,11 +239,11 @@ export function PlaygroundWorkspace() {
           )}
         </section>
 
-        <aside className="min-h-[420px] overflow-y-auto border-b border-slate-800 bg-[#0b1016] lg:row-span-2 lg:min-h-0 lg:border-b-0 lg:border-l">
+        <aside className="min-h-[420px] overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] lg:row-span-2 lg:min-h-0 lg:border-b-0 lg:border-l-[3px]">
           <InspectorPanel message={selectedMessage} event={selectedEvent} snapshot={run} />
         </aside>
 
-        <section className="flex min-h-[520px] flex-col bg-[#0b0f16] lg:min-h-0 lg:border-t lg:border-r">
+        <section className="flex min-h-[520px] flex-col bg-[#fff7ed] lg:min-h-0 lg:border-r-[3px] lg:border-t-[3px] lg:border-teal-700">
           {run && (
             <ControlsPanel
               snapshot={run}
@@ -268,9 +270,9 @@ export function PlaygroundWorkspace() {
 function ConnectionNotice({ connection }: { connection: ConnectionStatus | null }) {
   if (!connection || connection.status !== "configuration_missing") return null;
   return (
-    <div className="mt-5 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-left text-sm text-amber-100">
-      <div className="font-semibold">Configuration missing</div>
-      <p className="mt-1 text-amber-100/80">
+    <div className="mt-5 rounded-2xl border-[3px] border-amber-500 bg-amber-100 p-3 text-left text-sm text-amber-900 shadow-[7px_7px_0_rgba(245,158,11,0.18)]">
+      <div className="font-extrabold">Configuration missing</div>
+      <p className="mt-1 text-amber-900/80">
         Set {connection.missingVariables.join(", ")} or switch `KAFKA_MODE=demo`.
       </p>
     </div>
@@ -279,12 +281,12 @@ function ConnectionNotice({ connection }: { connection: ConnectionStatus | null 
 
 function StatusPill({ label, tone }: { label: string; tone: "green" | "amber" | "sky" | "slate" }) {
   const color = {
-    green: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300",
-    amber: "border-amber-500/30 bg-amber-500/15 text-amber-200",
-    sky: "border-sky-500/40 bg-sky-500/15 text-sky-300",
-    slate: "border-slate-700 bg-slate-900 text-slate-300"
+    green: "border-emerald-500 bg-emerald-100 text-emerald-800",
+    amber: "border-amber-500 bg-amber-100 text-amber-800",
+    sky: "border-teal-700 bg-teal-100 text-teal-800",
+    slate: "border-teal-700 bg-[#fffdf5] text-teal-800"
   }[tone];
-  return <span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${color}`}>{label}</span>;
+  return <span className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}>{label}</span>;
 }
 
 function ScenarioSidebar({ scenarios }: { scenarios: ScenarioDefinition[] }) {
@@ -293,41 +295,41 @@ function ScenarioSidebar({ scenarios }: { scenarios: ScenarioDefinition[] }) {
   const shownFuture = future.slice(0, 5);
   return (
     <div className="min-h-0">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Scenarios</h2>
-      <div className="mt-3 rounded-md border border-sky-500 bg-sky-500/10 p-3 shadow-[inset_0_0_24px_rgba(59,130,246,0.08)]">
+      <h2 className="kplay-section-title">Scenario</h2>
+      <div className="mt-3 rounded-2xl border-[3px] border-teal-700 bg-teal-100 p-3 shadow-[7px_7px_0_rgba(15,118,110,0.14)]">
         <div className="flex items-start gap-3">
-          <Grid3X3 className="mt-0.5 shrink-0 text-sky-400" size={24} aria-hidden />
+          <Grid3X3 className="mt-0.5 shrink-0 text-teal-700" size={24} aria-hidden />
           <div>
-            <h3 className="text-sm font-semibold text-sky-100">Partitioning</h3>
-            <p className="mt-1 text-xs leading-5 text-sky-100/75">
+            <h3 className="text-sm font-extrabold text-[#123047]">Partitioning</h3>
+            <p className="mt-1 text-xs leading-5 text-[#31566a]">
               {primary?.description ?? "Understand how messages are distributed across partitions."}
             </p>
           </div>
-          <span className="ml-auto mt-7 size-2.5 rounded-full bg-sky-400" />
+          <span className="ml-auto mt-7 size-2.5 rounded-full bg-sky-500" />
         </div>
       </div>
       <div className="mt-3 space-y-2">
         {shownFuture.map((scenario) => (
-          <div key={scenario.id} className="rounded-md border border-slate-700/80 bg-slate-950/30 p-3 text-xs text-slate-500" aria-disabled>
+          <div key={scenario.id} className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)]" aria-disabled>
             <div className="flex gap-3">
-              <Network className="mt-0.5 shrink-0 text-slate-500" size={22} aria-hidden />
+              <Network className="mt-0.5 shrink-0 text-teal-700" size={22} aria-hidden />
               <div>
-                <div className="font-semibold text-slate-400">{scenario.title}</div>
+                <div className="font-extrabold text-[#123047]">{scenario.title}</div>
                 <div className="mt-1 leading-5">{scenario.description}</div>
-                <div className="mt-2 text-slate-500">Locked</div>
+                <div className="mt-2 font-extrabold text-[#60798d]">Locked</div>
               </div>
             </div>
           </div>
         ))}
         {future.length > shownFuture.length && (
-          <div className="rounded-md border border-slate-800 bg-slate-950/30 p-3 text-xs text-slate-500">
+          <div className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs font-semibold text-[#466778]">
             {future.length - shownFuture.length} more planned scenarios in backlog
           </div>
         )}
       </div>
       <a
         href="#how-it-works"
-        className="mt-3 flex items-center justify-between rounded-md border border-slate-700 bg-slate-950/40 px-3 py-2 text-xs font-semibold text-slate-200"
+        className="mt-3 flex items-center justify-between rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800 shadow-[7px_7px_0_rgba(15,118,110,0.1)]"
       >
         <span className="flex items-center gap-2"><BookOpen size={15} aria-hidden /> How it works</span>
         <span aria-hidden>↗</span>
@@ -338,7 +340,7 @@ function ScenarioSidebar({ scenarios }: { scenarios: ScenarioDefinition[] }) {
 
 function UtilityRail() {
   return (
-    <nav className="flex items-center gap-2 border-b border-slate-800 bg-[#080d13] px-2 py-2 text-slate-400 lg:row-span-2 lg:flex-col lg:border-b-0 lg:border-r lg:px-1.5 lg:py-4">
+    <nav className="flex items-center gap-2 border-b-[3px] border-teal-700 bg-[#ecfeff] px-2 py-2 text-teal-700 lg:row-span-2 lg:flex-col lg:border-b-0 lg:border-r-[3px] lg:px-1.5 lg:py-4">
       {[
         { label: "Events", icon: Grid3X3, active: true },
         { label: "Topology", icon: Network },
@@ -348,8 +350,8 @@ function UtilityRail() {
         return (
           <button
             key={item.label}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-2 py-2 text-[11px] font-medium lg:w-full lg:flex-none lg:flex-col lg:gap-1 lg:px-1 lg:py-3 ${
-              item.active ? "bg-sky-500/10 text-sky-300" : "hover:bg-slate-900 hover:text-slate-200"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-2 text-[11px] font-extrabold lg:w-full lg:flex-none lg:flex-col lg:gap-1 lg:px-1 lg:py-3 ${
+              item.active ? "bg-teal-100 text-teal-800 shadow-[inset_0_0_0_2px_#0f766e,4px_4px_0_rgba(15,118,110,0.16)]" : "hover:bg-teal-50 hover:text-teal-900"
             }`}
           >
             <Icon size={19} aria-hidden />

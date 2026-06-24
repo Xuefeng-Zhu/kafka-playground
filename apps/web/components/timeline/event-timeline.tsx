@@ -8,12 +8,12 @@ const filters = ["Messages", "Rebalances", "Commits", "Lifecycle", "Cleanup", "E
 type TimelineFilter = (typeof filters)[number];
 
 const filterTone: Record<TimelineFilter, string> = {
-  Messages: "bg-sky-400",
-  Rebalances: "bg-orange-400",
-  Commits: "bg-emerald-400",
-  Lifecycle: "bg-cyan-400",
-  Cleanup: "bg-violet-400",
-  Errors: "bg-red-400"
+  Messages: "bg-sky-500",
+  Rebalances: "bg-amber-500",
+  Commits: "bg-emerald-500",
+  Lifecycle: "bg-cyan-500",
+  Cleanup: "bg-violet-500",
+  Errors: "bg-rose-500"
 };
 
 export function EventTimeline({
@@ -47,9 +47,9 @@ export function EventTimeline({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-slate-700 bg-[#0b1218] px-3 py-1.5">
+      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border-[3px] border-teal-700 bg-[#fff7ed] px-3 py-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <button className="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300">All</button>
+          <button className="rounded-full border-2 border-teal-700 bg-[#fffdf5] px-3 py-1 text-xs font-extrabold text-teal-800">All</button>
           {filters.map((filter) => (
             <button
               key={filter}
@@ -57,38 +57,38 @@ export function EventTimeline({
               onClick={() => toggleFilter(filter)}
               className={
                 activeFilters.has(filter)
-                  ? "inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100"
-                  : "inline-flex items-center gap-2 rounded border border-slate-800 px-2 py-1 text-xs text-slate-500 hover:text-slate-100"
+                  ? "inline-flex items-center gap-2 rounded-full border-2 border-sky-500 bg-sky-100 px-2 py-1 text-xs font-extrabold text-sky-800"
+                  : "inline-flex items-center gap-2 rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
               }
             >
-              <span className={`size-3 rounded ${filterTone[filter]}`} />
+              <span className={`size-3 rounded-full ${filterTone[filter]}`} />
               {filter}
             </button>
           ))}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-3 text-xs text-slate-300">
-          {hasSequenceGap && <span className="text-amber-300">Sequence gap detected</span>}
+        <div className="ml-auto flex shrink-0 items-center gap-3 text-xs font-semibold text-[#466778]">
+          {hasSequenceGap && <span className="font-extrabold text-amber-700">Sequence gap detected</span>}
           <label className="flex items-center gap-2 whitespace-nowrap">
             Auto scroll
-            <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-emerald-500/80">
+            <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-emerald-500">
               <span className="ml-auto mr-0.5 size-4 rounded-full bg-white" />
             </span>
           </label>
-          <button className="inline-flex items-center gap-2 rounded border border-slate-700 px-2 py-1.5 text-slate-300">
+          <button className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 font-extrabold text-teal-800">
             <Trash2 size={14} aria-hidden /> Clear
           </button>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-800">
-        <div className="grid min-w-[760px] grid-cols-[120px_160px_190px_minmax(260px,1fr)] border-b border-slate-800 bg-[#080d12] px-4 py-2 text-xs font-semibold text-slate-400">
+      <div className="min-h-0 flex-1 overflow-auto rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5]">
+        <div className="grid min-w-[860px] grid-cols-[120px_180px_190px_minmax(300px,1fr)] gap-x-4 border-b-[3px] border-teal-700 bg-[#fff7ed] px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-teal-700">
           <span>Time</span>
           <span>Type</span>
           <span>Component</span>
           <span>Details</span>
         </div>
         {visibleEvents.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">Events will appear here after the run starts.</div>
+          <div className="p-4 text-sm text-[#466778]">Events will appear here after the run starts.</div>
         ) : (
           visibleEvents.map((event) => {
             const category = categoryFor(event);
@@ -96,15 +96,15 @@ export function EventTimeline({
               <button
                 key={event.sequence}
                 onClick={() => onSelect(event.sequence)}
-                className="grid min-w-[760px] grid-cols-[120px_160px_190px_minmax(260px,1fr)] border-b border-slate-800 px-4 py-2 text-left text-xs hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                className="grid min-w-[860px] grid-cols-[120px_180px_190px_minmax(300px,1fr)] gap-x-4 border-b-[3px] border-teal-700 px-4 py-2 text-left text-xs text-[#123047] hover:bg-sky-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
               >
-                <span className="font-mono text-slate-300">{new Date(event.occurredAt).toLocaleTimeString()}</span>
-                <span className="inline-flex items-center gap-2 font-semibold text-slate-200">
-                  <span className={`size-2.5 rounded-full ${filterTone[category]}`} />
-                  {event.type}
+                <span className="font-mono text-[#466778]">{new Date(event.occurredAt).toLocaleTimeString()}</span>
+                <span className="inline-flex min-w-0 items-center gap-2 font-extrabold text-[#123047]">
+                  <span className={`size-2.5 shrink-0 rounded-full ${filterTone[category]}`} />
+                  <span className="truncate">{event.type}</span>
                 </span>
-                <span className="truncate text-slate-300">{componentFor(event)}</span>
-                <span className="truncate text-slate-300">{detailsFor(event)}</span>
+                <span className="truncate font-semibold text-[#31566a]">{componentFor(event)}</span>
+                <span className="truncate text-[#31566a]">{detailsFor(event)}</span>
               </button>
             );
           })

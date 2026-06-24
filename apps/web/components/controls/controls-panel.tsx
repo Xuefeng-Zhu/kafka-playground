@@ -29,9 +29,9 @@ export function ControlsPanel({
 }) {
   const fixedValue = snapshot.keyStrategy.type === "fixed" ? snapshot.keyStrategy.value : "user-1";
   return (
-    <div className="mx-3 mt-3 grid grid-cols-1 gap-3 rounded-md border border-slate-700 bg-[#0c1218] p-3 sm:grid-cols-2 lg:grid-cols-[260px_90px_120px_110px_minmax(130px,1fr)]">
-      <section className="border-b border-slate-700 pb-3 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-3">
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Producer controls</h3>
+    <div className="mx-3 mt-3 grid grid-cols-1 gap-3 rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 shadow-[7px_7px_0_rgba(15,118,110,0.14)] sm:grid-cols-2 lg:grid-cols-[260px_90px_120px_110px_minmax(130px,1fr)]">
+      <section className="border-b-[3px] border-teal-700 pb-3 sm:border-b-0 sm:border-r-[3px] sm:pb-0 sm:pr-3">
+        <h3 className="mb-2 kplay-section-title">Run controls</h3>
         <div className="flex flex-wrap items-center gap-2">
           {snapshot.producerStatus !== "running" && (
             <Button onClick={onStartProducer} variant="primary" className="h-9 px-3 text-xs">
@@ -39,27 +39,27 @@ export function ControlsPanel({
             </Button>
           )}
           <Button onClick={onPauseProducer} disabled={snapshot.producerStatus !== "running"} className="h-9 px-3 text-xs">
-          <Pause size={15} aria-hidden /> Pause
+            <Pause size={15} aria-hidden /> Pause
           </Button>
-          <Button onClick={onStopProducer} className="h-9 px-3 text-xs">
-          <Square size={14} aria-hidden /> Stop
+          <Button onClick={onStopProducer} variant="danger" className="h-9 px-3 text-xs">
+            <Square size={14} aria-hidden /> Stop
           </Button>
-          <Button onClick={onProduceOne} className="h-9 px-3 text-xs">
-          <Send size={14} aria-hidden /> Produce one
+          <Button onClick={onProduceOne} variant="primary" className="h-9 px-3 text-xs">
+            <Send size={14} aria-hidden /> Produce one
           </Button>
         </div>
-        <div className="mt-3 flex items-center gap-2 text-xs">
-          <span className={`size-2 rounded-full ${snapshot.producerStatus === "running" ? "bg-emerald-400" : "bg-amber-400"}`} />
-          <span className="text-slate-400">Status:</span>
-          <span className="font-semibold text-emerald-300">{snapshot.producerStatus}</span>
+        <div className="mt-3 flex items-center gap-2 rounded-2xl border-2 border-emerald-500 bg-emerald-100 px-3 py-2 text-xs">
+          <span className={`size-2 rounded-full ${snapshot.producerStatus === "running" ? "bg-emerald-500" : "bg-amber-500"}`} />
+          <span className="text-[#466778]">Status:</span>
+          <span className="font-extrabold text-emerald-800">{snapshot.producerStatus}</span>
         </div>
       </section>
 
-      <label className="border-b border-slate-700 pb-3 text-xs text-slate-400 sm:border-b-0 lg:border-r lg:pb-0 lg:pr-3">
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Produce rate (msg/sec)</span>
+      <label className="border-b-[3px] border-teal-700 pb-3 text-xs text-[#466778] sm:border-b-0 lg:border-r-[3px] lg:pb-0 lg:pr-3">
+        <span className="mb-2 block kplay-section-title">Rate</span>
         <input
           aria-label="Messages per second"
-          className="mb-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+          className="mb-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
           min={1}
           max={10}
           type="number"
@@ -68,7 +68,7 @@ export function ControlsPanel({
         />
         <input
           aria-label="Produce rate slider"
-          className="w-full accent-sky-400"
+          className="w-full accent-sky-500"
           min={1}
           max={10}
           type="range"
@@ -77,11 +77,11 @@ export function ControlsPanel({
         />
       </label>
 
-      <section className="border-b border-slate-700 pb-3 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-3">
-        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500" htmlFor="key-strategy">Key strategy</label>
+      <section className="border-b-[3px] border-teal-700 pb-3 sm:border-b-0 sm:border-r-[3px] sm:pb-0 sm:pr-3">
+        <label className="mb-2 block kplay-section-title" htmlFor="key-strategy">Key strategy</label>
         <select
           id="key-strategy"
-          className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+          className="w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
           value={snapshot.keyStrategy.type}
           onChange={(event) => {
             const value = event.target.value;
@@ -105,18 +105,18 @@ export function ControlsPanel({
         {snapshot.keyStrategy.type === "fixed" && (
           <input
             aria-label="Fixed key"
-            className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+            className="mt-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
             value={fixedValue}
             onChange={(event) => onUpdateSettings({ keyStrategy: { type: "fixed", value: event.target.value || "user-1" } })}
           />
         )}
       </section>
 
-      <label className="border-b border-slate-700 pb-3 text-xs text-slate-400 sm:border-b-0 lg:border-r lg:pb-0 lg:pr-3">
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Processing latency (ms)</span>
+      <label className="border-b-[3px] border-teal-700 pb-3 text-xs text-[#466778] sm:border-b-0 lg:border-r-[3px] lg:pb-0 lg:pr-3">
+        <span className="mb-2 block kplay-section-title">Latency</span>
         <input
           aria-label="Consumer processing latency"
-          className="mb-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+          className="mb-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
           min={0}
           max={3000}
           step={100}
@@ -126,7 +126,7 @@ export function ControlsPanel({
         />
         <input
           aria-label="Processing latency slider"
-          className="w-full accent-sky-400"
+          className="w-full accent-amber-500"
           min={0}
           max={3000}
           step={100}
@@ -137,18 +137,18 @@ export function ControlsPanel({
       </label>
 
       <section>
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Consumers</h3>
+        <h3 className="mb-2 kplay-section-title">Consumers</h3>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={onAddConsumer} disabled={snapshot.consumers.length >= 3} className="h-9 px-3 text-xs">
-          <Plus size={15} aria-hidden /> Consumer
+          <Button onClick={onAddConsumer} disabled={snapshot.consumers.length >= 3} variant="primary" className="h-9 px-3 text-xs">
+            <Plus size={15} aria-hidden /> Consumer
           </Button>
           {snapshot.consumers.map((consumer) => (
             <Button key={consumer.consumerId} onClick={() => onStopConsumer(consumer.consumerId)} variant="ghost" aria-label={`Stop ${consumer.consumerId}`} className="h-9 px-2 text-xs">
-            <X size={14} aria-hidden /> {consumer.consumerId.replace("consumer-", "C")}
+              <X size={14} aria-hidden /> {consumer.consumerId.replace("consumer-", "C")}
             </Button>
           ))}
         </div>
-        <p className="mt-3 text-xs text-slate-500">Group: {snapshot.consumerGroupId}</p>
+        <p className="mt-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">Group: {snapshot.consumerGroupId}</p>
       </section>
     </div>
   );

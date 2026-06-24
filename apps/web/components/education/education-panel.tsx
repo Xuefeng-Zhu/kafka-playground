@@ -9,9 +9,9 @@ export function EducationPanel({
 }) {
   const text = explain(snapshot, selectedMessage);
   return (
-    <section className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">What you are seeing</h2>
-      <p className="mt-3 text-sm leading-6 text-slate-300">{text}</p>
+    <section className="mt-4 rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-4 shadow-[7px_7px_0_rgba(15,118,110,0.14)]">
+      <h2 className="kplay-section-title">What you are seeing</h2>
+      <p className="mt-3 text-sm leading-6 text-[#31566a]">{text}</p>
     </section>
   );
 }
