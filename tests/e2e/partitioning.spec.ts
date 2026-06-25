@@ -10,6 +10,22 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.getByRole("button", { name: "Start scenario run" }).click();
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Consumer" })).toBeVisible();
+  const timelineRegion = page.getByTestId("timeline-region");
+  const collapsedTimelineHeight = await timelineRegion.evaluate((element) => element.getBoundingClientRect().height);
+  await expect(page.getByTestId("timeline-expand-toggle")).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "Expand timeline" }).click();
+  await expect(page.getByTestId("timeline-expand-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Collapse timeline" })).toBeVisible();
+  const expandedTimelineHeight = await timelineRegion.evaluate((element) => element.getBoundingClientRect().height);
+  expect(expandedTimelineHeight).toBeGreaterThan(collapsedTimelineHeight + 40);
+  await page.getByText("run.started").first().click();
+  await expect(page.getByText("Selected Event")).toBeVisible();
+  await page.getByRole("button", { name: "Close message inspector" }).click();
+  await page.getByRole("button", { name: "Collapse timeline" }).click();
+  await expect(page.getByTestId("timeline-expand-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(async () =>
+    timelineRegion.evaluate((element) => element.getBoundingClientRect().height)
+  ).toBeLessThan(expandedTimelineHeight - 40);
   await expect(page.getByTestId("run-settings-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("run-settings-panel")).toHaveCount(0);
   await expect(page.getByLabel("Messages per second")).toHaveCount(0);

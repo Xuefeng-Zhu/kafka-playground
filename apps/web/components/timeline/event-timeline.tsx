@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { RuntimeEvent } from "@kplay/contracts";
-import { Trash2 } from "lucide-react";
+import { Maximize2, Minimize2, Trash2 } from "lucide-react";
 
 const filters = ["Messages", "Rebalances", "Commits", "Lifecycle", "Cleanup", "Errors"] as const;
 type TimelineFilter = (typeof filters)[number];
@@ -19,10 +19,14 @@ const filterTone: Record<TimelineFilter, string> = {
 export function EventTimeline({
   events,
   hasSequenceGap,
+  expanded,
+  onToggleExpanded,
   onSelect
 }: {
   events: RuntimeEvent[];
   hasSequenceGap: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onSelect: (sequence: number) => void;
 }) {
   const [activeFilters, setActiveFilters] = useState<Set<TimelineFilter>>(
@@ -46,8 +50,8 @@ export function EventTimeline({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border-[3px] border-teal-700 bg-[#fff7ed] px-3 py-1.5">
+    <div className="flex min-h-0 flex-1 flex-col px-3 pb-3" data-testid="event-timeline">
+      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border-[3px] border-teal-700 bg-[#fff7ed] px-3 py-1.5 pr-28 sm:pr-32">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <button className="rounded-full border-2 border-teal-700 bg-[#fffdf5] px-3 py-1 text-xs font-extrabold text-teal-800">All</button>
           {filters.map((filter) => (
@@ -76,6 +80,17 @@ export function EventTimeline({
           </label>
           <button className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 font-extrabold text-teal-800">
             <Trash2 size={14} aria-hidden /> Clear
+          </button>
+          <button
+            type="button"
+            aria-label={expanded ? "Collapse timeline" : "Expand timeline"}
+            aria-expanded={expanded}
+            data-testid="timeline-expand-toggle"
+            title={expanded ? "Collapse timeline" : "Expand timeline"}
+            onClick={onToggleExpanded}
+            className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+          >
+            {expanded ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
           </button>
         </div>
       </div>
