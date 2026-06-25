@@ -140,6 +140,8 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       "consumer.idle",
       "consumer.stopping",
       "consumer.stopped",
+      "consumer.crashing",
+      "consumer.crashed",
       "offset.commit_requested",
       "offset.committed",
       "offset.commit_failed",
@@ -436,6 +438,9 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
                 onAddConsumer={() => mutate("/consumers", { method: "POST" })}
                 onStopConsumer={(consumerId) =>
                   mutate(`/consumers/${consumerId}`, { method: "DELETE" })
+                }
+                onCrashConsumer={(consumerId) =>
+                  mutate(`/consumers/${consumerId}/crash`, { method: "POST" })
                 }
                 onUpdateSettings={updateSettings}
               />

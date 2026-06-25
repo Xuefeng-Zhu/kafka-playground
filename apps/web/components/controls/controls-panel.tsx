@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import type { KeyStrategy, RunSnapshot } from "@kplay/contracts";
-import { Pause, Play, Plus, Send, Settings2, Square, X } from "lucide-react";
+import {
+  Pause,
+  Play,
+  Plus,
+  Send,
+  Settings2,
+  Square,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const RUN_CONTROLS_STORAGE_KEY = "kplay.runControls.expanded";
@@ -15,7 +24,8 @@ export function ControlsPanel({
   onProduceOne,
   onAddConsumer,
   onStopConsumer,
-  onUpdateSettings
+  onCrashConsumer,
+  onUpdateSettings,
 }: {
   snapshot: RunSnapshot;
   onStartProducer: () => void;
@@ -24,15 +34,24 @@ export function ControlsPanel({
   onProduceOne: () => void;
   onAddConsumer: () => void;
   onStopConsumer: (consumerId: string) => void;
+  onCrashConsumer: (consumerId: string) => void;
   onUpdateSettings: (settings: {
     productionRate?: number;
     keyStrategy?: KeyStrategy;
     processingLatencyMs?: number;
   }) => void;
 }) {
-  const fixedValue = snapshot.keyStrategy.type === "fixed" ? snapshot.keyStrategy.value : "user-1";
+  const fixedValue =
+    snapshot.keyStrategy.type === "fixed"
+      ? snapshot.keyStrategy.value
+      : "user-1";
+  const activeConsumerCount = snapshot.consumers.filter(
+    (consumer) => consumer.status !== "crashed",
+  ).length;
   const [isExpanded, setExpanded] = useState(
-    () => typeof window !== "undefined" && window.localStorage.getItem(RUN_CONTROLS_STORAGE_KEY) === "true"
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(RUN_CONTROLS_STORAGE_KEY) === "true",
   );
 
   function toggleExpanded() {
@@ -44,29 +63,57 @@ export function ControlsPanel({
   }
 
   return (
-    <div className="mx-3 mt-3 rounded-2xl border-2 border-teal-700 bg-[#fffdf5] p-2 shadow-[5px_5px_0_rgba(15,118,110,0.12)]" data-testid="run-controls-panel">
+    <div
+      className="mx-3 mt-3 rounded-2xl border-2 border-teal-700 bg-[#fffdf5] p-2 shadow-[5px_5px_0_rgba(15,118,110,0.12)]"
+      data-testid="run-controls-panel"
+    >
       <section className="flex flex-wrap items-center gap-2">
         <h3 className="sr-only">Run controls</h3>
         <div className="flex min-w-[150px] items-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-100 px-3 py-2 text-xs">
-          <span className={`size-2 rounded-full ${snapshot.producerStatus === "running" ? "bg-emerald-500" : "bg-amber-500"}`} />
+          <span
+            className={`size-2 rounded-full ${snapshot.producerStatus === "running" ? "bg-emerald-500" : "bg-amber-500"}`}
+          />
           <span className="text-[#466778]">Status:</span>
-          <span className="font-extrabold text-emerald-800">{snapshot.producerStatus}</span>
+          <span className="font-extrabold text-emerald-800">
+            {snapshot.producerStatus}
+          </span>
         </div>
         {snapshot.producerStatus !== "running" && (
-          <Button onClick={onStartProducer} variant="primary" className="h-9 px-3 text-xs">
+          <Button
+            onClick={onStartProducer}
+            variant="primary"
+            className="h-9 px-3 text-xs"
+          >
             <Play size={15} aria-hidden /> Start
           </Button>
         )}
-        <Button onClick={onPauseProducer} disabled={snapshot.producerStatus !== "running"} className="h-9 px-3 text-xs">
+        <Button
+          onClick={onPauseProducer}
+          disabled={snapshot.producerStatus !== "running"}
+          className="h-9 px-3 text-xs"
+        >
           <Pause size={15} aria-hidden /> Pause
         </Button>
-        <Button onClick={onStopProducer} variant="danger" className="h-9 px-3 text-xs">
+        <Button
+          onClick={onStopProducer}
+          variant="danger"
+          className="h-9 px-3 text-xs"
+        >
           <Square size={14} aria-hidden /> Stop
         </Button>
-        <Button onClick={onProduceOne} variant="primary" className="h-9 px-3 text-xs">
+        <Button
+          onClick={onProduceOne}
+          variant="primary"
+          className="h-9 px-3 text-xs"
+        >
           <Send size={14} aria-hidden /> Produce one
         </Button>
-        <Button onClick={onAddConsumer} disabled={snapshot.consumers.length >= 3} variant="primary" className="h-9 px-3 text-xs">
+        <Button
+          onClick={onAddConsumer}
+          disabled={activeConsumerCount >= 3}
+          variant="primary"
+          className="h-9 px-3 text-xs"
+        >
           <Plus size={15} aria-hidden /> Consumer
         </Button>
         <Button
@@ -96,7 +143,9 @@ export function ControlsPanel({
               max={10}
               type="number"
               value={snapshot.productionRate}
-              onChange={(event) => onUpdateSettings({ productionRate: Number(event.target.value) })}
+              onChange={(event) =>
+                onUpdateSettings({ productionRate: Number(event.target.value) })
+              }
             />
             <input
               aria-label="Produce rate slider"
@@ -105,12 +154,19 @@ export function ControlsPanel({
               max={10}
               type="range"
               value={snapshot.productionRate}
-              onChange={(event) => onUpdateSettings({ productionRate: Number(event.target.value) })}
+              onChange={(event) =>
+                onUpdateSettings({ productionRate: Number(event.target.value) })
+              }
             />
           </label>
 
           <section>
-            <label className="mb-2 block kplay-section-title" htmlFor="key-strategy">Key strategy</label>
+            <label
+              className="mb-2 block kplay-section-title"
+              htmlFor="key-strategy"
+            >
+              Key strategy
+            </label>
             <select
               id="key-strategy"
               className="w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
@@ -125,7 +181,7 @@ export function ControlsPanel({
                         ? { type: "round_robin_users" }
                         : value === "random_user"
                           ? { type: "random_user" }
-                          : { type: "no_key" }
+                          : { type: "no_key" },
                 });
               }}
             >
@@ -139,7 +195,14 @@ export function ControlsPanel({
                 aria-label="Fixed key"
                 className="mt-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
                 value={fixedValue}
-                onChange={(event) => onUpdateSettings({ keyStrategy: { type: "fixed", value: event.target.value || "user-1" } })}
+                onChange={(event) =>
+                  onUpdateSettings({
+                    keyStrategy: {
+                      type: "fixed",
+                      value: event.target.value || "user-1",
+                    },
+                  })
+                }
               />
             )}
           </section>
@@ -154,7 +217,11 @@ export function ControlsPanel({
               step={100}
               type="number"
               value={snapshot.processingLatencyMs}
-              onChange={(event) => onUpdateSettings({ processingLatencyMs: Number(event.target.value) })}
+              onChange={(event) =>
+                onUpdateSettings({
+                  processingLatencyMs: Number(event.target.value),
+                })
+              }
             />
             <input
               aria-label="Processing latency slider"
@@ -164,7 +231,11 @@ export function ControlsPanel({
               step={100}
               type="range"
               value={snapshot.processingLatencyMs}
-              onChange={(event) => onUpdateSettings({ processingLatencyMs: Number(event.target.value) })}
+              onChange={(event) =>
+                onUpdateSettings({
+                  processingLatencyMs: Number(event.target.value),
+                })
+              }
             />
           </label>
 
@@ -172,16 +243,48 @@ export function ControlsPanel({
             <h3 className="mb-2 kplay-section-title">Consumers</h3>
             <div className="flex flex-wrap items-center gap-2">
               {snapshot.consumers.length === 0 ? (
-                <span className="rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800">0 consumers</span>
+                <span className="rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800">
+                  0 consumers
+                </span>
               ) : (
                 snapshot.consumers.map((consumer) => (
-                  <Button key={consumer.consumerId} onClick={() => onStopConsumer(consumer.consumerId)} variant="ghost" aria-label={`Stop ${consumer.consumerId}`} className="h-9 px-2 text-xs">
-                    <X size={14} aria-hidden /> {consumer.consumerId.replace("consumer-", "C")}
-                  </Button>
+                  <div
+                    key={consumer.consumerId}
+                    className="flex items-center gap-1"
+                  >
+                    {consumer.status === "crashed" ? (
+                      <span className="inline-flex h-9 items-center gap-1 rounded-xl border-2 border-rose-500 bg-rose-100 px-2 text-xs font-extrabold text-rose-800">
+                        <TriangleAlert size={14} aria-hidden />{" "}
+                        {consumer.consumerId.replace("consumer-", "C")} crashed
+                      </span>
+                    ) : (
+                      <>
+                        <Button
+                          onClick={() => onStopConsumer(consumer.consumerId)}
+                          variant="ghost"
+                          aria-label={`Stop ${consumer.consumerId}`}
+                          className="h-9 px-2 text-xs"
+                        >
+                          <X size={14} aria-hidden />{" "}
+                          {consumer.consumerId.replace("consumer-", "C")}
+                        </Button>
+                        <Button
+                          onClick={() => onCrashConsumer(consumer.consumerId)}
+                          variant="danger"
+                          aria-label={`Crash ${consumer.consumerId}`}
+                          className="h-9 px-2 text-xs"
+                        >
+                          <TriangleAlert size={14} aria-hidden /> Crash
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 ))
               )}
             </div>
-            <p className="mt-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">Group: {snapshot.consumerGroupId}</p>
+            <p className="mt-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">
+              Group: {snapshot.consumerGroupId}
+            </p>
           </section>
         </div>
       )}

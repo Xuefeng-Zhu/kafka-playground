@@ -172,7 +172,9 @@ function categoryFor(event: RuntimeEvent): TimelineFilter {
   if (event.type.startsWith("message.")) return "Messages";
   if (
     event.type.startsWith("consumer.partitions_") ||
-    event.type === "consumer.idle"
+    event.type === "consumer.idle" ||
+    event.type === "consumer.crashing" ||
+    event.type === "consumer.crashed"
   ) {
     return "Rebalances";
   }
@@ -203,6 +205,12 @@ function detailsFor(event: RuntimeEvent) {
   }
   if (event.type === "consumer.partitions_assigned") {
     return `Assigned ${event.assignments.map((item) => `P${item.partition}`).join(", ")}`;
+  }
+  if (event.type === "consumer.crashing") {
+    return `${event.consumerId ?? "Consumer"} crash requested`;
+  }
+  if (event.type === "consumer.crashed") {
+    return `${event.consumerId ?? "Consumer"} crashed; uncommitted work can replay`;
   }
   if ("message" in event && event.message) return event.message;
   return `sequence #${event.sequence}`;

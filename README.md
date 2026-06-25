@@ -141,5 +141,5 @@ set -a; source .env.local; set +a; npm test -- packages/kafka-runtime/src/aiven-
 ## Known MVP Limitations
 
 - Demo mode simulates Kafka behavior deterministically, including scenario-specific outcomes such as retry failures, schema incompatibility, authorization denial, lag, skew, tombstones, retention windows, and windowed joins.
-- Hard consumer crashes are not implemented.
+- Consumer crashes are simulated in demo mode and represented as forced consumer disconnects in Aiven mode.
 - The optional real-Aiven smoke test is gated by `RUN_AIVEN_E2E=true` and requires live service credentials plus `certs/ca.pem`.

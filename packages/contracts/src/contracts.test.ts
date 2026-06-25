@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { runtimeEventSchema, settingsRequestSchema } from "./index";
+import {
+  consumerSnapshotSchema,
+  runtimeEventSchema,
+  settingsRequestSchema,
+} from "./index";
 
 describe("contracts", () => {
   it("validates committed offset events", () => {
@@ -15,8 +19,33 @@ describe("contracts", () => {
         topic: "topic",
         partition: 0,
         committedOffset: "2",
-        messageId: "message"
-      })
+        messageId: "message",
+      }),
+    ).not.toThrow();
+  });
+
+  it("validates crashed consumers and crash events", () => {
+    expect(() =>
+      consumerSnapshotSchema.parse({
+        consumerId: "consumer-1",
+        status: "crashed",
+        assignments: [],
+        processedCount: 0,
+        committedCount: 0,
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      runtimeEventSchema.parse({
+        eventId: "evt",
+        runId: "run",
+        sequence: 1,
+        occurredAt: new Date().toISOString(),
+        type: "consumer.crashed",
+        consumerId: "consumer-1",
+        actor: "consumer-1",
+        message: "consumer-1 crashed before a graceful shutdown.",
+      }),
     ).not.toThrow();
   });
 

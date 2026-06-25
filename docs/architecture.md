@@ -45,3 +45,5 @@ The current runtime supports one active run at a time, but the catalog contains 
 Demo mode is a teaching simulator. It intentionally produces deterministic outcomes for concepts that would otherwise require a larger Kafka ecosystem, such as retry and dead-letter routing, schema compatibility failures, ACL denials, retention-window effects, and stream-window hints.
 
 Aiven mode is the authoritative live-Kafka path for topic creation/deletion, producer delivery reports, consumer group membership, rebalance callbacks, message receipt, and manual commits. Browser-visible Kafka configuration remains sanitized in both modes.
+
+Consumer crash controls are explicit simulations at the application layer. Demo mode requeues uncommitted work and excludes the crashed member from future assignments; Aiven mode represents the crash as a forced consumer disconnect and then relies on Kafka group behavior for reassignment callbacks.
