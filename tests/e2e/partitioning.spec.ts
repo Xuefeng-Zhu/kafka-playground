@@ -28,6 +28,20 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByTestId("run-settings-panel")).toBeVisible();
 
   const topologyContent = page.getByTestId("topology-canvas-content");
+  await page.getByRole("button", { name: "Inspect producer" }).click();
+  await expect(page.getByText("Topology Inspector")).toBeVisible();
+  await expect(page.getByText("Producer Metrics")).toBeVisible();
+  await page.getByRole("button", { name: "Close topology inspector" }).click();
+
+  await page.getByRole("button", { name: "Inspect topic" }).click();
+  await expect(page.getByText("Topic Metrics")).toBeVisible();
+  await page.getByRole("button", { name: "Close topology inspector" }).click();
+
+  await page.getByRole("button", { name: "Inspect partition 0" }).click();
+  await expect(page.getByText("Partition Metrics")).toBeVisible();
+  await expect(page.getByText("Owner", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close topology inspector" }).click();
+
   await expect(page.getByText("100%")).toBeVisible();
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect(page.getByText("115%")).toBeVisible();
@@ -56,8 +70,19 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.getByRole("button", { name: /^Consumer$/ }).click();
   await page.getByRole("button", { name: /^Consumer$/ }).click();
   await expect(page.locator("span", { hasText: idleConsumerLabel })).toBeVisible();
+  await expect(page.getByTestId("partition-owner-0")).toContainText("owned by C");
+  await expect(page.getByTestId("partition-owner-1")).toContainText("owned by C");
+  await expect(page.getByTestId("ownership-connector-partition-0")).toHaveCount(1);
+  await expect(page.getByTestId("ownership-connector-partition-1")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Inspect consumer-1" }).click();
+  await expect(page.getByText("Consumer Metrics")).toBeVisible();
+  await expect(page.getByText("Assignments", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close topology inspector" }).click();
 
   await page.getByRole("button", { name: "Produce one" }).click();
+  await expect(page.getByText("Message Inspector")).toBeVisible();
+  await expect(page.getByText("Topology Inspector")).toHaveCount(0);
   await expect(page.getByText("Selected message")).toBeVisible();
   await expect(page.getByText("Partition", { exact: true })).toBeVisible();
   await expect(page.getByText("Offset", { exact: true })).toBeVisible();
@@ -69,6 +94,12 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
 
   await page.getByRole("button", { name: "Stop consumer-1" }).click();
   await expect(page.getByText("consumer.partitions_assigned").first()).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId("partition-owner-0")).toBeVisible();
+  await expect.poll(async () =>
+    page.getByTestId("topology-canvas").evaluate((element) => element.scrollWidth <= element.clientWidth)
+  ).toBe(true);
 
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(page.getByRole("button", { name: "Start scenario run" })).toBeVisible();

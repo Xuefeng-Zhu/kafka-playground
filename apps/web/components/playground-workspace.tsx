@@ -11,6 +11,7 @@ import { EventTimeline } from "@/components/timeline/event-timeline";
 import { InspectorPanel } from "@/components/inspector/inspector-panel";
 import { EducationPanel } from "@/components/education/education-panel";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
+import type { TopologySelection } from "@/lib/client/topology-selection";
 
 type Action =
   | { type: "snapshot"; snapshot: RunSnapshot }
@@ -31,6 +32,7 @@ export function PlaygroundWorkspace() {
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isInspectorOpen, setInspectorOpen] = useState(false);
+  const [selectedTopologyNode, setSelectedTopologyNode] = useState<TopologySelection | null>(null);
   const {
     selectedMessageId,
     selectedEventSequence,
@@ -129,6 +131,7 @@ export function PlaygroundWorkspace() {
     await runAction(async () => {
       await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
       resetSelection();
+      setSelectedTopologyNode(null);
       setInspectorOpen(false);
       dispatch({ type: "clear" });
     });
@@ -158,17 +161,29 @@ export function PlaygroundWorkspace() {
     await runAction(async () => {
       const snapshot = await api<RunSnapshot>(`/api/v1/runs/${run.runId}/messages`, { method: "POST", body: "{}" });
       dispatch({ type: "snapshot", snapshot });
+      resetSelection();
+      setSelectedTopologyNode(null);
       setInspectorOpen(true);
     });
   }
 
   function selectMessage(messageId: string) {
     setSelectedMessageId(messageId);
+    setSelectedEventSequence(null);
+    setSelectedTopologyNode(null);
     setInspectorOpen(true);
   }
 
   function selectEvent(sequence: number) {
+    setSelectedMessageId(null);
     setSelectedEventSequence(sequence);
+    setSelectedTopologyNode(null);
+    setInspectorOpen(true);
+  }
+
+  function selectTopologyNode(selection: TopologySelection) {
+    resetSelection();
+    setSelectedTopologyNode(selection);
     setInspectorOpen(true);
   }
 
@@ -234,7 +249,7 @@ export function PlaygroundWorkspace() {
         <span className="hidden sm:inline">Inspector</span>
       </Button>
 
-      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[260px_minmax(680px,1fr)] lg:grid-rows-[minmax(0,1fr)_340px] lg:overflow-hidden">
+      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[260px_minmax(680px,1fr)] lg:grid-rows-[minmax(470px,1fr)_minmax(160px,0.35fr)] lg:overflow-hidden">
         <aside className="max-h-[420px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 lg:row-span-2 lg:max-h-none lg:border-b-0 lg:border-r-[3px]">
           <ScenarioSidebar scenarios={scenarios} />
           <EducationPanel snapshot={run} selectedMessage={selectedMessage} />
@@ -256,8 +271,10 @@ export function PlaygroundWorkspace() {
           ) : (
             <KafkaTopology
               snapshot={run}
-              selectedMessageId={selectedMessage?.messageId ?? null}
+              selectedMessageId={selectedTopologyNode || selectedEventSequence ? null : selectedMessage?.messageId ?? null}
+              selectedNode={selectedTopologyNode}
               onSelectMessage={selectMessage}
+              onSelectNode={selectTopologyNode}
             />
           )}
         </section>
@@ -298,6 +315,7 @@ export function PlaygroundWorkspace() {
               message={selectedMessage}
               event={selectedEvent}
               snapshot={run}
+              selectedNode={selectedTopologyNode}
               onClose={() => setInspectorOpen(false)}
             />
           </aside>

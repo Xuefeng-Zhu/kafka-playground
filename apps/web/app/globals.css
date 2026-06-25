@@ -123,6 +123,17 @@ select {
   background-size: 28px 28px, 100% 100%;
 }
 
+.kplay-flow-line {
+  stroke-dasharray: 8 10;
+  animation: kplay-flow-dash 1.8s linear infinite;
+}
+
+@keyframes kplay-flow-dash {
+  to {
+    stroke-dashoffset: -36;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
