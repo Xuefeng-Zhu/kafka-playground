@@ -4,17 +4,26 @@ import { CheckCircle2, ChevronLeft, ChevronRight, CircleDot, X } from "lucide-re
 export function InspectorPanel({
   message,
   event,
-  snapshot
+  snapshot,
+  onClose
 }: {
   message: PlaygroundMessage | null;
   event: RuntimeEvent | null;
   snapshot: RunSnapshot | null;
+  onClose: () => void;
 }) {
   return (
     <div className="flex h-full flex-col text-[#123047]">
       <header className="flex items-center justify-between border-b-[3px] border-teal-700 bg-[#fff7ed] px-5 py-4">
         <h2 className="kplay-section-title">Message Inspector</h2>
-        <X size={16} className="text-teal-700" aria-hidden />
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+          aria-label="Close message inspector"
+        >
+          <X size={16} aria-hidden />
+        </button>
       </header>
 
       {!snapshot && (

@@ -1,7 +1,20 @@
 "use client";
 
+import { useState, type PointerEvent } from "react";
 import type { PlaygroundMessage, RunSnapshot } from "@kplay/contracts";
 import { Code2, Maximize2, Minus, Network, Plus, Users } from "lucide-react";
+
+const MIN_ZOOM = 0.75;
+const MAX_ZOOM = 1.35;
+const ZOOM_STEP = 0.15;
+
+type TopologyLayout = "auto" | "spread";
+type TopologyPan = { x: number; y: number };
+type DragState = TopologyPan & {
+  originX: number;
+  originY: number;
+  pointerId: number;
+};
 
 export function KafkaTopology({
   snapshot,
@@ -14,30 +27,120 @@ export function KafkaTopology({
 }) {
   const partitions = Array.from({ length: snapshot.partitionCount }, (_, partition) => partition);
   const consumers = snapshot.consumers;
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<TopologyPan>({ x: 0, y: 0 });
+  const [layout, setLayout] = useState<TopologyLayout>("auto");
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const zoomPercent = Math.round(zoom * 100);
+  const canvasTransform = {
+    transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`
+  };
+  const contentClass =
+    layout === "auto"
+      ? "lg:grid-cols-[150px_minmax(280px,1fr)_230px] lg:gap-6"
+      : "lg:grid-cols-[180px_minmax(360px,1.15fr)_260px] lg:gap-10";
+
+  function updateZoom(nextZoom: number) {
+    setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(nextZoom.toFixed(2)))));
+  }
+
+  function fitView() {
+    setPan({ x: 0, y: 0 });
+    setZoom(1);
+  }
+
+  function toggleLayout() {
+    fitView();
+    setLayout((current) => (current === "auto" ? "spread" : "auto"));
+  }
+
+  function startDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest("button,a,input,select")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrag({
+      originX: pan.x,
+      originY: pan.y,
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY
+    });
+  }
+
+  function moveDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPan({
+      x: drag.originX + event.clientX - drag.x,
+      y: drag.originY + event.clientY - drag.y
+    });
+  }
+
+  function stopDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDrag(null);
+  }
 
   return (
-    <div className="kplay-grid-bg relative min-h-[560px] overflow-hidden lg:h-full lg:min-h-0">
+    <div
+      className={`kplay-grid-bg relative min-h-[560px] overflow-hidden lg:h-full lg:min-h-0 lg:touch-none ${drag ? "lg:cursor-grabbing" : "lg:cursor-grab"}`}
+      data-testid="topology-canvas"
+      onPointerCancel={stopDrag}
+      onPointerDown={startDrag}
+      onPointerMove={moveDrag}
+      onPointerUp={stopDrag}
+    >
       <div className="absolute left-4 right-4 top-5 z-10 flex flex-wrap items-center justify-between gap-3 lg:left-6 lg:right-6">
         <div>
           <h2 className="text-sm font-extrabold text-[#123047]">Live topology canvas</h2>
           <p className="text-xs text-[#466778]">Message path: producer → topic partition → assigned consumer → offset commit</p>
         </div>
         <div className="flex items-center gap-2 lg:gap-3">
-          <button className="inline-flex h-8 items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]">
-            <Network size={15} aria-hidden /> Auto layout
+          <button
+            className="inline-flex h-8 items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]"
+            onClick={toggleLayout}
+            aria-pressed={layout === "spread"}
+          >
+            <Network size={15} aria-hidden /> {layout === "auto" ? "Auto layout" : "Spread layout"}
           </button>
           <div className="flex h-8 overflow-hidden rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]">
-            <button className="grid w-10 place-items-center border-r-2 border-teal-700" aria-label="Zoom out"><Minus size={15} aria-hidden /></button>
-            <div className="grid w-16 place-items-center">100%</div>
-            <button className="grid w-10 place-items-center border-l-2 border-teal-700" aria-label="Zoom in"><Plus size={15} aria-hidden /></button>
+            <button
+              className="grid w-10 place-items-center border-r-2 border-teal-700 disabled:opacity-45"
+              onClick={() => updateZoom(zoom - ZOOM_STEP)}
+              disabled={zoom <= MIN_ZOOM}
+              aria-label="Zoom out"
+            >
+              <Minus size={15} aria-hidden />
+            </button>
+            <div className="grid w-16 place-items-center" aria-live="polite">{zoomPercent}%</div>
+            <button
+              className="grid w-10 place-items-center border-l-2 border-teal-700 disabled:opacity-45"
+              onClick={() => updateZoom(zoom + ZOOM_STEP)}
+              disabled={zoom >= MAX_ZOOM}
+              aria-label="Zoom in"
+            >
+              <Plus size={15} aria-hidden />
+            </button>
           </div>
-          <button className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]" aria-label="Fit view">
+          <button
+            className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]"
+            onClick={fitView}
+            aria-label="Fit view"
+          >
             <Maximize2 size={15} aria-hidden />
           </button>
         </div>
       </div>
 
-      <svg className="pointer-events-none absolute inset-0 hidden h-full w-full lg:block" aria-hidden>
+      <svg
+        className={`pointer-events-none absolute inset-0 hidden h-full w-full origin-center lg:block ${drag ? "" : "transition-transform duration-200 ease-out"}`}
+        style={canvasTransform}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
         <defs>
           <marker id="kplay-arrow-blue" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
             <path d="M0,0 L8,4 L0,8 Z" fill="#0ea5e9" />
@@ -46,13 +149,17 @@ export function KafkaTopology({
             <path d="M0,0 L8,4 L0,8 Z" fill="#8b5cf6" />
           </marker>
         </defs>
-        <path d="M18% 49% C26% 49%, 25% 47%, 32% 47%" stroke="#0ea5e9" strokeWidth="2" markerEnd="url(#kplay-arrow-blue)" />
-        <path d="M59% 42% C65% 42%, 65% 34%, 72% 34%" stroke="#0ea5e9" strokeWidth="2" markerEnd="url(#kplay-arrow-blue)" />
-        <path d="M59% 57% C65% 57%, 65% 50%, 72% 50%" stroke="#8b5cf6" strokeWidth="2" markerEnd="url(#kplay-arrow-purple)" />
-        <path d="M59% 64% C65% 64%, 65% 66%, 72% 66%" stroke="#0f766e" strokeDasharray="5 5" strokeWidth="1.7" markerEnd="url(#kplay-arrow-blue)" />
+        <path d="M18 49 C26 49, 25 47, 32 47" stroke="#0ea5e9" strokeWidth="2" vectorEffect="non-scaling-stroke" markerEnd="url(#kplay-arrow-blue)" />
+        <path d="M59 42 C65 42, 65 34, 72 34" stroke="#0ea5e9" strokeWidth="2" vectorEffect="non-scaling-stroke" markerEnd="url(#kplay-arrow-blue)" />
+        <path d="M59 57 C65 57, 65 50, 72 50" stroke="#8b5cf6" strokeWidth="2" vectorEffect="non-scaling-stroke" markerEnd="url(#kplay-arrow-purple)" />
+        <path d="M59 64 C65 64, 65 66, 72 66" stroke="#0f766e" strokeDasharray="5 5" strokeWidth="1.7" vectorEffect="non-scaling-stroke" markerEnd="url(#kplay-arrow-blue)" />
       </svg>
 
-      <div className="relative mx-4 grid grid-cols-1 gap-4 pb-6 pt-24 lg:absolute lg:inset-x-6 lg:top-24 lg:mx-0 lg:grid-cols-[150px_minmax(280px,1fr)_230px] lg:items-center lg:gap-6 lg:p-0">
+      <div
+        className={`relative mx-4 grid origin-center grid-cols-1 gap-4 pb-6 pt-24 lg:absolute lg:inset-x-6 lg:top-24 lg:mx-0 lg:items-center lg:p-0 ${contentClass} ${drag ? "" : "transition-transform duration-200 ease-out"}`}
+        data-testid="topology-canvas-content"
+        style={canvasTransform}
+      >
         <ProducerCard status={snapshot.producerStatus} />
 
         <section className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5]/95 p-3 shadow-[7px_7px_0_rgba(15,118,110,0.14)]">

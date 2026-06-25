@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useReducer, useState } from "react";
 import type { ConnectionStatus, KeyStrategy, RunSnapshot, RuntimeEvent, ScenarioDefinition } from "@kplay/contracts";
-import { BookOpen, Grid3X3, Moon, Network, RotateCcw, Settings, Sun, SlidersHorizontal } from "lucide-react";
+import { BookOpen, Grid3X3, Network, PanelRightOpen, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { initializeFromSnapshot, mergeSnapshot, applyRuntimeEvent, initialVisualizationState } from "@/lib/client/visualization-reducer";
 import { Button } from "@/components/ui/button";
 import { ControlsPanel } from "@/components/controls/controls-panel";
@@ -30,13 +30,12 @@ export function PlaygroundWorkspace() {
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isInspectorOpen, setInspectorOpen] = useState(false);
   const {
     selectedMessageId,
     selectedEventSequence,
-    theme,
     setSelectedMessageId,
     setSelectedEventSequence,
-    toggleTheme,
     resetSelection
   } = usePlaygroundUiStore();
   const run = state.snapshot;
@@ -130,6 +129,7 @@ export function PlaygroundWorkspace() {
     await runAction(async () => {
       await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
       resetSelection();
+      setInspectorOpen(false);
       dispatch({ type: "clear" });
     });
   }
@@ -151,6 +151,25 @@ export function PlaygroundWorkspace() {
       method: "PATCH",
       body: JSON.stringify(settings)
     });
+  }
+
+  async function produceOne() {
+    if (!run) return;
+    await runAction(async () => {
+      const snapshot = await api<RunSnapshot>(`/api/v1/runs/${run.runId}/messages`, { method: "POST", body: "{}" });
+      dispatch({ type: "snapshot", snapshot });
+      setInspectorOpen(true);
+    });
+  }
+
+  function selectMessage(messageId: string) {
+    setSelectedMessageId(messageId);
+    setInspectorOpen(true);
+  }
+
+  function selectEvent(sequence: number) {
+    setSelectedEventSequence(sequence);
+    setInspectorOpen(true);
   }
 
   async function runAction(action: () => Promise<void>) {
@@ -194,14 +213,6 @@ export function PlaygroundWorkspace() {
           <Button onClick={resetRun} disabled={!run} variant="secondary" aria-label="Reset run" className="h-9 px-3 sm:px-4">
             <RotateCcw size={15} aria-hidden /> Reset
           </Button>
-          <Button
-            onClick={toggleTheme}
-            variant="ghost"
-            aria-label="Toggle light and dark theme"
-            className="h-9 rounded-full px-3"
-          >
-            {theme === "dark" ? <Sun size={16} aria-hidden /> : <Moon size={16} aria-hidden />}
-          </Button>
         </div>
       </header>
       {actionError && (
@@ -210,8 +221,20 @@ export function PlaygroundWorkspace() {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[60px_260px_minmax(680px,1fr)_360px] lg:grid-rows-[minmax(0,1fr)_340px] lg:overflow-hidden">
-        <UtilityRail />
+      <Button
+        type="button"
+        onClick={() => setInspectorOpen(true)}
+        variant="secondary"
+        aria-controls="message-inspector-drawer"
+        aria-expanded={isInspectorOpen}
+        aria-label="Open message inspector"
+        className="fixed bottom-5 right-4 z-30 h-10 px-3 shadow-[5px_5px_0_rgba(15,118,110,0.18)]"
+      >
+        <PanelRightOpen size={16} aria-hidden />
+        <span className="hidden sm:inline">Inspector</span>
+      </Button>
+
+      <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[260px_minmax(680px,1fr)] lg:grid-rows-[minmax(0,1fr)_340px] lg:overflow-hidden">
         <aside className="max-h-[420px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 lg:row-span-2 lg:max-h-none lg:border-b-0 lg:border-r-[3px]">
           <ScenarioSidebar scenarios={scenarios} />
           <EducationPanel snapshot={run} selectedMessage={selectedMessage} />
@@ -234,14 +257,10 @@ export function PlaygroundWorkspace() {
             <KafkaTopology
               snapshot={run}
               selectedMessageId={selectedMessage?.messageId ?? null}
-              onSelectMessage={setSelectedMessageId}
+              onSelectMessage={selectMessage}
             />
           )}
         </section>
-
-        <aside className="min-h-[420px] overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] lg:row-span-2 lg:min-h-0 lg:border-b-0 lg:border-l-[3px]">
-          <InspectorPanel message={selectedMessage} event={selectedEvent} snapshot={run} />
-        </aside>
 
         <section className="flex min-h-[520px] flex-col bg-[#fff7ed] lg:min-h-0 lg:border-r-[3px] lg:border-t-[3px] lg:border-teal-700">
           {run && (
@@ -250,7 +269,7 @@ export function PlaygroundWorkspace() {
               onStartProducer={() => mutate("/producer/start", { method: "POST" })}
               onPauseProducer={() => mutate("/producer/pause", { method: "POST" })}
               onStopProducer={() => mutate("/producer/stop", { method: "POST" })}
-              onProduceOne={() => mutate("/messages", { method: "POST", body: "{}" })}
+              onProduceOne={produceOne}
               onAddConsumer={() => mutate("/consumers", { method: "POST" })}
               onStopConsumer={(consumerId) => mutate(`/consumers/${consumerId}`, { method: "DELETE" })}
               onUpdateSettings={updateSettings}
@@ -259,10 +278,31 @@ export function PlaygroundWorkspace() {
           <EventTimeline
             events={state.events ?? []}
             hasSequenceGap={state.hasSequenceGap}
-            onSelect={setSelectedEventSequence}
+            onSelect={selectEvent}
           />
         </section>
       </div>
+
+      {isInspectorOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-[#123047]/25"
+            aria-hidden="true"
+            onClick={() => setInspectorOpen(false)}
+          />
+          <aside
+            id="message-inspector-drawer"
+            className="fixed bottom-0 right-0 top-0 z-50 w-[min(100vw,390px)] overflow-y-auto border-l-[3px] border-teal-700 bg-[#fff7ed] shadow-[-14px_0_0_rgba(15,118,110,0.16)]"
+          >
+            <InspectorPanel
+              message={selectedMessage}
+              event={selectedEvent}
+              snapshot={run}
+              onClose={() => setInspectorOpen(false)}
+            />
+          </aside>
+        </>
+      )}
     </main>
   );
 }
@@ -335,31 +375,6 @@ function ScenarioSidebar({ scenarios }: { scenarios: ScenarioDefinition[] }) {
         <span aria-hidden>↗</span>
       </a>
     </div>
-  );
-}
-
-function UtilityRail() {
-  return (
-    <nav className="flex items-center gap-2 border-b-[3px] border-teal-700 bg-[#ecfeff] px-2 py-2 text-teal-700 lg:row-span-2 lg:flex-col lg:border-b-0 lg:border-r-[3px] lg:px-1.5 lg:py-4">
-      {[
-        { label: "Events", icon: Grid3X3, active: true },
-        { label: "Topology", icon: Network },
-        { label: "Config", icon: Settings }
-      ].map((item) => {
-        const Icon = item.icon;
-        return (
-          <button
-            key={item.label}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-2 text-[11px] font-extrabold lg:w-full lg:flex-none lg:flex-col lg:gap-1 lg:px-1 lg:py-3 ${
-              item.active ? "bg-teal-100 text-teal-800 shadow-[inset_0_0_0_2px_#0f766e,4px_4px_0_rgba(15,118,110,0.16)]" : "hover:bg-teal-50 hover:text-teal-900"
-            }`}
-          >
-            <Icon size={19} aria-hidden />
-            {item.label}
-          </button>
-        );
-      })}
-    </nav>
   );
 }
 
