@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, CircleDot, Lock } from "lucide-react";
-import { PRIMARY_SCENARIO, FUTURE_SCENARIOS } from "@kplay/scenario-engine";
+import { ArrowRight, CircleDot } from "lucide-react";
+import { PRIMARY_SCENARIO, SCENARIOS } from "@kplay/scenario-engine";
 
 export default function HomePage() {
   return (
@@ -62,17 +62,21 @@ export default function HomePage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          {FUTURE_SCENARIOS.map((scenario) => (
-            <div
+          {SCENARIOS.filter((scenario) => scenario.id !== PRIMARY_SCENARIO.id).map((scenario) => (
+            <Link
               key={scenario.id}
-              className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-4 text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.14)]"
-              aria-disabled="true"
+              href={`/scenarios/${scenario.id}`}
+              className="group rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-4 text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.14)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
             >
               <div className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.16em] text-teal-700">
-                <Lock size={14} aria-hidden /> Coming soon
+                <CircleDot size={14} aria-hidden /> Available now
               </div>
               <h3 className="font-extrabold text-[#123047]">{scenario.title}</h3>
-            </div>
+              <p className="mt-2 text-xs leading-5 text-[#31566a]">{scenario.description}</p>
+              <div className="mt-4 inline-flex items-center gap-2 text-xs font-extrabold text-teal-800">
+                Open scenario <ArrowRight className="transition group-hover:translate-x-1" size={14} aria-hidden />
+              </div>
+            </Link>
           ))}
         </section>
       </div>

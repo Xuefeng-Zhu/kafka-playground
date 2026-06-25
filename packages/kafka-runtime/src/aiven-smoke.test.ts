@@ -32,12 +32,14 @@ describe("optional real Aiven smoke", () => {
       const value = createPlaygroundValue({
         eventId,
         runId,
+        scenarioId: "partitioning",
         sequence: 1,
         userId: "user-1"
       });
       const headers = createHeaders({
         runId,
         eventId,
+        scenarioId: "partitioning",
         sequence: 1,
         keyStrategy: { type: "fixed", value: "user-1" }
       });

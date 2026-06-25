@@ -6,17 +6,17 @@ export class ApiError extends Error {
   constructor(
     readonly code: string,
     message: string,
-    readonly status = 400
+    readonly status = 400,
   ) {
     super(message);
   }
 }
 
 export function problem(error: unknown, requestId: string) {
-  if (error instanceof ApiError) {
+  if (isApiError(error)) {
     return NextResponse.json(
       { code: error.code, message: error.message, requestId },
-      { status: error.status, headers: { "x-request-id": requestId } }
+      { status: error.status, headers: { "x-request-id": requestId } },
     );
   }
   if (error instanceof ZodError) {
@@ -24,9 +24,9 @@ export function problem(error: unknown, requestId: string) {
       {
         code: "INVALID_SETTINGS",
         message: error.issues.map((issue) => issue.message).join("; "),
-        requestId
+        requestId,
       },
-      { status: 400, headers: { "x-request-id": requestId } }
+      { status: 400, headers: { "x-request-id": requestId } },
     );
   }
   const message =
@@ -37,7 +37,16 @@ export function problem(error: unknown, requestId: string) {
         : "An unexpected server error occurred.";
   return NextResponse.json(
     { code: "INTERNAL_ERROR", message, requestId },
-    { status: 500, headers: { "x-request-id": requestId } }
+    { status: 500, headers: { "x-request-id": requestId } },
+  );
+}
+
+function isApiError(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError ||
+    (error instanceof Error &&
+      typeof (error as Partial<ApiError>).code === "string" &&
+      typeof (error as Partial<ApiError>).status === "number")
   );
 }
 

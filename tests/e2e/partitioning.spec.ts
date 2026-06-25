@@ -9,7 +9,7 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.reload();
   await page.getByRole("button", { name: "Start scenario run" }).click();
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Consumer" })).toBeVisible();
+  await expect(page.getByTestId("run-controls-panel").getByRole("button", { name: "Consumer" })).toBeVisible();
   const timelineRegion = page.getByTestId("timeline-region");
   const collapsedTimelineHeight = await timelineRegion.evaluate((element) => element.getBoundingClientRect().height);
   await expect(page.getByTestId("timeline-expand-toggle")).toHaveAttribute("aria-expanded", "false");
@@ -18,7 +18,7 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByRole("button", { name: "Collapse timeline" })).toBeVisible();
   const expandedTimelineHeight = await timelineRegion.evaluate((element) => element.getBoundingClientRect().height);
   expect(expandedTimelineHeight).toBeGreaterThan(collapsedTimelineHeight + 40);
-  await page.getByText("run.started").first().click();
+  await page.locator("button").filter({ hasText: "run.started" }).first().click();
   await expect(page.getByText("Selected Event")).toBeVisible();
   await page.getByRole("button", { name: "Close message inspector" }).click();
   await page.getByRole("button", { name: "Collapse timeline" }).click();
@@ -116,6 +116,41 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect.poll(async () =>
     page.getByTestId("topology-canvas").evaluate((element) => element.scrollWidth <= element.clientWidth)
   ).toBe(true);
+
+  await page.getByRole("button", { name: "Reset run" }).click();
+  await expect(page.getByRole("button", { name: "Start scenario run" })).toBeVisible();
+});
+
+test("non-primary scenarios are routable and startable", async ({ page }) => {
+  await resetActiveRun(page);
+  await page.goto("/scenarios/hot-partitions-key-skew");
+  await expect(page.getByRole("heading", { name: "Hot partitions and key skew" })).toBeVisible();
+  await expect(page.getByText("Locked")).toHaveCount(0);
+  await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+  await expect(page.getByText("Hot partitions and key skew started.")).toBeVisible();
+  await expect(page.getByRole("complementary").getByText("4 partitions")).toBeVisible();
+  await expect(page.getByText("Hot partition detector")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hot-key burst" })).toBeVisible();
+  await page.getByRole("button", { name: "Hot-key burst" }).click();
+  await expect.poll(async () => page.getByTestId("scenario-insight-panel").textContent()).toMatch(/Records there\s*5/);
+  await page.getByRole("button", { name: "Produce one" }).click();
+  await expect(page.getByText("celebrity-user")).toBeVisible();
+  await page.getByRole("button", { name: "Close message inspector" }).click();
+  await page.getByRole("button", { name: "Reset run" }).click();
+  await expect(page.getByRole("button", { name: "Start scenario run" })).toBeVisible();
+});
+
+test("scenario navigation keeps the UI bound to the active run", async ({ page }) => {
+  await resetActiveRun(page);
+  await page.goto("/scenarios/partitioning");
+  await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+
+  await page.goto("/scenarios/hot-partitions-key-skew");
+  await expect(page).toHaveURL(/\/scenarios\/partitioning$/);
+  await expect(page.getByRole("heading", { name: "Partitioning, Ordering, and Consumer Rebalancing" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
 
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(page.getByRole("button", { name: "Start scenario run" })).toBeVisible();

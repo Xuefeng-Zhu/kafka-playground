@@ -1,16 +1,38 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
-import type { ConnectionStatus, KeyStrategy, RunSnapshot, RuntimeEvent, ScenarioDefinition } from "@kplay/contracts";
-import { BookOpen, Grid3X3, Network, PanelRightOpen, RotateCcw, SlidersHorizontal } from "lucide-react";
-import { initializeFromSnapshot, mergeSnapshot, applyRuntimeEvent, initialVisualizationState } from "@/lib/client/visualization-reducer";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type {
+  ConnectionStatus,
+  KeyStrategy,
+  RunSnapshot,
+  RuntimeEvent,
+  ScenarioDefinition,
+} from "@kplay/contracts";
+import {
+  BookOpen,
+  Grid3X3,
+  Network,
+  PanelRightOpen,
+  RotateCcw,
+  SlidersHorizontal,
+} from "lucide-react";
+import {
+  initializeFromSnapshot,
+  mergeSnapshot,
+  applyRuntimeEvent,
+  initialVisualizationState,
+} from "@/lib/client/visualization-reducer";
 import { Button } from "@/components/ui/button";
 import { ControlsPanel } from "@/components/controls/controls-panel";
 import { KafkaTopology } from "@/components/topology/kafka-topology";
 import { EventTimeline } from "@/components/timeline/event-timeline";
 import { InspectorPanel } from "@/components/inspector/inspector-panel";
 import { EducationPanel } from "@/components/education/education-panel";
+import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
+import type { ScenarioAction } from "@/lib/client/scenario-actions";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 
 type Action =
@@ -20,31 +42,41 @@ type Action =
 
 function reducer(state: typeof initialVisualizationState, action: Action) {
   if (action.type === "snapshot") {
-    return state.snapshot ? mergeSnapshot(state, action.snapshot) : initializeFromSnapshot(action.snapshot);
+    return state.snapshot
+      ? mergeSnapshot(state, action.snapshot)
+      : initializeFromSnapshot(action.snapshot);
   }
   if (action.type === "event") return applyRuntimeEvent(state, action.event);
   return initialVisualizationState;
 }
 
-export function PlaygroundWorkspace() {
+export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
+  const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialVisualizationState);
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isInspectorOpen, setInspectorOpen] = useState(false);
   const [isTimelineExpanded, setTimelineExpanded] = useState(false);
-  const [selectedTopologyNode, setSelectedTopologyNode] = useState<TopologySelection | null>(null);
+  const [selectedTopologyNode, setSelectedTopologyNode] =
+    useState<TopologySelection | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const {
     selectedMessageId,
     selectedEventSequence,
     setSelectedMessageId,
     setSelectedEventSequence,
-    resetSelection
+    resetSelection,
   } = usePlaygroundUiStore();
   const run = state.snapshot;
+  const currentScenario = scenarios.find(
+    (scenario) => scenario.id === scenarioId,
+  );
 
   useEffect(() => {
-    void fetch("/api/v1/connection").then((res) => res.json()).then(setConnection);
+    void fetch("/api/v1/connection")
+      .then((res) => res.json())
+      .then(setConnection);
     void fetch("/api/v1/scenarios")
       .then((res) => (res.ok ? res.json() : null))
       .then((payload: { scenarios: ScenarioDefinition[] } | null) => {
@@ -53,16 +85,32 @@ export function PlaygroundWorkspace() {
   }, []);
 
   useEffect(() => {
+    dispatch({ type: "clear" });
+
+    let cancelled = false;
     void fetch("/api/v1/runs")
       .then((res) => (res.ok ? res.json() : null))
       .then((payload: { run: RunSnapshot | null } | null) => {
-        if (payload?.run) dispatch({ type: "snapshot", snapshot: payload.run });
+        if (cancelled) return;
+        resetSelection();
+        setSelectedTopologyNode(null);
+        setInspectorOpen(false);
+        if (!payload?.run) return;
+        if (payload.run.scenarioId === scenarioId) {
+          dispatch({ type: "snapshot", snapshot: payload.run });
+          return;
+        }
+        router.replace(`/scenarios/${payload.run.scenarioId}`);
       });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, scenarioId, resetSelection]);
 
   useEffect(() => {
     if (!run?.runId) return;
     const source = new EventSource(`/api/v1/runs/${run.runId}/events`);
+    eventSourceRef.current = source;
     source.addEventListener("snapshot", (message) => {
       const payload = JSON.parse(message.data) as { snapshot: RunSnapshot };
       dispatch({ type: "snapshot", snapshot: payload.snapshot });
@@ -97,31 +145,47 @@ export function PlaygroundWorkspace() {
       "offset.commit_failed",
       "resource.cleanup_started",
       "resource.cleanup_completed",
-      "resource.cleanup_failed"
+      "resource.cleanup_failed",
     ];
     eventTypes.forEach((type) => {
       source.addEventListener(type, (message) => {
-        dispatch({ type: "event", event: JSON.parse(message.data) as RuntimeEvent });
+        dispatch({
+          type: "event",
+          event: JSON.parse(message.data) as RuntimeEvent,
+        });
         void refreshSnapshot(run.runId, dispatch);
       });
     });
-    return () => source.close();
+    return () => {
+      source.close();
+      if (eventSourceRef.current === source) eventSourceRef.current = null;
+    };
   }, [run?.runId]);
 
   const selectedMessage = useMemo(
-    () => run?.recentMessages?.find((message) => message.messageId === selectedMessageId) ?? run?.recentMessages?.at(-1) ?? null,
-    [run?.recentMessages, selectedMessageId]
+    () =>
+      run?.recentMessages?.find(
+        (message) => message.messageId === selectedMessageId,
+      ) ??
+      run?.recentMessages?.at(-1) ??
+      null,
+    [run?.recentMessages, selectedMessageId],
   );
   const selectedEvent = useMemo(
-    () => (state.events ?? []).find((event) => event.sequence === selectedEventSequence) ?? (state.events ?? []).at(-1) ?? null,
-    [state.events, selectedEventSequence]
+    () =>
+      (state.events ?? []).find(
+        (event) => event.sequence === selectedEventSequence,
+      ) ??
+      (state.events ?? []).at(-1) ??
+      null,
+    [state.events, selectedEventSequence],
   );
 
   async function startRun() {
     await runAction(async () => {
       const snapshot = await api<RunSnapshot>("/api/v1/runs", {
         method: "POST",
-        body: JSON.stringify({ scenarioId: "partitioning" })
+        body: JSON.stringify({ scenarioId }),
       });
       dispatch({ type: "snapshot", snapshot });
     });
@@ -130,6 +194,8 @@ export function PlaygroundWorkspace() {
   async function resetRun() {
     if (!run) return;
     await runAction(async () => {
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
       await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
       resetSelection();
       setSelectedTopologyNode(null);
@@ -141,7 +207,10 @@ export function PlaygroundWorkspace() {
   async function mutate(path: string, init?: RequestInit) {
     if (!run) return;
     await runAction(async () => {
-      const snapshot = await api<RunSnapshot>(`/api/v1/runs/${run.runId}${path}`, init);
+      const snapshot = await api<RunSnapshot>(
+        `/api/v1/runs/${run.runId}${path}`,
+        init,
+      );
       dispatch({ type: "snapshot", snapshot });
     });
   }
@@ -153,18 +222,42 @@ export function PlaygroundWorkspace() {
   }) {
     await mutate("/settings", {
       method: "PATCH",
-      body: JSON.stringify(settings)
+      body: JSON.stringify(settings),
     });
   }
 
   async function produceOne() {
     if (!run) return;
     await runAction(async () => {
-      const snapshot = await api<RunSnapshot>(`/api/v1/runs/${run.runId}/messages`, { method: "POST", body: "{}" });
+      const snapshot = await produceMessage(run.runId);
       dispatch({ type: "snapshot", snapshot });
       resetSelection();
       setSelectedTopologyNode(null);
       setInspectorOpen(true);
+    });
+  }
+
+  async function runScenarioAction(action: ScenarioAction) {
+    if (!run) return;
+    await runAction(async () => {
+      if (action.settings) {
+        const snapshot = await api<RunSnapshot>(
+          `/api/v1/runs/${run.runId}/settings`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(action.settings),
+          },
+        );
+        dispatch({ type: "snapshot", snapshot });
+      }
+
+      for (let index = 0; index < (action.produceCount ?? 0); index += 1) {
+        const snapshot = await produceMessage(run.runId, action.keyStrategy);
+        dispatch({ type: "snapshot", snapshot });
+      }
+
+      resetSelection();
+      setSelectedTopologyNode(null);
     });
   }
 
@@ -209,10 +302,17 @@ export function PlaygroundWorkspace() {
             <SlidersHorizontal size={22} strokeWidth={2.6} aria-hidden />
           </div>
           <div className="min-w-0">
-            <h1 className="max-w-44 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">Kafka Visual Playground</h1>
-            <p className="hidden text-xs text-[#466778] sm:block">Partitioning · rebalances · manual commits</p>
+            <h1 className="max-w-44 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">
+              Kafka Visual Playground
+            </h1>
+            <p className="hidden max-w-[34rem] truncate text-xs text-[#466778] sm:block">
+              {currentScenario?.title ?? "Scenario workspace"}
+            </p>
           </div>
-          <StatusPill label={run?.mode === "aiven" ? "Aiven" : "Demo mode"} tone="sky" />
+          <StatusPill
+            label={run?.mode === "aiven" ? "Aiven" : "Demo mode"}
+            tone="sky"
+          />
           <div className="hidden h-8 w-px bg-teal-700 lg:block" />
           <div className="hidden items-center gap-2 text-sm font-extrabold text-orange-700 sm:flex">
             Aiven-compatible
@@ -224,19 +324,33 @@ export function PlaygroundWorkspace() {
               <span className="size-2.5 rounded-full bg-emerald-500" />
               {connectionLabel(connection)}
             </div>
-            <div className="mt-0.5 truncate text-xs text-[#466778]">{connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}</div>
+            <div className="mt-0.5 truncate text-xs text-[#466778]">
+              {connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}
+            </div>
           </div>
           <div className="hidden items-center gap-3 border-r-2 border-teal-700 pr-5 sm:flex">
             <span className="font-semibold text-[#466778]">Run status</span>
-            <StatusPill label={run?.status ?? "No run"} tone={run?.status === "running" ? "green" : "slate"} />
+            <StatusPill
+              label={run?.status ?? "No run"}
+              tone={run?.status === "running" ? "green" : "slate"}
+            />
           </div>
-          <Button onClick={resetRun} disabled={!run} variant="secondary" aria-label="Reset run" className="h-9 px-3 sm:px-4">
+          <Button
+            onClick={resetRun}
+            disabled={!run}
+            variant="secondary"
+            aria-label="Reset run"
+            className="h-9 px-3 sm:px-4"
+          >
             <RotateCcw size={15} aria-hidden /> Reset
           </Button>
         </div>
       </header>
       {actionError && (
-        <div role="alert" className="border-b-[3px] border-rose-700 bg-rose-100 px-5 py-2 text-sm font-semibold text-rose-800">
+        <div
+          role="alert"
+          className="border-b-[3px] border-rose-700 bg-rose-100 px-5 py-2 text-sm font-semibold text-rose-800"
+        >
           {actionError}
         </div>
       )}
@@ -258,27 +372,40 @@ export function PlaygroundWorkspace() {
         className={`grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[260px_minmax(680px,1fr)] ${workspaceRows} lg:overflow-hidden`}
       >
         <aside className="max-h-[420px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 lg:row-span-2 lg:max-h-none lg:border-b-0 lg:border-r-[3px]">
-          <ScenarioSidebar scenarios={scenarios} />
-          <EducationPanel snapshot={run} selectedMessage={selectedMessage} />
+          <ScenarioSidebar scenarios={scenarios} scenarioId={scenarioId} />
+          <EducationPanel
+            scenarioId={scenarioId}
+            snapshot={run}
+            selectedMessage={selectedMessage}
+          />
         </aside>
 
         <section className="relative min-h-[560px] border-b-[3px] border-teal-700 bg-[#ecfeff] lg:min-h-0 lg:border-b-0 lg:border-r-[3px]">
           {!run ? (
             <div className="kplay-grid-bg flex h-full items-center justify-center p-10">
               <div className="max-w-xl rounded-3xl border-[3px] border-teal-700 bg-[#fffdf5] p-8 text-center shadow-[12px_12px_0_rgba(15,118,110,0.22)]">
-                <h2 className="text-2xl font-extrabold text-[#123047]">Start a scenario run</h2>
+                <h2 className="text-2xl font-extrabold text-[#123047]">
+                  Start a scenario run
+                </h2>
                 <p className="mt-3 text-sm leading-6 text-[#466778]">
-                  Demo mode creates a two-partition topic model and uses simulated Kafka behavior. Aiven mode
-                  creates real resources and only displays observed delivery reports and assignments.
+                  Demo mode creates a scenario-specific topic model and uses
+                  simulated Kafka behavior. Aiven mode creates real resources
+                  and only displays observed delivery reports and assignments.
                 </p>
                 <ConnectionNotice connection={connection} />
-                <Button className="mt-6" variant="primary" onClick={startRun}>Start scenario run</Button>
+                <Button className="mt-6" variant="primary" onClick={startRun}>
+                  Start scenario run
+                </Button>
               </div>
             </div>
           ) : (
             <KafkaTopology
               snapshot={run}
-              selectedMessageId={selectedTopologyNode || selectedEventSequence ? null : selectedMessage?.messageId ?? null}
+              selectedMessageId={
+                selectedTopologyNode || selectedEventSequence
+                  ? null
+                  : (selectedMessage?.messageId ?? null)
+              }
               selectedNode={selectedTopologyNode}
               onSelectMessage={selectMessage}
               onSelectNode={selectTopologyNode}
@@ -293,16 +420,32 @@ export function PlaygroundWorkspace() {
           data-testid="timeline-region"
         >
           {run && (
-            <ControlsPanel
-              snapshot={run}
-              onStartProducer={() => mutate("/producer/start", { method: "POST" })}
-              onPauseProducer={() => mutate("/producer/pause", { method: "POST" })}
-              onStopProducer={() => mutate("/producer/stop", { method: "POST" })}
-              onProduceOne={produceOne}
-              onAddConsumer={() => mutate("/consumers", { method: "POST" })}
-              onStopConsumer={(consumerId) => mutate(`/consumers/${consumerId}`, { method: "DELETE" })}
-              onUpdateSettings={updateSettings}
-            />
+            <>
+              <ControlsPanel
+                snapshot={run}
+                onStartProducer={() =>
+                  mutate("/producer/start", { method: "POST" })
+                }
+                onPauseProducer={() =>
+                  mutate("/producer/pause", { method: "POST" })
+                }
+                onStopProducer={() =>
+                  mutate("/producer/stop", { method: "POST" })
+                }
+                onProduceOne={produceOne}
+                onAddConsumer={() => mutate("/consumers", { method: "POST" })}
+                onStopConsumer={(consumerId) =>
+                  mutate(`/consumers/${consumerId}`, { method: "DELETE" })
+                }
+                onUpdateSettings={updateSettings}
+              />
+              {!isTimelineExpanded && (
+                <ScenarioInsightPanel
+                  snapshot={run}
+                  onRunAction={runScenarioAction}
+                />
+              )}
+            </>
           )}
           <EventTimeline
             events={state.events ?? []}
@@ -339,71 +482,143 @@ export function PlaygroundWorkspace() {
   );
 }
 
-function ConnectionNotice({ connection }: { connection: ConnectionStatus | null }) {
+function ConnectionNotice({
+  connection,
+}: {
+  connection: ConnectionStatus | null;
+}) {
   if (!connection || connection.status !== "configuration_missing") return null;
   return (
     <div className="mt-5 rounded-2xl border-[3px] border-amber-500 bg-amber-100 p-3 text-left text-sm text-amber-900 shadow-[7px_7px_0_rgba(245,158,11,0.18)]">
       <div className="font-extrabold">Configuration missing</div>
       <p className="mt-1 text-amber-900/80">
-        Set {connection.missingVariables.join(", ")} or switch `KAFKA_MODE=demo`.
+        Set {connection.missingVariables.join(", ")} or switch
+        `KAFKA_MODE=demo`.
       </p>
     </div>
   );
 }
 
-function StatusPill({ label, tone }: { label: string; tone: "green" | "amber" | "sky" | "slate" }) {
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "green" | "amber" | "sky" | "slate";
+}) {
   const color = {
     green: "border-emerald-500 bg-emerald-100 text-emerald-800",
     amber: "border-amber-500 bg-amber-100 text-amber-800",
     sky: "border-teal-700 bg-teal-100 text-teal-800",
-    slate: "border-teal-700 bg-[#fffdf5] text-teal-800"
+    slate: "border-teal-700 bg-[#fffdf5] text-teal-800",
   }[tone];
-  return <span className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}>{label}</span>;
+  return (
+    <span
+      className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}
+    >
+      {label}
+    </span>
+  );
 }
 
-function ScenarioSidebar({ scenarios }: { scenarios: ScenarioDefinition[] }) {
-  const primary = scenarios.find((scenario) => !scenario.disabled);
-  const future = scenarios.filter((scenario) => scenario.disabled);
-  const shownFuture = future.slice(0, 5);
+function ScenarioSidebar({
+  scenarios,
+  scenarioId,
+}: {
+  scenarios: ScenarioDefinition[];
+  scenarioId: string;
+}) {
+  const current =
+    scenarios.find((scenario) => scenario.id === scenarioId) ??
+    scenarios.find((scenario) => !scenario.disabled);
+  const otherScenarios = scenarios.filter(
+    (scenario) => scenario.id !== current?.id,
+  );
   return (
     <div className="min-h-0">
       <h2 className="kplay-section-title">Scenario</h2>
       <div className="mt-3 rounded-2xl border-[3px] border-teal-700 bg-teal-100 p-3 shadow-[7px_7px_0_rgba(15,118,110,0.14)]">
         <div className="flex items-start gap-3">
-          <Grid3X3 className="mt-0.5 shrink-0 text-teal-700" size={24} aria-hidden />
+          <Grid3X3
+            className="mt-0.5 shrink-0 text-teal-700"
+            size={24}
+            aria-hidden
+          />
           <div>
-            <h3 className="text-sm font-extrabold text-[#123047]">Partitioning</h3>
+            <h3 className="text-sm font-extrabold text-[#123047]">
+              {current?.title ?? "Scenario"}
+            </h3>
             <p className="mt-1 text-xs leading-5 text-[#31566a]">
-              {primary?.description ?? "Understand how messages are distributed across partitions."}
+              {current?.description ??
+                "Select a scenario to start exploring Kafka behavior."}
             </p>
+            {current && (
+              <div className="mt-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-teal-700">
+                {current.topic.partitions} partitions
+              </div>
+            )}
           </div>
           <span className="ml-auto mt-7 size-2.5 rounded-full bg-sky-500" />
         </div>
       </div>
       <div className="mt-3 space-y-2">
-        {shownFuture.map((scenario) => (
-          <div key={scenario.id} className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)]" aria-disabled>
-            <div className="flex gap-3">
-              <Network className="mt-0.5 shrink-0 text-teal-700" size={22} aria-hidden />
-              <div>
-                <div className="font-extrabold text-[#123047]">{scenario.title}</div>
-                <div className="mt-1 leading-5">{scenario.description}</div>
-                <div className="mt-2 font-extrabold text-[#60798d]">Locked</div>
+        {otherScenarios.map((scenario) =>
+          scenario.disabled ? (
+            <div
+              key={scenario.id}
+              className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)]"
+              aria-disabled
+            >
+              <div className="flex gap-3">
+                <Network
+                  className="mt-0.5 shrink-0 text-teal-700"
+                  size={22}
+                  aria-hidden
+                />
+                <div>
+                  <div className="font-extrabold text-[#123047]">
+                    {scenario.title}
+                  </div>
+                  <div className="mt-1 leading-5">{scenario.description}</div>
+                  <div className="mt-2 font-extrabold text-[#60798d]">
+                    Locked
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-        {future.length > shownFuture.length && (
-          <div className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs font-semibold text-[#466778]">
-            {future.length - shownFuture.length} more planned scenarios in backlog
-          </div>
+          ) : (
+            <Link
+              key={scenario.id}
+              href={`/scenarios/${scenario.id}`}
+              className="block rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+            >
+              <div className="flex gap-3">
+                <Network
+                  className="mt-0.5 shrink-0 text-teal-700"
+                  size={22}
+                  aria-hidden
+                />
+                <div>
+                  <div className="font-extrabold text-[#123047]">
+                    {scenario.title}
+                  </div>
+                  <div className="mt-1 leading-5">{scenario.description}</div>
+                  <div className="mt-2 font-extrabold text-emerald-700">
+                    Available
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ),
         )}
       </div>
       <a
         href="#how-it-works"
         className="mt-3 flex items-center justify-between rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800 shadow-[7px_7px_0_rgba(15,118,110,0.1)]"
       >
-        <span className="flex items-center gap-2"><BookOpen size={15} aria-hidden /> How it works</span>
+        <span className="flex items-center gap-2">
+          <BookOpen size={15} aria-hidden /> How it works
+        </span>
         <span aria-hidden>↗</span>
       </a>
     </div>
@@ -414,7 +629,8 @@ function connectionLabel(connection: ConnectionStatus | null) {
   if (!connection) return "Checking";
   if (connection.status === "demo_mode") return "Demo mode";
   if (connection.status === "connected") return "Connected";
-  if (connection.status === "configuration_missing") return "Configuration missing";
+  if (connection.status === "configuration_missing")
+    return "Configuration missing";
   if (connection.status === "connection_failed") return "Connection failed";
   return "Disconnected";
 }
@@ -424,17 +640,29 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "content-type": "application/json",
-      ...(init?.headers ?? {})
-    }
+      ...(init?.headers ?? {}),
+    },
   });
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
+    const error = await response
+      .json()
+      .catch(() => ({ message: response.statusText }));
     throw new Error(error.message ?? response.statusText);
   }
   return response.json() as Promise<T>;
 }
 
-async function refreshSnapshot(runId: string, dispatch: React.Dispatch<Action>) {
+async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
+  return api<RunSnapshot>(`/api/v1/runs/${runId}/messages`, {
+    method: "POST",
+    body: JSON.stringify(keyStrategy ? { keyStrategy } : {}),
+  });
+}
+
+async function refreshSnapshot(
+  runId: string,
+  dispatch: React.Dispatch<Action>,
+) {
   const response = await fetch(`/api/v1/runs/${runId}`);
   if (!response.ok) return;
   const snapshot = (await response.json()) as RunSnapshot;

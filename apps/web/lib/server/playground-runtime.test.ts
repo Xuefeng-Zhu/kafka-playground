@@ -60,6 +60,38 @@ describe("PlaygroundRuntime demo integration", () => {
     await runtime.reset(snapshot.runId);
   });
 
+  it("starts and resets every implemented scenario", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { SCENARIOS } = await import("@kplay/scenario-engine");
+    const runtime = new PlaygroundRuntime();
+
+    for (const scenario of SCENARIOS) {
+      const snapshot = await runtime.createRun(scenario.id);
+      expect(snapshot.scenarioId).toBe(scenario.id);
+      expect(snapshot.partitionCount).toBe(scenario.topic.partitions);
+      expect(snapshot.status).toBe("running");
+      await runtime.reset(snapshot.runId);
+    }
+  });
+
+  it("emits scenario-specific processing failures", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("retry-dead-letter-queues");
+    snapshot = await runtime.updateSettings(snapshot.runId, { processingLatencyMs: 0 });
+    snapshot = await runtime.addConsumer(snapshot.runId);
+    await runtime.produceOne(snapshot.runId);
+    await runtime.produceOne(snapshot.runId);
+    snapshot = await runtime.produceOne(snapshot.runId);
+
+    await expect.poll(() => runtime.snapshot(snapshot.runId).messageCounts.failed).toBeGreaterThanOrEqual(1);
+    snapshot = runtime.snapshot(snapshot.runId);
+    expect(snapshot.recentMessages.some((message) => message.state === "failed")).toBe(true);
+    expect(snapshot.recentEvents.some((event) => event.type === "message.processing_failed")).toBe(true);
+
+    await runtime.reset(snapshot.runId);
+  });
+
   it("returns the real cleanup status when deleting an active run", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();

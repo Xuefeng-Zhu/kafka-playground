@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   KeyStrategyState,
   SCENARIOS,
+  createPlaygroundValue,
   createResourceNames,
+  evaluateScenarioProcessing,
   sanitizeResourceSegment,
   validateTopicPrefix
 } from "./index";
@@ -55,9 +57,75 @@ describe("scenario engine", () => {
     }
   });
 
-  it("keeps future scenarios disabled until implemented", () => {
-    const future = SCENARIOS.filter((scenario) => scenario.disabled);
-    expect(future).toHaveLength(14);
-    expect(future.every((scenario) => scenario.description !== "Coming soon")).toBe(true);
+  it("keeps every catalog scenario available with a stable route id", () => {
+    expect(SCENARIOS).toHaveLength(15);
+    expect(SCENARIOS.every((scenario) => !scenario.disabled)).toBe(true);
+    expect(new Set(SCENARIOS.map((scenario) => scenario.id)).size).toBe(SCENARIOS.length);
+    expect(SCENARIOS.every((scenario) => scenario.learningObjectives.length > 0)).toBe(true);
+  });
+
+  it("creates distinct scenario payloads for specialized scenarios", () => {
+    for (const scenario of SCENARIOS.filter((item) => item.id !== "partitioning")) {
+      const value = createPlaygroundValue({
+        eventId: `evt-${scenario.id}`,
+        runId: "run-1",
+        scenarioId: scenario.id,
+        sequence: 6,
+        userId: "user-1"
+      });
+
+      expect(value.type, scenario.id).not.toBe("user.activity");
+      expect(Object.keys(value.payload).length, scenario.id).toBeGreaterThan(1);
+    }
+
+    expect(
+      createPlaygroundValue({
+        eventId: "evt-1",
+        runId: "run-1",
+        scenarioId: "retry-dead-letter-queues",
+        sequence: 3,
+        userId: "user-1"
+      })
+    ).toMatchObject({
+      type: "fulfillment.request",
+      payload: {
+        shouldFail: true,
+        retryTopic: "orders.retry.30s",
+        deadLetterTopic: "orders.dlq"
+      }
+    });
+
+    expect(
+      createPlaygroundValue({
+        eventId: "evt-2",
+        runId: "run-1",
+        scenarioId: "streams-joins-windows",
+        sequence: 6,
+        userId: "user-2"
+      })
+    ).toMatchObject({
+      type: "stream.window.event",
+      payload: {
+        lateArrival: true,
+        streamName: "payments"
+      }
+    });
+  });
+
+  it("evaluates scenario-specific processing failures", () => {
+    expect(
+      evaluateScenarioProcessing({
+        scenarioId: "schema-evolution-karapace",
+        sequence: 4,
+        value: {}
+      })
+    ).toMatchObject({ code: "SCHEMA_INCOMPATIBLE" });
+    expect(
+      evaluateScenarioProcessing({
+        scenarioId: "partitioning",
+        sequence: 4,
+        value: {}
+      })
+    ).toBeNull();
   });
 });

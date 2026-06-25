@@ -18,12 +18,15 @@ import {
 } from "@kplay/kafka-runtime";
 import {
   KeyStrategyState,
-  PRIMARY_SCENARIO,
   SCENARIOS,
   createHeaders,
   createPlaygroundValue,
   createResourceNames,
-  createRunId
+  createRunId,
+  defaultKeyStrategyForScenario,
+  defaultProcessingLatencyForScenario,
+  evaluateScenarioProcessing,
+  findScenario
 } from "@kplay/scenario-engine";
 import { ApiError } from "./api-errors";
 import { getServerEnv } from "./env";
@@ -74,8 +77,9 @@ export class PlaygroundRuntime {
     if (this.activeRun && this.activeRun.status !== "stopped") {
       throw new ApiError("RUN_ALREADY_ACTIVE", "Only one scenario run can be active.", 409);
     }
-    if (scenarioId !== PRIMARY_SCENARIO.id) {
-      throw new ApiError("INVALID_RUN_STATE", "Only the primary scenario is available in this MVP.", 400);
+    const scenario = findScenario(scenarioId);
+    if (!scenario || scenario.disabled) {
+      throw new ApiError("SCENARIO_NOT_AVAILABLE", "This scenario is not available.", 404);
     }
     const runId = createRunId();
     const names = createResourceNames({
@@ -86,14 +90,14 @@ export class PlaygroundRuntime {
       runId,
       scenarioId,
       mode: this.adapter.mode,
-      partitionCount: PRIMARY_SCENARIO.topic.partitions,
+      partitionCount: scenario.topic.partitions,
       topicName: names.topicName,
       consumerGroupId: names.consumerGroupId,
       status: "starting",
       producerStatus: "stopped",
       productionRate: 1,
-      keyStrategy: { type: "round_robin_users" },
-      processingLatencyMs: 500,
+      keyStrategy: defaultKeyStrategyForScenario(scenario.id),
+      processingLatencyMs: defaultProcessingLatencyForScenario(scenario.id),
       consumers: [],
       messages: [],
       events: [],
@@ -119,8 +123,8 @@ export class PlaygroundRuntime {
     try {
       await this.adapter.createRun(run);
       run.status = "running";
-      this.emit("topic.created", { message: "Topic created with exactly two partitions." });
-      this.emit("run.started", { message: "Scenario run started." });
+      this.emit("topic.created", { message: `Topic created with ${scenario.topic.partitions} partitions.` });
+      this.emit("run.started", { message: `${scenario.title} started.` });
       return this.snapshot(run.runId);
     } catch (error) {
       logger.error({ err: error, runId: run.runId }, "Failed to start scenario run");
@@ -164,15 +168,24 @@ export class PlaygroundRuntime {
 
   async updateSettings(runId: string, settings: Partial<Pick<InternalRun, "productionRate" | "keyStrategy" | "processingLatencyMs">>) {
     const run = this.requireRun(runId);
+    const scenario = this.scenarioForRun(run);
     if (settings.productionRate !== undefined) {
-      if (settings.productionRate > this.env.MAX_PRODUCE_RATE) {
+      if (settings.productionRate > Math.min(this.env.MAX_PRODUCE_RATE, scenario.limits.maxProduceRate)) {
         throw new ApiError("RATE_LIMIT_EXCEEDED", "Production rate exceeds the configured maximum.", 429);
       }
       run.productionRate = settings.productionRate;
       if (run.producerStatus === "running") this.restartProducerTimer(run);
     }
     if (settings.keyStrategy) run.keyStrategy = settings.keyStrategy;
-    if (settings.processingLatencyMs !== undefined) run.processingLatencyMs = settings.processingLatencyMs;
+    if (settings.processingLatencyMs !== undefined) {
+      if (
+        settings.processingLatencyMs < scenario.limits.minProcessingLatencyMs ||
+        settings.processingLatencyMs > scenario.limits.maxProcessingLatencyMs
+      ) {
+        throw new ApiError("LATENCY_OUT_OF_RANGE", "Processing latency is outside this scenario's limits.", 400);
+      }
+      run.processingLatencyMs = settings.processingLatencyMs;
+    }
     return this.snapshot(runId);
   }
 
@@ -211,12 +224,14 @@ export class PlaygroundRuntime {
     const value = createPlaygroundValue({
       eventId,
       runId,
+      scenarioId: run.scenarioId,
       sequence: run.keyState.currentSequence,
       userId: messageKey
     });
     const headers = createHeaders({
       runId,
       eventId,
+      scenarioId: run.scenarioId,
       sequence: run.keyState.currentSequence,
       keyStrategy
     });
@@ -254,6 +269,7 @@ export class PlaygroundRuntime {
     message.state = "produced";
     message.updatedAt = new Date().toISOString();
     run.latestPartitionOffsets[String(delivery.partition)] = delivery.offset;
+    run.messageCounts[String(delivery.partition)] = (run.messageCounts[String(delivery.partition)] ?? 0) + 1;
     run.messageCounts.produced += 1;
     this.emit("message.produced", {
       messageId: eventId,
@@ -270,8 +286,9 @@ export class PlaygroundRuntime {
 
   async addConsumer(runId: string) {
     const run = this.requireRun(runId);
-    if (run.consumers.length >= this.env.MAX_CONSUMERS_PER_RUN) {
-      throw new ApiError("CONSUMER_LIMIT_REACHED", "This scenario supports at most three consumers.", 409);
+    const consumerLimit = this.consumerLimit(run);
+    if (run.consumers.length >= consumerLimit) {
+      throw new ApiError("CONSUMER_LIMIT_REACHED", `This scenario supports at most ${consumerLimit} consumers.`, 409);
     }
     const consumerId = this.nextConsumerId(run);
     this.emit("consumer.starting", { consumerId, actor: consumerId });
@@ -420,11 +437,21 @@ export class PlaygroundRuntime {
 
   private nextConsumerId(run: InternalRun) {
     const used = new Set(run.consumers.map((consumer) => consumer.consumerId));
-    for (let index = 1; index <= this.env.MAX_CONSUMERS_PER_RUN; index += 1) {
+    for (let index = 1; index <= this.consumerLimit(run); index += 1) {
       const candidate = `consumer-${index}`;
       if (!used.has(candidate)) return candidate;
     }
-    throw new ApiError("CONSUMER_LIMIT_REACHED", "This scenario supports at most three consumers.", 409);
+    throw new ApiError("CONSUMER_LIMIT_REACHED", `This scenario supports at most ${this.consumerLimit(run)} consumers.`, 409);
+  }
+
+  private scenarioForRun(run: InternalRun) {
+    const scenario = findScenario(run.scenarioId);
+    if (!scenario) throw new ApiError("SCENARIO_NOT_AVAILABLE", "This scenario is not available.", 404);
+    return scenario;
+  }
+
+  private consumerLimit(run: InternalRun) {
+    return Math.min(this.env.MAX_CONSUMERS_PER_RUN, this.scenarioForRun(run).limits.maxConsumers);
   }
 
   private rebalance(run: InternalRun) {
@@ -561,6 +588,23 @@ export class PlaygroundRuntime {
       consumerId: consumer.consumerId,
       actor: consumer.consumerId
     });
+    const scenarioOutcome = evaluateScenarioProcessing({
+      scenarioId: run.scenarioId,
+      sequence: Number(message.value.sequence ?? 0),
+      value: message.value
+    });
+    if (scenarioOutcome) {
+      message.state = "failed";
+      message.updatedAt = new Date().toISOString();
+      run.messageCounts.failed += 1;
+      this.emit("message.processing_failed", {
+        messageId,
+        consumerId: consumer.consumerId,
+        message: scenarioOutcome.message,
+        actor: consumer.consumerId
+      });
+      return;
+    }
     message.state = "processed";
     consumer.processedCount += 1;
     run.messageCounts.processed += 1;
