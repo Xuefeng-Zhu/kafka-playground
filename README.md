@@ -1,12 +1,42 @@
 # Kafka Visual Playground
 
-Kafka Visual Playground is a scenario-driven learning app for Kafka partitioning, ordering, consumer-group rebalancing, and manual offset commits.
+Kafka Visual Playground is a scenario-driven learning app for Kafka partitioning, ordering, consumer-group rebalancing, offset commits, delivery guarantees, retention, compaction, stream processing, and operational Kafka patterns.
 
-The MVP implements one scenario: **Partitioning, Ordering, and Consumer Rebalancing**. Future scenarios are shown as disabled catalog cards.
+The app ships with a deterministic local demo mode and an optional Aiven for Apache Kafka mode. Demo mode is designed for repeatable learning and automated verification; Aiven mode creates real Kafka resources and shows observed delivery reports, assignments, and commits.
+
+## Scenario Catalog
+
+The current catalog includes:
+
+- Partitioning, Ordering, and Consumer Rebalancing
+- Fan-out versus load balancing
+- At-least-once delivery and duplicate processing
+- Retry topics and dead-letter queues
+- Schema evolution using Karapace
+- Idempotent and transactional producers
+- Event replay and event sourcing
+- Consumer lag and backpressure
+- Hot partitions and key skew
+- Log compaction and tombstones
+- Retention windows and data loss
+- Rebalance strategies and cooperative sticky assignment
+- Kafka Streams joins and windows
+- Outbox pattern and CDC
+- ACLs, users, and least privilege
 
 ## Screenshots
 
-Screenshots can be added after running the demo mode locally.
+Scenario catalog:
+
+![Kafka Visual Playground scenario catalog](docs/screenshots/home.png)
+
+Partitioning run with message inspector:
+
+![Partitioning scenario run with message inspector](docs/screenshots/partitioning-run.png)
+
+Hot partition detector:
+
+![Hot partitions scenario with skewed key distribution](docs/screenshots/hot-partitions-run.png)
 
 ## Architecture
 
@@ -21,7 +51,7 @@ flowchart LR
   SSE --> UI
 ```
 
-Next.js serves both the UI and API, but Kafka clients are owned only by the centralized server runtime. The MVP must run as one persistent Node.js process.
+Next.js serves both the UI and API, but Kafka clients are owned only by the centralized server runtime. The app must run as one persistent Node.js process for the current runtime model.
 
 ## Requirements
 
@@ -36,7 +66,7 @@ npm install
 npm run dev:demo
 ```
 
-Open `http://localhost:3000/scenarios/partitioning`.
+Open `http://localhost:3000` for the catalog or `http://localhost:3000/scenarios/partitioning` for the primary scenario.
 
 ## Aiven Mode
 
@@ -110,6 +140,6 @@ set -a; source .env.local; set +a; npm test -- packages/kafka-runtime/src/aiven-
 
 ## Known MVP Limitations
 
-- Demo mode simulates Kafka behavior deterministically.
+- Demo mode simulates Kafka behavior deterministically, including scenario-specific outcomes such as retry failures, schema incompatibility, authorization denial, lag, skew, tombstones, retention windows, and windowed joins.
 - Hard consumer crashes are not implemented.
 - The optional real-Aiven smoke test is gated by `RUN_AIVEN_E2E=true` and requires live service credentials plus `certs/ca.pem`.
