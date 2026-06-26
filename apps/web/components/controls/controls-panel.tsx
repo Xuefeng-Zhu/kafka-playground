@@ -1,20 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import type { KeyStrategy, RunSnapshot } from "@kplay/contracts";
 import {
   Pause,
   Play,
   Plus,
   Send,
-  Settings2,
   Square,
   TriangleAlert,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const RUN_CONTROLS_STORAGE_KEY = "kplay.runControls.expanded";
 
 export function ControlsPanel({
   snapshot,
@@ -50,19 +46,6 @@ export function ControlsPanel({
   const activeConsumerCount = snapshot.consumers.filter(
     (consumer) => consumer.status !== "crashed",
   ).length;
-  const [isExpanded, setExpanded] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(RUN_CONTROLS_STORAGE_KEY) === "true",
-  );
-
-  function toggleExpanded() {
-    setExpanded((current) => {
-      const next = !current;
-      window.localStorage.setItem(RUN_CONTROLS_STORAGE_KEY, String(next));
-      return next;
-    });
-  }
 
   return (
     <div
@@ -121,186 +104,171 @@ export function ControlsPanel({
         >
           <Plus size={15} aria-hidden /> Consumer
         </Button>
-        <Button
-          aria-controls="run-settings-panel"
-          aria-expanded={isExpanded}
-          className="ml-auto h-9 px-3 text-xs"
-          data-testid="run-settings-toggle"
-          onClick={toggleExpanded}
-          variant="secondary"
-        >
-          <Settings2 size={15} aria-hidden /> Settings
-        </Button>
       </section>
 
-      {isExpanded && (
-        <div
-          className="mt-2 grid grid-cols-1 gap-3 border-t-2 border-teal-700 pt-3 sm:grid-cols-2 lg:grid-cols-[110px_140px_120px_minmax(180px,1fr)]"
-          data-testid="run-settings-panel"
-          id="run-settings-panel"
-        >
-          <label className="text-xs text-[#466778]">
-            <span className="mb-2 block kplay-section-title">Rate</span>
-            <input
-              aria-label="Messages per second"
-              className="mb-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
-              min={1}
-              max={10}
-              type="number"
-              value={snapshot.productionRate}
-              disabled={disabled}
-              onChange={(event) =>
-                onUpdateSettings({ productionRate: Number(event.target.value) })
-              }
-            />
-            <input
-              aria-label="Produce rate slider"
-              className="w-full accent-sky-500"
-              min={1}
-              max={10}
-              type="range"
-              value={snapshot.productionRate}
-              disabled={disabled}
-              onChange={(event) =>
-                onUpdateSettings({ productionRate: Number(event.target.value) })
-              }
-            />
-          </label>
+      <div
+        className="mt-2 grid grid-cols-1 items-start gap-3 border-t-2 border-teal-700 pt-3 sm:grid-cols-2 xl:grid-cols-4"
+        data-testid="run-settings-panel"
+        id="run-settings-panel"
+      >
+        <label className="grid min-h-[76px] grid-rows-[16px_36px_12px] gap-1.5 text-xs text-[#466778]">
+          <span className="kplay-section-title">Rate</span>
+          <input
+            aria-label="Messages per second"
+            className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+            min={1}
+            max={10}
+            type="number"
+            value={snapshot.productionRate}
+            disabled={disabled}
+            onChange={(event) =>
+              onUpdateSettings({ productionRate: Number(event.target.value) })
+            }
+          />
+          <input
+            aria-label="Produce rate slider"
+            className="h-3 w-full accent-sky-500"
+            min={1}
+            max={10}
+            type="range"
+            value={snapshot.productionRate}
+            disabled={disabled}
+            onChange={(event) =>
+              onUpdateSettings({ productionRate: Number(event.target.value) })
+            }
+          />
+        </label>
 
-          <section>
-            <label
-              className="mb-2 block kplay-section-title"
-              htmlFor="key-strategy"
-            >
-              Key strategy
-            </label>
-            <select
-              id="key-strategy"
-              className="w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
-              value={snapshot.keyStrategy.type}
+        <label className="grid min-h-[76px] grid-rows-[16px_36px_12px] gap-1.5 text-xs text-[#466778]">
+          <span className="kplay-section-title">Latency</span>
+          <input
+            aria-label="Consumer processing latency"
+            className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+            min={0}
+            max={3000}
+            step={100}
+            type="number"
+            value={snapshot.processingLatencyMs}
+            disabled={disabled}
+            onChange={(event) =>
+              onUpdateSettings({
+                processingLatencyMs: Number(event.target.value),
+              })
+            }
+          />
+          <input
+            aria-label="Processing latency slider"
+            className="h-3 w-full accent-amber-500"
+            min={0}
+            max={3000}
+            step={100}
+            type="range"
+            value={snapshot.processingLatencyMs}
+            disabled={disabled}
+            onChange={(event) =>
+              onUpdateSettings({
+                processingLatencyMs: Number(event.target.value),
+              })
+            }
+          />
+        </label>
+
+        <section className="grid min-h-[76px] grid-rows-[16px_36px_12px] gap-1.5">
+          <label className="kplay-section-title" htmlFor="key-strategy">
+            Key strategy
+          </label>
+          <select
+            id="key-strategy"
+            className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+            value={snapshot.keyStrategy.type}
+            disabled={disabled}
+            onChange={(event) => {
+              const value = event.target.value;
+              onUpdateSettings({
+                keyStrategy:
+                  value === "fixed"
+                    ? { type: "fixed", value: fixedValue }
+                    : value === "round_robin_users"
+                      ? { type: "round_robin_users" }
+                      : value === "random_user"
+                        ? { type: "random_user" }
+                        : { type: "no_key" },
+              });
+            }}
+          >
+            <option value="fixed">Fixed key</option>
+            <option value="round_robin_users">Three user IDs</option>
+            <option value="random_user">Random user ID</option>
+            <option value="no_key">No key</option>
+          </select>
+          {snapshot.keyStrategy.type === "fixed" && (
+            <input
+              aria-label="Fixed key"
+              className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+              value={fixedValue}
               disabled={disabled}
-              onChange={(event) => {
-                const value = event.target.value;
+              onChange={(event) =>
                 onUpdateSettings({
-                  keyStrategy:
-                    value === "fixed"
-                      ? { type: "fixed", value: fixedValue }
-                      : value === "round_robin_users"
-                        ? { type: "round_robin_users" }
-                        : value === "random_user"
-                          ? { type: "random_user" }
-                          : { type: "no_key" },
-                });
-              }}
-            >
-              <option value="fixed">Fixed key</option>
-              <option value="round_robin_users">Three user IDs</option>
-              <option value="random_user">Random user ID</option>
-              <option value="no_key">No key</option>
-            </select>
-            {snapshot.keyStrategy.type === "fixed" && (
-              <input
-                aria-label="Fixed key"
-                className="mt-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
-                value={fixedValue}
-                disabled={disabled}
-                onChange={(event) =>
-                  onUpdateSettings({
-                    keyStrategy: {
-                      type: "fixed",
-                      value: event.target.value || "user-1",
-                    },
-                  })
-                }
-              />
+                  keyStrategy: {
+                    type: "fixed",
+                    value: event.target.value || "user-1",
+                  },
+                })
+              }
+            />
+          )}
+          {snapshot.keyStrategy.type !== "fixed" && (
+            <span className="h-3" aria-hidden />
+          )}
+        </section>
+
+        <section className="grid min-h-[76px] grid-rows-[16px_minmax(36px,auto)_12px] gap-1.5">
+          <h3 className="kplay-section-title">Consumers</h3>
+          <div className="flex min-h-9 flex-wrap items-center gap-2">
+            {snapshot.consumers.length === 0 ? (
+              <span className="rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800">
+                0 consumers
+              </span>
+            ) : (
+              snapshot.consumers.map((consumer) => (
+                <div
+                  key={consumer.consumerId}
+                  className="flex items-center gap-1"
+                >
+                  {consumer.status === "crashed" ? (
+                    <span className="inline-flex h-9 items-center gap-1 rounded-xl border-2 border-rose-500 bg-rose-100 px-2 text-xs font-extrabold text-rose-800">
+                      <TriangleAlert size={14} aria-hidden />{" "}
+                      {consumer.consumerId.replace("consumer-", "C")} crashed
+                    </span>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={() => onStopConsumer(consumer.consumerId)}
+                        disabled={disabled}
+                        variant="ghost"
+                        aria-label={`Stop ${consumer.consumerId}`}
+                        className="h-9 px-2 text-xs"
+                      >
+                        <X size={14} aria-hidden />{" "}
+                        {consumer.consumerId.replace("consumer-", "C")}
+                      </Button>
+                      <Button
+                        onClick={() => onCrashConsumer(consumer.consumerId)}
+                        disabled={disabled}
+                        variant="danger"
+                        aria-label={`Crash ${consumer.consumerId}`}
+                        className="h-9 px-2 text-xs"
+                      >
+                        <TriangleAlert size={14} aria-hidden /> Crash
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))
             )}
-          </section>
-
-          <label className="text-xs text-[#466778]">
-            <span className="mb-2 block kplay-section-title">Latency</span>
-            <input
-              aria-label="Consumer processing latency"
-              className="mb-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
-              min={0}
-              max={3000}
-              step={100}
-              type="number"
-              value={snapshot.processingLatencyMs}
-              disabled={disabled}
-              onChange={(event) =>
-                onUpdateSettings({
-                  processingLatencyMs: Number(event.target.value),
-                })
-              }
-            />
-            <input
-              aria-label="Processing latency slider"
-              className="w-full accent-amber-500"
-              min={0}
-              max={3000}
-              step={100}
-              type="range"
-              value={snapshot.processingLatencyMs}
-              disabled={disabled}
-              onChange={(event) =>
-                onUpdateSettings({
-                  processingLatencyMs: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-
-          <section>
-            <h3 className="mb-2 kplay-section-title">Consumers</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              {snapshot.consumers.length === 0 ? (
-                <span className="rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800">
-                  0 consumers
-                </span>
-              ) : (
-                snapshot.consumers.map((consumer) => (
-                  <div
-                    key={consumer.consumerId}
-                    className="flex items-center gap-1"
-                  >
-                    {consumer.status === "crashed" ? (
-                      <span className="inline-flex h-9 items-center gap-1 rounded-xl border-2 border-rose-500 bg-rose-100 px-2 text-xs font-extrabold text-rose-800">
-                        <TriangleAlert size={14} aria-hidden />{" "}
-                        {consumer.consumerId.replace("consumer-", "C")} crashed
-                      </span>
-                    ) : (
-                      <>
-                        <Button
-                          onClick={() => onStopConsumer(consumer.consumerId)}
-                          disabled={disabled}
-                          variant="ghost"
-                          aria-label={`Stop ${consumer.consumerId}`}
-                          className="h-9 px-2 text-xs"
-                        >
-                          <X size={14} aria-hidden />{" "}
-                          {consumer.consumerId.replace("consumer-", "C")}
-                        </Button>
-                        <Button
-                          onClick={() => onCrashConsumer(consumer.consumerId)}
-                          disabled={disabled}
-                          variant="danger"
-                          aria-label={`Crash ${consumer.consumerId}`}
-                          className="h-9 px-2 text-xs"
-                        >
-                          <TriangleAlert size={14} aria-hidden /> Crash
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-            <p className="mt-3 rounded-2xl border-2 border-emerald-500 bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">
-              Group: {snapshot.consumerGroupId}
-            </p>
-          </section>
-        </div>
-      )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

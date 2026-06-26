@@ -4,6 +4,7 @@ import type {
   ConnectionStatus,
   RunSnapshot,
   RuntimeEvent,
+  ScenarioDefinition,
 } from "@kplay/contracts";
 import { InspectorDrawer } from "./inspector-drawer";
 import { StartRunPanel } from "./start-run-panel";
@@ -14,7 +15,6 @@ describe("playground shell components", () => {
     const onReset = vi.fn();
     render(
       <WorkspaceHeader
-        scenarioTitle="Partitioning"
         run={null}
         connection={connectionStatus({ status: "demo_mode" })}
         disabled={false}
@@ -40,6 +40,7 @@ describe("playground shell components", () => {
         })}
         disabled={false}
         onStartRun={onStartRun}
+        scenario={scenarioFixture}
       />,
     );
 
@@ -49,10 +50,24 @@ describe("playground shell components", () => {
     expect(onStartRun).not.toHaveBeenCalled();
   });
 
+  it("shows selected scenario details before starting a run", () => {
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={vi.fn()}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    expect(screen.queryByText("Partitioning scenario")).not.toBeNull();
+    expect(screen.queryByText("2 partitions")).not.toBeNull();
+    expect(screen.queryByText("Understand partition ownership")).not.toBeNull();
+  });
+
   it("labels Aiven mode before a run exists", () => {
     render(
       <WorkspaceHeader
-        scenarioTitle="Partitioning"
         run={null}
         connection={connectionStatus({
           status: "configuration_missing",
@@ -135,6 +150,24 @@ const eventFixture = {
   type: "message.processing_completed",
   messageId: "message-1",
 } satisfies RuntimeEvent;
+
+const scenarioFixture: ScenarioDefinition = {
+  id: "partitioning",
+  title: "Partitioning scenario",
+  description: "Watch records move through a partitioned topic.",
+  disabled: false,
+  learningObjectives: [
+    "Understand partition ownership",
+    "Connect offsets to committed processing",
+  ],
+  topic: { partitions: 2 },
+  limits: {
+    maxConsumers: 3,
+    maxProduceRate: 10,
+    minProcessingLatencyMs: 0,
+    maxProcessingLatencyMs: 3000,
+  },
+};
 
 const snapshotFixture = {
   runId: "run-1",
