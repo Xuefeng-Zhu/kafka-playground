@@ -82,6 +82,13 @@ export type KafkaRuntimeAdapter = {
   shutdown(): Promise<void>;
 };
 
+export type KafkaRuntimeDiagnostics = {
+  onDisconnectError?: (event: {
+    operation: string;
+    error: ReturnType<typeof sanitizeKafkaError>;
+  }) => void;
+};
+
 export const serverEnvSchema = z.object({
   KAFKA_MODE: z.enum(["demo", "aiven"]).default("demo"),
   AIVEN_KAFKA_BROKERS: z.string().optional().default(""),
@@ -235,7 +242,10 @@ export class DemoKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
 export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
   readonly mode = "aiven" as const;
 
-  constructor(private readonly env: ServerEnv) {}
+  constructor(
+    private readonly env: ServerEnv,
+    private readonly diagnostics: KafkaRuntimeDiagnostics = {},
+  ) {}
 
   async testConnection(): Promise<ConnectionStatus> {
     const missingVariables = getMissingAivenVariables(this.env);
@@ -286,7 +296,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         checkedAt: new Date().toISOString(),
       };
     } finally {
-      await admin?.disconnect().catch(() => undefined);
+      await this.disconnectSafely("connection.admin.disconnect", admin);
     }
   }
 
@@ -303,7 +313,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         ],
       });
     } finally {
-      await admin.disconnect().catch(() => undefined);
+      await this.disconnectSafely("run.admin.disconnect", admin);
     }
   }
 
@@ -340,7 +350,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
           : new Date().toISOString(),
       };
     } finally {
-      await producer.disconnect().catch(() => undefined);
+      await this.disconnectSafely("produce.producer.disconnect", producer);
     }
   }
 
@@ -433,18 +443,36 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       });
       return { status: "failed", steps };
     } finally {
-      await admin.disconnect().catch(() => undefined);
+      await this.disconnectSafely("cleanup.admin.disconnect", admin);
     }
   }
 
   async shutdown() {
     return;
   }
+
+  private async disconnectSafely(
+    operation: string,
+    handle: { disconnect(): Promise<void> } | null,
+  ) {
+    if (!handle) return;
+    try {
+      await handle.disconnect();
+    } catch (error) {
+      this.diagnostics.onDisconnectError?.({
+        operation,
+        error: sanitizeKafkaError(error),
+      });
+    }
+  }
 }
 
-export function createKafkaRuntimeAdapter(env: ServerEnv): KafkaRuntimeAdapter {
+export function createKafkaRuntimeAdapter(
+  env: ServerEnv,
+  diagnostics?: KafkaRuntimeDiagnostics,
+): KafkaRuntimeAdapter {
   return env.KAFKA_MODE === "aiven"
-    ? new AivenKafkaRuntimeAdapter(env)
+    ? new AivenKafkaRuntimeAdapter(env, diagnostics)
     : new DemoKafkaRuntimeAdapter();
 }
 

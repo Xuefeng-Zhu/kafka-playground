@@ -10,6 +10,7 @@ export default defineConfig({
     include: [
       "packages/**/*.test.ts",
       "apps/web/**/*.test.ts",
+      "apps/web/**/*.test.tsx",
       "tests/**/*.test.ts",
     ],
   },

@@ -1,73 +1,53 @@
 import "server-only";
 import type {
-  ConsumerSnapshot,
   KeyStrategy,
   PlaygroundMessage,
-  ProducerStatus,
-  RunSnapshot,
   RuntimeEvent,
-  RunStatus,
 } from "@kplay/contracts";
 import {
   createKafkaRuntimeAdapter,
   type ConsumedMessage,
-  type CreateRunInput,
   type KafkaRuntimeAdapter,
-  type PlaygroundConsumerHandle,
 } from "@kplay/kafka-runtime";
 import {
-  KeyStrategyState,
   SCENARIOS,
   createHeaders,
   createPlaygroundValue,
   createResourceNames,
   createRunId,
-  defaultKeyStrategyForScenario,
-  defaultProcessingLatencyForScenario,
   evaluateScenarioProcessing,
   findScenario,
 } from "@kplay/scenario-engine";
 import { ApiError } from "./api-errors";
 import { getServerEnv } from "./env";
 import { logger } from "./logger";
-import {
-  clearProducerTimer,
-  restartProducerTimer,
-} from "./producer-scheduler";
+import { clearProducerTimer, restartProducerTimer } from "./producer-scheduler";
 import {
   emitRuntimeEvent,
   subscribeToRun,
   type RuntimeSubscriber,
 } from "./runtime-event-hub";
-
-type InternalRun = CreateRunInput & {
-  mode: "demo" | "aiven";
-  status: RunStatus;
-  producerStatus: ProducerStatus;
-  productionRate: number;
-  keyStrategy: KeyStrategy;
-  processingLatencyMs: number;
-  consumers: ConsumerSnapshot[];
-  messages: PlaygroundMessage[];
-  events: RuntimeEvent[];
-  latestPartitionOffsets: Record<string, string>;
-  latestCommittedOffsets: Record<string, string>;
-  messageCounts: Record<string, number>;
-  cleanupStatus: RunSnapshot["cleanupStatus"];
-  sequence: number;
-  keyState: KeyStrategyState;
-  producerTimer: NodeJS.Timeout | null;
-  producerTickInFlight: boolean;
-  producerTimerGeneration: number;
-  processingTimers: Map<string, NodeJS.Timeout>;
-  consumerHandles: Map<string, PlaygroundConsumerHandle>;
-  subscribers: Map<string, RuntimeSubscriber>;
-};
+import {
+  createInternalRun,
+  createRunSnapshot,
+  type InternalRun,
+} from "./playground-runtime-state";
 
 export class PlaygroundRuntime {
   private readonly env = getServerEnv();
   private readonly adapter: KafkaRuntimeAdapter = createKafkaRuntimeAdapter(
     this.env,
+    {
+      onDisconnectError: (event) => {
+        logger.warn(
+          {
+            operation: event.operation,
+            error: event.error,
+          },
+          "Kafka disconnect cleanup failed",
+        );
+      },
+    },
   );
   private activeRun: InternalRun | null = null;
   private shutdownStarted = false;
@@ -101,40 +81,12 @@ export class PlaygroundRuntime {
       prefix: this.env.KAFKA_TOPIC_PREFIX,
       scenarioId,
     });
-    const run: InternalRun = {
+    const run = createInternalRun({
       runId,
-      scenarioId,
       mode: this.adapter.mode,
-      partitionCount: scenario.topic.partitions,
-      topicName: names.topicName,
-      consumerGroupId: names.consumerGroupId,
-      status: "starting",
-      producerStatus: "stopped",
-      productionRate: 1,
-      keyStrategy: defaultKeyStrategyForScenario(scenario.id),
-      processingLatencyMs: defaultProcessingLatencyForScenario(scenario.id),
-      consumers: [],
-      messages: [],
-      events: [],
-      latestPartitionOffsets: {},
-      latestCommittedOffsets: {},
-      messageCounts: {
-        produced: 0,
-        received: 0,
-        processed: 0,
-        committed: 0,
-        failed: 0,
-      },
-      cleanupStatus: "not_requested",
-      sequence: 0,
-      keyState: new KeyStrategyState(),
-      producerTimer: null,
-      producerTickInFlight: false,
-      producerTimerGeneration: 0,
-      processingTimers: new Map(),
-      consumerHandles: new Map(),
-      subscribers: new Map(),
-    };
+      scenario,
+      names,
+    });
     this.activeRun = run;
     this.emit("topic.creating", { message: `Creating topic ${run.topicName}` });
     try {
@@ -159,29 +111,11 @@ export class PlaygroundRuntime {
 
   snapshot(runId: string) {
     const run = this.requireRun(runId);
-    const recentEvents = run.events.slice(-this.env.TIMELINE_DISPLAY_LIMIT);
-    return {
-      runId: run.runId,
-      scenarioId: run.scenarioId,
-      mode: run.mode,
-      status: run.status,
-      topicName: run.topicName,
-      partitionCount: run.partitionCount,
-      consumerLimit: this.consumerLimit(run),
-      consumerGroupId: run.consumerGroupId,
-      producerStatus: run.producerStatus,
-      productionRate: run.productionRate,
-      keyStrategy: run.keyStrategy,
-      processingLatencyMs: run.processingLatencyMs,
-      consumers: run.consumers,
-      latestPartitionOffsets: run.latestPartitionOffsets,
-      latestCommittedOffsets: run.latestCommittedOffsets,
-      messageCounts: run.messageCounts,
-      recentMessages: run.messages.slice(-100),
-      recentEvents,
-      cleanupStatus: run.cleanupStatus,
-      sequence: run.sequence,
-    } satisfies RunSnapshot;
+    return createRunSnapshot(
+      run,
+      this.consumerLimit(run),
+      this.env.TIMELINE_DISPLAY_LIMIT,
+    );
   }
 
   activeSnapshot() {

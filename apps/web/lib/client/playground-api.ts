@@ -1,8 +1,26 @@
 import {
+  connectionStatusSchema,
   runSnapshotSchema,
+  scenarioDefinitionSchema,
+  type ConnectionStatus,
   type KeyStrategy,
   type RunSnapshot,
+  type ScenarioDefinition,
 } from "@kplay/contracts";
+
+export type ClientLoadResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; message: string };
+
+class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -13,9 +31,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ message: response.statusText }));
+    const error = await readErrorBody(response);
     throw new Error(error.message ?? response.statusText);
   }
   return response.json() as Promise<T>;
@@ -23,8 +39,75 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function fetchJson(path: string) {
   const response = await fetch(path);
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const error = await readErrorBody(response);
+    throw new ApiRequestError(
+      error.message ?? response.statusText,
+      response.status,
+    );
+  }
   return response.json() as Promise<unknown>;
+}
+
+export async function loadConnectionStatus(): Promise<
+  ClientLoadResult<ConnectionStatus>
+> {
+  try {
+    return {
+      ok: true,
+      data: connectionStatusSchema.parse(await fetchJson("/api/v1/connection")),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: describeClientLoadError(
+        error,
+        "Unable to load Kafka connection.",
+      ),
+    };
+  }
+}
+
+export async function loadScenarioDefinitions(): Promise<
+  ClientLoadResult<ScenarioDefinition[]>
+> {
+  try {
+    const payload = await fetchJson("/api/v1/scenarios");
+    const scenarios =
+      payload && typeof payload === "object" && "scenarios" in payload
+        ? payload.scenarios
+        : [];
+    return {
+      ok: true,
+      data: scenarioDefinitionSchema.array().parse(scenarios),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: describeClientLoadError(error, "Unable to load scenarios."),
+    };
+  }
+}
+
+export async function loadActiveRunSnapshot(): Promise<
+  ClientLoadResult<RunSnapshot | null>
+> {
+  try {
+    const payload = await fetchJson("/api/v1/runs");
+    const runPayload =
+      payload && typeof payload === "object" && "run" in payload
+        ? payload.run
+        : null;
+    return {
+      ok: true,
+      data: runPayload ? runSnapshotSchema.parse(runPayload) : null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: describeClientLoadError(error, "Unable to load the active run."),
+    };
+  }
 }
 
 export async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
@@ -38,4 +121,30 @@ export async function fetchRunSnapshot(runId: string) {
   const response = await fetch(`/api/v1/runs/${runId}`);
   if (!response.ok) return null;
   return runSnapshotSchema.parse(await response.json());
+}
+
+async function readErrorBody(response: Response) {
+  const payload = await response.json().catch(() => null);
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string"
+  ) {
+    return { message: payload.message };
+  }
+  return { message: response.statusText };
+}
+
+function describeClientLoadError(error: unknown, fallback: string) {
+  if (error instanceof ApiRequestError) {
+    return `${fallback} (${error.status}: ${error.message})`;
+  }
+  if (error instanceof Error && error.name === "ZodError") {
+    return `${fallback} The response payload did not match the expected shape.`;
+  }
+  if (error instanceof Error && error.message) {
+    return `${fallback} ${error.message}`;
+  }
+  return fallback;
 }

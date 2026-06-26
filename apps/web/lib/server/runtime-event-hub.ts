@@ -27,9 +27,10 @@ export function subscribeToRun(
     return () => undefined;
   }
 
-  const missed = lastEventId
-    ? run.events.filter((event) => event.sequence > lastEventId)
-    : [];
+  const missed =
+    lastEventId !== null
+      ? run.events.filter((event) => event.sequence > lastEventId)
+      : [];
   for (const event of missed) {
     if (!enqueueSafely(run, subscriber, event)) {
       return () => undefined;

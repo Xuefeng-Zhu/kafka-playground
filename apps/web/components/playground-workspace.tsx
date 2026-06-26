@@ -3,11 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
-  connectionStatusSchema,
   runSnapshotSchema,
   runtimeEventSchema,
   runtimeEventTypes,
-  scenarioDefinitionSchema,
   type ConnectionStatus,
   type KeyStrategy,
   type RunSnapshot,
@@ -33,8 +31,10 @@ import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-pan
 import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
 import {
   api,
-  fetchJson,
   fetchRunSnapshot,
+  loadActiveRunSnapshot,
+  loadConnectionStatus,
+  loadScenarioDefinitions,
   produceMessage,
 } from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
@@ -83,23 +83,24 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    void fetchJson("/api/v1/connection")
-      .then((payload) => {
-        if (!cancelled) setConnection(connectionStatusSchema.parse(payload));
-      })
-      .catch(() => {
-        if (!cancelled) setConnection(null);
-      });
-    void fetchJson("/api/v1/scenarios")
-      .then((payload) => {
-        const parsed = scenarioDefinitionSchema
-          .array()
-          .parse((payload as { scenarios?: unknown }).scenarios ?? []);
-        if (!cancelled) setScenarios(parsed);
-      })
-      .catch(() => {
-        if (!cancelled) setScenarios([]);
-      });
+    void loadConnectionStatus().then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setConnection(result.data);
+        return;
+      }
+      setConnection(null);
+      setActionError(result.message);
+    });
+    void loadScenarioDefinitions().then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setScenarios(result.data);
+        return;
+      }
+      setScenarios([]);
+      setActionError(result.message);
+    });
     return () => {
       cancelled = true;
     };
@@ -109,18 +110,18 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     dispatch({ type: "clear" });
 
     let cancelled = false;
-    void fetchJson("/api/v1/runs")
-      .then((payload) => {
+    void loadActiveRunSnapshot()
+      .then((result) => {
         if (cancelled) return;
+        if (!result.ok) {
+          setActionError(result.message);
+          return;
+        }
         resetSelection();
         setSelectedTopologyNode(null);
         setInspectorOpen(false);
-        const runPayload =
-          payload && typeof payload === "object" && "run" in payload
-            ? payload.run
-            : null;
-        if (!runPayload) return;
-        const snapshot = runSnapshotSchema.parse(runPayload);
+        const snapshot = result.data;
+        if (!snapshot) return;
         if (snapshot.scenarioId === scenarioId) {
           dispatch({ type: "snapshot", snapshot });
           return;

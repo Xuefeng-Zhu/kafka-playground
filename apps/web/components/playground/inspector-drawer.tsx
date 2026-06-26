@@ -1,6 +1,10 @@
 "use client";
 
-import type { PlaygroundMessage, RunSnapshot, RuntimeEvent } from "@kplay/contracts";
+import type {
+  PlaygroundMessage,
+  RunSnapshot,
+  RuntimeEvent,
+} from "@kplay/contracts";
 import { InspectorPanel } from "@/components/inspector/inspector-panel";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 

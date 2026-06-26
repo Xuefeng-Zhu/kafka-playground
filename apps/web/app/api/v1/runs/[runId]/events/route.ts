@@ -41,7 +41,9 @@ export async function GET(request: Request, context: Context) {
               `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(payload)}\n\n`,
             );
           } else {
-            safeEnqueue(`event: snapshot\ndata: ${JSON.stringify(payload)}\n\n`);
+            safeEnqueue(
+              `event: snapshot\ndata: ${JSON.stringify(payload)}\n\n`,
+            );
           }
         };
         const lastEventId =
