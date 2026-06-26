@@ -153,6 +153,24 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByTestId("ownership-connector-partition-1")).toHaveCount(
     1,
   );
+  const checkpoint = page.getByTestId("scenario-checkpoint-panel");
+  await expect(checkpoint).toContainText(
+    "Why is a consumer idle in this group?",
+  );
+  await checkpoint
+    .getByRole("button", { name: "The producer has paused message creation." })
+    .click();
+  await expect(page.getByTestId("scenario-checkpoint-feedback")).toContainText(
+    "Try again.",
+  );
+  await checkpoint
+    .getByRole("button", {
+      name: "There are more group members than partitions.",
+    })
+    .click();
+  await expect(page.getByTestId("scenario-checkpoint-feedback")).toContainText(
+    "Correct.",
+  );
 
   await page.getByRole("button", { name: "Inspect consumer-1" }).click();
   await expect(page.getByText("Consumer Metrics")).toBeVisible();
