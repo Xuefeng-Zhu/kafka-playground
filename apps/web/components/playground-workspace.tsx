@@ -54,11 +54,13 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isActionPending, setActionPending] = useState(false);
   const [isInspectorOpen, setInspectorOpen] = useState(false);
   const [isTimelineExpanded, setTimelineExpanded] = useState(false);
   const [selectedTopologyNode, setSelectedTopologyNode] =
     useState<TopologySelection | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const actionInFlightRef = useRef(false);
   const {
     selectedMessageId,
     selectedEventSequence,
@@ -302,11 +304,17 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   }
 
   async function runAction(action: () => Promise<void>) {
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
+    setActionPending(true);
     setActionError(null);
     try {
       await action();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Action failed.");
+    } finally {
+      actionInFlightRef.current = false;
+      setActionPending(false);
     }
   }
 
@@ -357,7 +365,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
           </div>
           <Button
             onClick={resetRun}
-            disabled={!run}
+            disabled={!run || isActionPending}
             variant="secondary"
             aria-label="Reset run"
             className="h-9 px-3 sm:px-4"
@@ -413,7 +421,12 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
                   and only displays observed delivery reports and assignments.
                 </p>
                 <ConnectionNotice connection={connection} />
-                <Button className="mt-6" variant="primary" onClick={startRun}>
+                <Button
+                  className="mt-6"
+                  variant="primary"
+                  onClick={startRun}
+                  disabled={isActionPending}
+                >
                   Start scenario run
                 </Button>
               </div>
@@ -443,6 +456,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
             <>
               <ControlsPanel
                 snapshot={run}
+                disabled={isActionPending}
                 onStartProducer={() =>
                   mutate("/producer/start", { method: "POST" })
                 }
@@ -465,6 +479,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
               {!isTimelineExpanded && (
                 <ScenarioInsightPanel
                   snapshot={run}
+                  disabled={isActionPending}
                   onRunAction={runScenarioAction}
                 />
               )}

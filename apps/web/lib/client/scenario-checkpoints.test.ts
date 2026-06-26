@@ -17,6 +17,9 @@ describe("deriveScenarioCheckpoint", () => {
       expect(checkpoint.options.length, scenario.id).toBeGreaterThanOrEqual(2);
       expect(new Set(optionIds).size, scenario.id).toBe(optionIds.length);
       expect(optionIds, scenario.id).toContain(checkpoint.correctOptionId);
+      if (scenario.id !== "partitioning") {
+        expect(checkpoint.id, scenario.id).not.toBe("partitioning-commit-step");
+      }
     }
   });
 

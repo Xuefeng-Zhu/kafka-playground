@@ -517,11 +517,31 @@ export class PlaygroundRuntime {
   subscribe(runId: string, lastEventId: number | null, subscriber: Subscriber) {
     const run = this.requireRun(runId);
     run.subscribers.set(subscriber.id, subscriber);
-    subscriber.enqueue({ type: "snapshot", snapshot: this.snapshot(runId) });
+    try {
+      subscriber.enqueue({ type: "snapshot", snapshot: this.snapshot(runId) });
+    } catch (error) {
+      run.subscribers.delete(subscriber.id);
+      logger.warn(
+        { err: error, runId, subscriberId: subscriber.id },
+        "Runtime event subscriber rejected initial snapshot",
+      );
+      return () => undefined;
+    }
     const missed = lastEventId
       ? run.events.filter((event) => event.sequence > lastEventId)
       : [];
-    for (const event of missed) subscriber.enqueue(event);
+    for (const event of missed) {
+      try {
+        subscriber.enqueue(event);
+      } catch (error) {
+        run.subscribers.delete(subscriber.id);
+        logger.warn(
+          { err: error, runId, subscriberId: subscriber.id },
+          "Runtime event subscriber rejected replayed event",
+        );
+        return () => undefined;
+      }
+    }
     return () => {
       run.subscribers.delete(subscriber.id);
     };
@@ -568,8 +588,17 @@ export class PlaygroundRuntime {
     if (run.events.length > this.env.EVENT_HISTORY_LIMIT) {
       run.events.splice(0, run.events.length - this.env.EVENT_HISTORY_LIMIT);
     }
-    for (const subscriber of run.subscribers.values())
-      subscriber.enqueue(event);
+    for (const subscriber of run.subscribers.values()) {
+      try {
+        subscriber.enqueue(event);
+      } catch (error) {
+        run.subscribers.delete(subscriber.id);
+        logger.warn(
+          { err: error, runId: run.runId, subscriberId: subscriber.id },
+          "Removed failed runtime event subscriber",
+        );
+      }
+    }
   }
 
   private restartProducerTimer(run: InternalRun) {

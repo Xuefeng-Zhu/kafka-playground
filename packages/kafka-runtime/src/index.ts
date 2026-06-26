@@ -4,7 +4,7 @@ import type {
   KeyStrategy,
   KafkaMode,
 } from "@kplay/contracts";
-import type { SASLOptions } from "kafkajs";
+import type { Admin, SASLOptions } from "kafkajs";
 import { z } from "zod";
 
 export type RuntimeEventSink = (event: {
@@ -92,7 +92,6 @@ export const serverEnvSchema = z.object({
     .default("SCRAM-SHA-256"),
   AIVEN_KAFKA_CA_PATH: z.string().optional().default("./certs/ca.pem"),
   KAFKA_TOPIC_PREFIX: z.string().default("kplay"),
-  MAX_ACTIVE_RUNS: z.coerce.number().int().positive().default(1),
   MAX_CONSUMERS_PER_RUN: z.coerce.number().int().positive().max(3).default(3),
   MAX_PRODUCE_RATE: z.coerce.number().int().positive().max(10).default(10),
   EVENT_HISTORY_LIMIT: z.coerce
@@ -253,22 +252,26 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       };
     }
 
-    let admin: any;
+    let admin: Admin | null = null;
     try {
       const kafka = await createAivenKafkaClient(this.env);
       admin = kafka.admin();
       await admin.connect();
-      const topics = (await admin.listTopics().catch(() => null)) as
-        | string[]
-        | null;
+      let topicCount: number | null = null;
+      let topicListError: ConnectionStatus["error"] = null;
+      try {
+        topicCount = (await admin.listTopics()).length;
+      } catch (error) {
+        topicListError = sanitizeKafkaError(error);
+      }
       return {
         status: "connected",
         mode: "aiven",
         maskedBrokerHost: maskBrokerHost(this.env.AIVEN_KAFKA_BROKERS),
         brokerCount: parseBrokerList(this.env.AIVEN_KAFKA_BROKERS).length,
-        topicCount: Array.isArray(topics) ? topics.length : null,
+        topicCount,
         missingVariables: [],
-        error: null,
+        error: topicListError,
         checkedAt: new Date().toISOString(),
       };
     } catch (error) {
@@ -283,7 +286,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         checkedAt: new Date().toISOString(),
       };
     } finally {
-      await admin?.disconnect?.().catch(() => undefined);
+      await admin?.disconnect().catch(() => undefined);
     }
   }
 
@@ -519,15 +522,6 @@ export function stablePartition(key: string, partitionCount: number) {
     hash = (hash * 31 + key.charCodeAt(index)) | 0;
   }
   return Math.abs(hash) % partitionCount;
-}
-
-function normalizeAssignments(
-  assignment: Array<{ topic: string; partition: number }> | undefined,
-) {
-  return (assignment ?? []).map((item) => ({
-    topic: item.topic,
-    partition: Number(item.partition),
-  }));
 }
 
 function normalizeHeaders(

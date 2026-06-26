@@ -13,6 +13,12 @@ describe("deriveScenarioActions", () => {
       expect(
         actions.every((action) => action.label && action.description),
       ).toBe(true);
+      if (scenario.id !== "partitioning") {
+        expect(
+          actions.some((action) => action.id === "produce-keyed-record"),
+          scenario.id,
+        ).toBe(false);
+      }
     }
   });
 

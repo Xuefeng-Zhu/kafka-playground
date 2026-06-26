@@ -26,8 +26,10 @@ export function ControlsPanel({
   onStopConsumer,
   onCrashConsumer,
   onUpdateSettings,
+  disabled = false,
 }: {
   snapshot: RunSnapshot;
+  disabled?: boolean;
   onStartProducer: () => void;
   onPauseProducer: () => void;
   onStopProducer: () => void;
@@ -81,6 +83,7 @@ export function ControlsPanel({
         {snapshot.producerStatus !== "running" && (
           <Button
             onClick={onStartProducer}
+            disabled={disabled}
             variant="primary"
             className="h-9 px-3 text-xs"
           >
@@ -89,13 +92,14 @@ export function ControlsPanel({
         )}
         <Button
           onClick={onPauseProducer}
-          disabled={snapshot.producerStatus !== "running"}
+          disabled={disabled || snapshot.producerStatus !== "running"}
           className="h-9 px-3 text-xs"
         >
           <Pause size={15} aria-hidden /> Pause
         </Button>
         <Button
           onClick={onStopProducer}
+          disabled={disabled}
           variant="danger"
           className="h-9 px-3 text-xs"
         >
@@ -103,6 +107,7 @@ export function ControlsPanel({
         </Button>
         <Button
           onClick={onProduceOne}
+          disabled={disabled}
           variant="primary"
           className="h-9 px-3 text-xs"
         >
@@ -110,7 +115,7 @@ export function ControlsPanel({
         </Button>
         <Button
           onClick={onAddConsumer}
-          disabled={activeConsumerCount >= snapshot.consumerLimit}
+          disabled={disabled || activeConsumerCount >= snapshot.consumerLimit}
           variant="primary"
           className="h-9 px-3 text-xs"
         >
@@ -143,6 +148,7 @@ export function ControlsPanel({
               max={10}
               type="number"
               value={snapshot.productionRate}
+              disabled={disabled}
               onChange={(event) =>
                 onUpdateSettings({ productionRate: Number(event.target.value) })
               }
@@ -154,6 +160,7 @@ export function ControlsPanel({
               max={10}
               type="range"
               value={snapshot.productionRate}
+              disabled={disabled}
               onChange={(event) =>
                 onUpdateSettings({ productionRate: Number(event.target.value) })
               }
@@ -171,6 +178,7 @@ export function ControlsPanel({
               id="key-strategy"
               className="w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
               value={snapshot.keyStrategy.type}
+              disabled={disabled}
               onChange={(event) => {
                 const value = event.target.value;
                 onUpdateSettings({
@@ -195,6 +203,7 @@ export function ControlsPanel({
                 aria-label="Fixed key"
                 className="mt-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
                 value={fixedValue}
+                disabled={disabled}
                 onChange={(event) =>
                   onUpdateSettings({
                     keyStrategy: {
@@ -217,6 +226,7 @@ export function ControlsPanel({
               step={100}
               type="number"
               value={snapshot.processingLatencyMs}
+              disabled={disabled}
               onChange={(event) =>
                 onUpdateSettings({
                   processingLatencyMs: Number(event.target.value),
@@ -231,6 +241,7 @@ export function ControlsPanel({
               step={100}
               type="range"
               value={snapshot.processingLatencyMs}
+              disabled={disabled}
               onChange={(event) =>
                 onUpdateSettings({
                   processingLatencyMs: Number(event.target.value),
@@ -261,6 +272,7 @@ export function ControlsPanel({
                       <>
                         <Button
                           onClick={() => onStopConsumer(consumer.consumerId)}
+                          disabled={disabled}
                           variant="ghost"
                           aria-label={`Stop ${consumer.consumerId}`}
                           className="h-9 px-2 text-xs"
@@ -270,6 +282,7 @@ export function ControlsPanel({
                         </Button>
                         <Button
                           onClick={() => onCrashConsumer(consumer.consumerId)}
+                          disabled={disabled}
                           variant="danger"
                           aria-label={`Crash ${consumer.consumerId}`}
                           className="h-9 px-2 text-xs"

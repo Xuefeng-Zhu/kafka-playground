@@ -223,9 +223,6 @@ export const SCENARIOS: ScenarioDefinition[] = [
 ];
 
 export const PRIMARY_SCENARIO = SCENARIOS[0];
-export const FUTURE_SCENARIOS = SCENARIOS.filter(
-  (scenario) => scenario.disabled,
-);
 
 export function findScenario(scenarioId: string) {
   return SCENARIOS.find((scenario) => scenario.id === scenarioId);

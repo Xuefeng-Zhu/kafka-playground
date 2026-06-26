@@ -26,8 +26,10 @@ const toneClass = {
 export function ScenarioInsightPanel({
   snapshot,
   onRunAction,
+  disabled = false,
 }: {
   snapshot: RunSnapshot;
+  disabled?: boolean;
   onRunAction: (action: ScenarioAction) => void;
 }) {
   const insight = deriveScenarioInsight(snapshot);
@@ -81,7 +83,8 @@ export function ScenarioInsightPanel({
             key={action.id}
             type="button"
             onClick={() => onRunAction(action)}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800 shadow-[3px_3px_0_rgba(15,118,110,0.12)] hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+            disabled={disabled}
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800 shadow-[3px_3px_0_rgba(15,118,110,0.12)] hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
             title={action.description}
           >
             {action.settings ? (

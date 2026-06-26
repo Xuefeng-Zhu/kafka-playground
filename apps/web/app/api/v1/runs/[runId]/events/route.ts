@@ -11,38 +11,64 @@ export async function GET(request: Request, context: Context) {
   try {
     const { runId } = await context.params;
     const encoder = new TextEncoder();
+    let cleanupStream: () => void = () => undefined;
     const stream = new ReadableStream({
       start(controller) {
+        let closed = false;
+        let unsubscribe: (() => void) | null = null;
+        let heartbeat: ReturnType<typeof setInterval> | null = null;
+        const cleanup = () => {
+          if (closed) return;
+          closed = true;
+          if (heartbeat) clearInterval(heartbeat);
+          heartbeat = null;
+          unsubscribe?.();
+          unsubscribe = null;
+        };
+        cleanupStream = cleanup;
+        const safeEnqueue = (chunk: string) => {
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(chunk));
+          } catch {
+            cleanup();
+          }
+        };
         const enqueue = (payload: unknown) => {
           if (typeof payload === "object" && payload && "sequence" in payload) {
             const event = payload as { sequence: number; type: string };
-            controller.enqueue(
-              encoder.encode(
-                `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(payload)}\n\n`,
-              ),
+            safeEnqueue(
+              `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(payload)}\n\n`,
             );
           } else {
-            controller.enqueue(
-              encoder.encode(
-                `event: snapshot\ndata: ${JSON.stringify(payload)}\n\n`,
-              ),
-            );
+            safeEnqueue(`event: snapshot\ndata: ${JSON.stringify(payload)}\n\n`);
           }
         };
         const lastEventId =
           Number(request.headers.get("last-event-id") ?? "0") || null;
-        const unsubscribe = playgroundRuntime.subscribe(runId, lastEventId, {
+        unsubscribe = playgroundRuntime.subscribe(runId, lastEventId, {
           id: crypto.randomUUID(),
           enqueue,
         });
-        const heartbeat = setInterval(() => {
-          controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
+        if (closed) {
+          unsubscribe();
+          unsubscribe = null;
+          return;
+        }
+        heartbeat = setInterval(() => {
+          safeEnqueue(`: heartbeat ${Date.now()}\n\n`);
         }, 15_000);
         request.signal.addEventListener("abort", () => {
-          clearInterval(heartbeat);
-          unsubscribe();
-          controller.close();
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            // The client may already have closed the stream.
+          }
         });
+      },
+      cancel() {
+        cleanupStream();
       },
     });
     return new Response(stream, {

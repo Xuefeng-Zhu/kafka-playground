@@ -9,7 +9,6 @@ vi.mock("./env", () => ({
     AIVEN_KAFKA_SASL_MECHANISM: "SCRAM-SHA-256",
     AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
     KAFKA_TOPIC_PREFIX: "kplay",
-    MAX_ACTIVE_RUNS: 1,
     MAX_CONSUMERS_PER_RUN: 3,
     MAX_PRODUCE_RATE: 10,
     EVENT_HISTORY_LIMIT: 2000,
@@ -68,6 +67,40 @@ describe("PlaygroundRuntime demo integration", () => {
     });
     unsubscribe();
     expect(replayed.length).toBeGreaterThan(1);
+    await runtime.reset(snapshot.runId);
+  });
+
+  it("removes failed SSE subscribers without blocking healthy subscribers", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const snapshot = await runtime.createRun("partitioning");
+    const delivered: unknown[] = [];
+
+    runtime.subscribe(snapshot.runId, null, {
+      id: "broken",
+      enqueue: (event) => {
+        if ("snapshot" in event) return;
+        throw new Error("client stream closed");
+      },
+    });
+    const unsubscribe = runtime.subscribe(snapshot.runId, null, {
+      id: "healthy",
+      enqueue: (event) => delivered.push(event),
+    });
+
+    await runtime.produceOne(snapshot.runId);
+    unsubscribe();
+
+    expect(
+      delivered.some(
+        (event) =>
+          typeof event === "object" &&
+          event !== null &&
+          "type" in event &&
+          event.type === "message.produced",
+      ),
+    ).toBe(true);
+
     await runtime.reset(snapshot.runId);
   });
 
