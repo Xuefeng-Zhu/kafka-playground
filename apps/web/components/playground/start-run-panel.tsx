@@ -12,6 +12,9 @@ export function StartRunPanel({
   disabled: boolean;
   onStartRun: () => void;
 }) {
+  const isStartDisabled =
+    disabled || connection?.status === "configuration_missing";
+
   return (
     <div className="kplay-grid-bg flex h-full items-center justify-center p-10">
       <div className="max-w-xl rounded-3xl border-[3px] border-teal-700 bg-[#fffdf5] p-8 text-center shadow-[12px_12px_0_rgba(15,118,110,0.22)]">
@@ -28,7 +31,7 @@ export function StartRunPanel({
           className="mt-6"
           variant="primary"
           onClick={onStartRun}
-          disabled={disabled}
+          disabled={isStartDisabled}
         >
           Start scenario run
         </Button>

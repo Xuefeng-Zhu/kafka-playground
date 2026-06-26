@@ -17,6 +17,8 @@ export function WorkspaceHeader({
   disabled: boolean;
   onReset: () => void;
 }) {
+  const mode = run?.mode ?? connection?.mode ?? "demo";
+
   return (
     <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b-[3px] border-teal-700 bg-[#fff7ed] px-3 py-3 shadow-[0_6px_0_rgba(15,118,110,0.12)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
       <div className="flex min-w-0 items-center gap-3 sm:gap-4">
@@ -32,7 +34,7 @@ export function WorkspaceHeader({
           </p>
         </div>
         <StatusPill
-          label={run?.mode === "aiven" ? "Aiven" : "Demo mode"}
+          label={mode === "aiven" ? "Aiven" : "Demo mode"}
           tone="sky"
         />
         <div className="hidden h-8 w-px bg-teal-700 lg:block" />
@@ -47,7 +49,7 @@ export function WorkspaceHeader({
             {connectionLabel(connection)}
           </div>
           <div className="mt-0.5 truncate text-xs text-[#466778]">
-            {connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}
+            {connectionHostLabel(connection)}
           </div>
         </div>
         <div className="hidden items-center gap-3 border-r-2 border-teal-700 pr-5 sm:flex">
@@ -101,4 +103,10 @@ function connectionLabel(connection: ConnectionStatus | null) {
     return "Configuration missing";
   if (connection.status === "connection_failed") return "Connection failed";
   return "Disconnected";
+}
+
+function connectionHostLabel(connection: ConnectionStatus | null) {
+  if (connection?.maskedBrokerHost) return connection.maskedBrokerHost;
+  if (connection?.mode === "aiven") return "No broker configured";
+  return "Local demo runtime";
 }

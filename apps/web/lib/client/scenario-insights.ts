@@ -28,7 +28,7 @@ export function deriveScenarioInsight(snapshot: RunSnapshot): ScenarioInsight {
 
   if (snapshot.scenarioId === "fan-out-load-balancing") {
     return {
-      title: "Fan-out / load balance",
+      title: "Consumer-group load balance",
       summary:
         "Compare how one consumer group divides partitions while unkeyed events spread across lanes.",
       metrics: [
