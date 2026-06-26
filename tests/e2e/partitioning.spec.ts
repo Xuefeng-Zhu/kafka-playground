@@ -238,7 +238,9 @@ test("non-primary scenarios are routable and startable", async ({ page }) => {
     .poll(async () => page.getByTestId("scenario-insight-panel").textContent())
     .toMatch(/Records there\s*5/);
   await page.getByRole("button", { name: "Produce one" }).click();
-  await expect(page.getByText("celebrity-user")).toBeVisible();
+  await expect(
+    page.locator("#message-inspector-drawer").getByText("celebrity-user"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Close message inspector" }).click();
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(
