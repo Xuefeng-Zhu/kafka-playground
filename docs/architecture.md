@@ -28,6 +28,31 @@ Both modes return the same contracts. The frontend never switches contracts base
 
 The SSE endpoint sends an initial snapshot, then live events with the event sequence as the SSE ID. `Last-Event-ID` replays missed bounded-history events. Heartbeats keep the connection alive, and abort cleanup removes the subscriber.
 
+## API Surface
+
+The browser talks directly to versioned Next.js Route Handlers under `/api/v1`:
+
+- `GET /api/v1/health`
+- `GET /api/v1/scenarios`
+- `GET /api/v1/connection`
+- `POST /api/v1/connection/test`
+- `GET /api/v1/runs`
+- `POST /api/v1/runs`
+- `GET /api/v1/runs/:runId`
+- `DELETE /api/v1/runs/:runId`
+- `GET /api/v1/runs/:runId/events`
+- `PATCH /api/v1/runs/:runId/settings`
+- `POST /api/v1/runs/:runId/messages`
+- `POST /api/v1/runs/:runId/producer/start`
+- `POST /api/v1/runs/:runId/producer/pause`
+- `POST /api/v1/runs/:runId/producer/stop`
+- `POST /api/v1/runs/:runId/consumers`
+- `DELETE /api/v1/runs/:runId/consumers/:consumerId`
+- `POST /api/v1/runs/:runId/consumers/:consumerId/crash`
+- `POST /api/v1/runs/:runId/reset`
+
+Route Handlers validate request bodies with schemas from `packages/contracts`, return sanitized problem details for errors, and delegate run state changes to `PlaygroundRuntime`.
+
 ## UI Authority
 
 The server is authoritative for run lifecycle, resources, assignments, delivery reports, processing state, and commits. The browser is authoritative only for selection, filters, panel state, theme, and transient animation.
