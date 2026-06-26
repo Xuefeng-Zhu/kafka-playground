@@ -17,18 +17,23 @@ export async function GET(request: Request, context: Context) {
           if (typeof payload === "object" && payload && "sequence" in payload) {
             const event = payload as { sequence: number; type: string };
             controller.enqueue(
-              encoder.encode(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(payload)}\n\n`)
+              encoder.encode(
+                `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(payload)}\n\n`,
+              ),
             );
           } else {
             controller.enqueue(
-              encoder.encode(`event: snapshot\ndata: ${JSON.stringify(payload)}\n\n`)
+              encoder.encode(
+                `event: snapshot\ndata: ${JSON.stringify(payload)}\n\n`,
+              ),
             );
           }
         };
-        const lastEventId = Number(request.headers.get("last-event-id") ?? "0") || null;
+        const lastEventId =
+          Number(request.headers.get("last-event-id") ?? "0") || null;
         const unsubscribe = playgroundRuntime.subscribe(runId, lastEventId, {
           id: crypto.randomUUID(),
-          enqueue
+          enqueue,
         });
         const heartbeat = setInterval(() => {
           controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
@@ -38,7 +43,7 @@ export async function GET(request: Request, context: Context) {
           unsubscribe();
           controller.close();
         });
-      }
+      },
     });
     return new Response(stream, {
       headers: {
@@ -46,8 +51,8 @@ export async function GET(request: Request, context: Context) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
-        "x-request-id": id
-      }
+        "x-request-id": id,
+      },
     });
   } catch (error) {
     return problem(error, id);

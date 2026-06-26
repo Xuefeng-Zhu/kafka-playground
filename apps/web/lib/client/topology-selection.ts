@@ -3,4 +3,3 @@ export type TopologySelection =
   | { type: "topic" }
   | { type: "partition"; partition: number }
   | { type: "consumer"; consumerId: string };
-

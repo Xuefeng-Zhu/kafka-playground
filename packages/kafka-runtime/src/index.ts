@@ -2,7 +2,7 @@ import type {
   CleanupResult,
   ConnectionStatus,
   KeyStrategy,
-  KafkaMode
+  KafkaMode,
 } from "@kplay/contracts";
 import type { SASLOptions } from "kafkajs";
 import { z } from "zod";
@@ -76,30 +76,39 @@ export type KafkaRuntimeAdapter = {
   createConsumer(
     run: CreateRunInput,
     consumerId: string,
-    callbacks: PlaygroundConsumerCallbacks
+    callbacks: PlaygroundConsumerCallbacks,
   ): Promise<PlaygroundConsumerHandle>;
   deleteRunResources(input: CreateRunInput): Promise<CleanupResult>;
   shutdown(): Promise<void>;
 };
 
-export const serverEnvSchema = z
-  .object({
-    KAFKA_MODE: z.enum(["demo", "aiven"]).default("demo"),
-    AIVEN_KAFKA_BROKERS: z.string().optional().default(""),
-    AIVEN_KAFKA_USERNAME: z.string().optional().default(""),
-    AIVEN_KAFKA_PASSWORD: z.string().optional().default(""),
-    AIVEN_KAFKA_SASL_MECHANISM: z
-      .enum(["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"])
-      .default("SCRAM-SHA-256"),
-    AIVEN_KAFKA_CA_PATH: z.string().optional().default("./certs/ca.pem"),
-    KAFKA_TOPIC_PREFIX: z.string().default("kplay"),
-    MAX_ACTIVE_RUNS: z.coerce.number().int().positive().default(1),
-    MAX_CONSUMERS_PER_RUN: z.coerce.number().int().positive().max(3).default(3),
-    MAX_PRODUCE_RATE: z.coerce.number().int().positive().max(10).default(10),
-    EVENT_HISTORY_LIMIT: z.coerce.number().int().positive().max(5000).default(2000),
-    TIMELINE_DISPLAY_LIMIT: z.coerce.number().int().positive().max(2000).default(1000),
-    LOG_MESSAGE_PAYLOADS: z.coerce.boolean().default(false)
-  });
+export const serverEnvSchema = z.object({
+  KAFKA_MODE: z.enum(["demo", "aiven"]).default("demo"),
+  AIVEN_KAFKA_BROKERS: z.string().optional().default(""),
+  AIVEN_KAFKA_USERNAME: z.string().optional().default(""),
+  AIVEN_KAFKA_PASSWORD: z.string().optional().default(""),
+  AIVEN_KAFKA_SASL_MECHANISM: z
+    .enum(["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"])
+    .default("SCRAM-SHA-256"),
+  AIVEN_KAFKA_CA_PATH: z.string().optional().default("./certs/ca.pem"),
+  KAFKA_TOPIC_PREFIX: z.string().default("kplay"),
+  MAX_ACTIVE_RUNS: z.coerce.number().int().positive().default(1),
+  MAX_CONSUMERS_PER_RUN: z.coerce.number().int().positive().max(3).default(3),
+  MAX_PRODUCE_RATE: z.coerce.number().int().positive().max(10).default(10),
+  EVENT_HISTORY_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(5000)
+    .default(2000),
+  TIMELINE_DISPLAY_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(2000)
+    .default(1000),
+  LOG_MESSAGE_PAYLOADS: z.coerce.boolean().default(false),
+});
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
@@ -128,7 +137,10 @@ export function sanitizeKafkaError(error: unknown) {
   if (error instanceof Error) {
     return {
       code: error.name || "KAFKA_ERROR",
-      message: error.message.replace(/(password|username|sasl|secret)=\S+/gi, "$1=REDACTED")
+      message: error.message.replace(
+        /(password|username|sasl|secret)=\S+/gi,
+        "$1=REDACTED",
+      ),
     };
   }
   return { code: "KAFKA_ERROR", message: "Kafka operation failed." };
@@ -148,12 +160,15 @@ export class DemoKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       topicCount: this.offsets.size,
       missingVariables: [],
       error: null,
-      checkedAt: new Date().toISOString()
+      checkedAt: new Date().toISOString(),
     };
   }
 
   async createRun(input: CreateRunInput) {
-    this.offsets.set(input.topicName, Array.from({ length: input.partitionCount }, () => 0));
+    this.offsets.set(
+      input.topicName,
+      Array.from({ length: input.partitionCount }, () => 0),
+    );
   }
 
   async produce(input: ProduceInput): Promise<ProduceResult> {
@@ -169,14 +184,14 @@ export class DemoKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       topic: input.topicName,
       partition,
       offset: String(offset),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
   async createConsumer(
     _run: CreateRunInput,
     consumerId: string,
-    _callbacks: PlaygroundConsumerCallbacks
+    _callbacks: PlaygroundConsumerCallbacks,
   ): Promise<PlaygroundConsumerHandle> {
     return {
       consumerId,
@@ -185,7 +200,7 @@ export class DemoKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       },
       async disconnect() {
         return;
-      }
+      },
     };
   }
 
@@ -197,8 +212,12 @@ export class DemoKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       steps: [
         { name: "producer.disconnect", status: "completed" },
         { name: "consumer.disconnect", status: "completed" },
-        { name: "topic.delete", status: "completed", resourceName: input.topicName }
-      ]
+        {
+          name: "topic.delete",
+          status: "completed",
+          resourceName: input.topicName,
+        },
+      ],
     };
   }
 
@@ -230,7 +249,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         topicCount: null,
         missingVariables,
         error: null,
-        checkedAt: new Date().toISOString()
+        checkedAt: new Date().toISOString(),
       };
     }
 
@@ -239,7 +258,9 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       const kafka = await createAivenKafkaClient(this.env);
       admin = kafka.admin();
       await admin.connect();
-      const topics = (await admin.listTopics().catch(() => null)) as string[] | null;
+      const topics = (await admin.listTopics().catch(() => null)) as
+        | string[]
+        | null;
       return {
         status: "connected",
         mode: "aiven",
@@ -248,7 +269,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         topicCount: Array.isArray(topics) ? topics.length : null,
         missingVariables: [],
         error: null,
-        checkedAt: new Date().toISOString()
+        checkedAt: new Date().toISOString(),
       };
     } catch (error) {
       return {
@@ -259,7 +280,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         topicCount: null,
         missingVariables: [],
         error: sanitizeKafkaError(error),
-        checkedAt: new Date().toISOString()
+        checkedAt: new Date().toISOString(),
       };
     } finally {
       await admin?.disconnect?.().catch(() => undefined);
@@ -274,7 +295,9 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       await admin.connect();
       await admin.createTopics({
         waitForLeaders: true,
-        topics: [{ topic: input.topicName, numPartitions: input.partitionCount }]
+        topics: [
+          { topic: input.topicName, numPartitions: input.partitionCount },
+        ],
       });
     } finally {
       await admin.disconnect().catch(() => undefined);
@@ -293,21 +316,25 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
           {
             key: input.key ?? undefined,
             value: JSON.stringify(input.value),
-            headers: input.headers
-          }
-        ]
+            headers: input.headers,
+          },
+        ],
       });
       const report = Array.isArray(result) ? result[0] : result;
       const partition = report?.partition;
       const offset = report?.offset ?? report?.baseOffset;
       if (partition === undefined || offset === undefined) {
-        throw new Error("Kafka delivery report did not include a partition and offset.");
+        throw new Error(
+          "Kafka delivery report did not include a partition and offset.",
+        );
       }
       return {
         topic: report.topicName ?? input.topicName,
         partition: Number(partition),
         offset: String(offset),
-        timestamp: report.timestamp ? String(report.timestamp) : new Date().toISOString()
+        timestamp: report.timestamp
+          ? String(report.timestamp)
+          : new Date().toISOString(),
       };
     } finally {
       await producer.disconnect().catch(() => undefined);
@@ -317,18 +344,21 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
   async createConsumer(
     run: CreateRunInput,
     consumerId: string,
-    callbacks: PlaygroundConsumerCallbacks
+    callbacks: PlaygroundConsumerCallbacks,
   ): Promise<PlaygroundConsumerHandle> {
     assertAivenConfigured(this.env);
     const kafka = await createAivenKafkaClient(this.env, consumerId);
     const consumer = kafka.consumer({
       groupId: run.consumerGroupId,
-      allowAutoTopicCreation: false
+      allowAutoTopicCreation: false,
     });
     consumer.on(consumer.events.GROUP_JOIN, (event) => {
       const partitions = event.payload.memberAssignment[run.topicName] ?? [];
       void callbacks.onAssigned(
-        partitions.map((partition: number) => ({ topic: run.topicName, partition }))
+        partitions.map((partition: number) => ({
+          topic: run.topicName,
+          partition,
+        })),
       );
     });
     consumer.on(consumer.events.REBALANCING, () => {
@@ -337,27 +367,29 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     consumer.on(consumer.events.CRASH, (event) => {
       void callbacks.onError({
         code: "CONSUMER_CRASH",
-        message: event.payload.error.message
+        message: event.payload.error.message,
       });
     });
     await consumer.connect();
     await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
-    void consumer.run({
-      autoCommit: false,
-      eachMessage: async ({ topic, partition, message }) => {
-        await callbacks.onMessage({
-          topic,
-          partition,
-          offset: String(message.offset),
-          key: bufferToString(message.key),
-          value: parseJsonValue(message.value),
-          headers: normalizeHeaders(message.headers),
-          timestamp: message.timestamp ? String(message.timestamp) : null
-        });
-      }
-    }).catch((error: unknown) => {
-      void callbacks.onError(sanitizeKafkaError(error));
-    });
+    void consumer
+      .run({
+        autoCommit: false,
+        eachMessage: async ({ topic, partition, message }) => {
+          await callbacks.onMessage({
+            topic,
+            partition,
+            offset: String(message.offset),
+            key: bufferToString(message.key),
+            value: parseJsonValue(message.value),
+            headers: normalizeHeaders(message.headers),
+            timestamp: message.timestamp ? String(message.timestamp) : null,
+          });
+        },
+      })
+      .catch((error: unknown) => {
+        void callbacks.onError(sanitizeKafkaError(error));
+      });
     return {
       consumerId,
       async commit(input) {
@@ -365,13 +397,13 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
           {
             topic: input.topic,
             partition: input.partition,
-            offset: input.offset
-          }
+            offset: input.offset,
+          },
         ]);
       },
       async disconnect() {
         await consumer.disconnect();
-      }
+      },
     };
   }
 
@@ -383,14 +415,18 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     try {
       await admin.connect();
       await admin.deleteTopics({ topics: [input.topicName] });
-      steps.push({ name: "topic.delete", status: "requested", resourceName: input.topicName });
+      steps.push({
+        name: "topic.delete",
+        status: "requested",
+        resourceName: input.topicName,
+      });
       return { status: "requested", steps };
     } catch (error) {
       steps.push({
         name: "topic.delete",
         status: "failed",
         resourceName: input.topicName,
-        message: sanitizeKafkaError(error).message
+        message: sanitizeKafkaError(error).message,
       });
       return { status: "failed", steps };
     } finally {
@@ -420,34 +456,37 @@ function getMissingAivenVariables(env: ServerEnv) {
 function assertAivenConfigured(env: ServerEnv) {
   const missing = getMissingAivenVariables(env);
   if (missing.length > 0) {
-    throw new Error(`Missing required Aiven configuration: ${missing.join(", ")}`);
+    throw new Error(
+      `Missing required Aiven configuration: ${missing.join(", ")}`,
+    );
   }
 }
 
-async function createAivenKafkaClient(env: ServerEnv, clientId = "kafka-visual-playground") {
-  const [{ Kafka, logLevel }] = await Promise.all([
-    import("kafkajs"),
-  ]);
+async function createAivenKafkaClient(
+  env: ServerEnv,
+  clientId = "kafka-visual-playground",
+) {
+  const [{ Kafka, logLevel }] = await Promise.all([import("kafkajs")]);
   const ca = await readCaCertificate(env.AIVEN_KAFKA_CA_PATH);
   return new Kafka({
     clientId,
     brokers: parseBrokerList(env.AIVEN_KAFKA_BROKERS),
     ssl: { ca: [ca] },
     sasl: createSaslOptions(env),
-    logLevel: logLevel.NOTHING
+    logLevel: logLevel.NOTHING,
   });
 }
 
 async function readCaCertificate(caPath: string) {
   const [{ readFile }, path] = await Promise.all([
     import("node:fs/promises"),
-    import("node:path")
+    import("node:path"),
   ]);
   const candidates = path.isAbsolute(caPath)
     ? [caPath]
     : [
         path.resolve(process.cwd(), caPath),
-        path.resolve(process.cwd(), "../..", caPath)
+        path.resolve(process.cwd(), "../..", caPath),
       ];
   let lastError: unknown;
   for (const candidate of candidates) {
@@ -463,7 +502,7 @@ async function readCaCertificate(caPath: string) {
 function createSaslOptions(env: ServerEnv): SASLOptions {
   const credentials = {
     username: env.AIVEN_KAFKA_USERNAME,
-    password: env.AIVEN_KAFKA_PASSWORD
+    password: env.AIVEN_KAFKA_PASSWORD,
   };
   if (env.AIVEN_KAFKA_SASL_MECHANISM === "PLAIN") {
     return { mechanism: "plain", ...credentials };
@@ -483,16 +522,18 @@ export function stablePartition(key: string, partitionCount: number) {
 }
 
 function normalizeAssignments(
-  assignment: Array<{ topic: string; partition: number }> | undefined
+  assignment: Array<{ topic: string; partition: number }> | undefined,
 ) {
   return (assignment ?? []).map((item) => ({
     topic: item.topic,
-    partition: Number(item.partition)
+    partition: Number(item.partition),
   }));
 }
 
 function normalizeHeaders(
-  headers: Record<string, Buffer | string | Array<Buffer | string> | undefined> | undefined
+  headers:
+    | Record<string, Buffer | string | Array<Buffer | string> | undefined>
+    | undefined,
 ) {
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers ?? {})) {

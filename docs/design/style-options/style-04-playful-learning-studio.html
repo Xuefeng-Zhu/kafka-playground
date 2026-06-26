@@ -1,6 +1,328 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Style 04 Playful Learning Studio</title><style>
-*{box-sizing:border-box}body{margin:0}.mock-caption{width:min(1500px,calc(100vw - 32px));margin:18px auto 10px;padding:10px 12px;border-radius:14px;display:flex;gap:10px;align-items:center}.mock-caption b{letter-spacing:.12em;font-size:12px}.dot{width:9px;height:9px;border-radius:50%}.mock-shell{width:min(1500px,calc(100vw - 32px));height:940px;margin:0 auto 34px;overflow:hidden}.topbar{height:68px;display:flex;align-items:center;gap:14px;padding:0 18px}.brand{display:flex;align-items:center;gap:12px;min-width:320px}.mark{width:38px;height:38px;display:grid;place-items:center}.brand h1{font-size:18px;margin:0}.brand p{margin:2px 0 0;font-size:12px}.spacer{margin-left:auto}.pill{display:inline-flex;align-items:center;white-space:nowrap;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800}.panel{border-radius:18px;padding:16px}.kicker{margin:0 0 12px;font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}.muted{line-height:1.55}.mono{font-family:"SFMono-Regular","Cascadia Code",Menlo,monospace}.btn{border:0;border-radius:12px;padding:10px 13px;font-weight:850}.map-node,.lane,.consumer,.event{border-radius:16px;padding:12px}.offsets{display:flex;gap:7px;margin-top:10px}.offset{min-width:38px;height:34px;border-radius:10px;display:grid;place-items:center;font-family:"SFMono-Regular","Cascadia Code",Menlo,monospace;font-size:11px}.grid{display:grid;min-height:0;height:calc(100% - 68px)}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Style 04 Playful Learning Studio</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      .mock-caption {
+        width: min(1500px, calc(100vw - 32px));
+        margin: 18px auto 10px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .mock-caption b {
+        letter-spacing: 0.12em;
+        font-size: 12px;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+      .mock-shell {
+        width: min(1500px, calc(100vw - 32px));
+        height: 940px;
+        margin: 0 auto 34px;
+        overflow: hidden;
+      }
+      .topbar {
+        height: 68px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 18px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 320px;
+      }
+      .mark {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+      }
+      .brand h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      .brand p {
+        margin: 2px 0 0;
+        font-size: 12px;
+      }
+      .spacer {
+        margin-left: auto;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        white-space: nowrap;
+        border-radius: 999px;
+        padding: 7px 11px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .panel {
+        border-radius: 18px;
+        padding: 16px;
+      }
+      .kicker {
+        margin: 0 0 12px;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      .muted {
+        line-height: 1.55;
+      }
+      .mono {
+        font-family: "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+      }
+      .btn {
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 13px;
+        font-weight: 850;
+      }
+      .map-node,
+      .lane,
+      .consumer,
+      .event {
+        border-radius: 16px;
+        padding: 12px;
+      }
+      .offsets {
+        display: flex;
+        gap: 7px;
+        margin-top: 10px;
+      }
+      .offset {
+        min-width: 38px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        font-family: "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+        font-size: 11px;
+      }
+      .grid {
+        display: grid;
+        min-height: 0;
+        height: calc(100% - 68px);
+      }
 
-
-:root{color-scheme:light;font-family:"Nunito Sans","Aptos","Segoe UI",system-ui,sans-serif}body{background:linear-gradient(135deg,#fff7ed,#ecfeff);color:#123047}.mock-caption,.mock-shell{border:3px solid #0f766e;background:#fffbeb;box-shadow:12px 12px 0 #0f766e}.dot{background:#fb7185}.topbar{background:#fff7ed;border-bottom:3px solid #0f766e}.mark{border:3px solid #0f766e;border-radius:18px;background:#fde68a;color:#0f766e}.brand p,.muted{color:#466778}.pill{border:2px solid #0f766e;background:#ccfbf1;color:#115e59}.pill.good{background:#dcfce7;color:#166534}.grid{grid-template-columns:350px 1fr 320px;background:#fffdf5}.lesson{padding:20px;border-right:3px solid #0f766e;background:#fff7ed}.stage{padding:24px;background:radial-gradient(circle,#bae6fd 2px,transparent 3px),#f8fafc;background-size:28px 28px}.coach{padding:20px;border-left:3px solid #0f766e;background:#ecfeff}.panel,.map-node,.lane,.consumer,.event{border:3px solid #0f766e;background:#fff;border-radius:24px}.map-node{box-shadow:8px 8px 0 #99f6e4}.diagram{display:grid;grid-template-columns:170px 1fr 210px;align-items:center;gap:24px;margin-top:72px}.lane{margin-top:12px}.offset{border:2px solid #0f766e;background:#ccfbf1;color:#115e59}.offset.hot{background:#fb7185;color:#fff;border-color:#be123c;font-weight:900}.consumer{margin-top:10px;background:#dcfce7}.btn{background:#0f766e;color:white}.kicker{color:#0f766e}.quiz button{display:block;width:100%;margin-top:8px;text-align:left}.quiz .right{background:#dcfce7;color:#166534}
-</style></head><body><div class="mock-caption"><span class="dot"></span><b>STYLE 04 · PLAYFUL LEARNING STUDIO</b><span>Friendly course-like visual style for beginners.</span></div><div class="mock-shell"><header class="topbar"><div class="brand"><div class="mark">★</div><div><h1>Kafka Learning Studio</h1><p>playful guided style</p></div></div><span class="pill good">Beginner mode</span><span class="spacer"></span><button class="btn">Start guided run</button></header><main class="grid"><aside class="lesson"><section class="panel"><p class="kicker">Today’s mission</p><h2>Follow one message through Kafka</h2><p class="muted">Friendly, colorful, course-like. Best for onboarding and classrooms.</p></section><section class="panel" style="margin-top:14px"><p class="kicker">Steps</p><p>1 Produce → 2 Partition → 3 Consume → 4 Commit</p></section></aside><section class="stage"><p class="kicker">Interactive story canvas</p><div class="diagram"><section class="map-node"><h2>Producer</h2><p class="muted">key user-1</p></section><section class="map-node"><h2>Topic log</h2><div class="lane">Partition 0<div class="offsets"><span class="offset">102</span><span class="offset">103</span><span class="offset hot">105</span><span class="offset">106</span></div></div><div class="lane">Partition 1<div class="offsets"><span class="offset">81</span><span class="offset">82</span><span class="offset">83</span></div></div></section><section class="map-node"><h2>Consumer 1</h2><p class="muted">gets P0 offset 105</p></section></div><section class="panel" style="margin-top:40px"><h3>Coach note</h3><p class="muted">Same key keeps a user’s events in the same ordered lane.</p></section></section><aside class="coach"><section class="panel quiz"><p class="kicker">Checkpoint</p><h3>Why is C3 idle?</h3><button class="btn">It crashed</button><button class="btn right">Only 2 partitions exist</button><button class="btn">Producer stopped</button></section><section class="panel" style="margin-top:14px"><p class="kicker">Try next</p><button class="btn">Use random keys</button></section></aside></main></div></body></html>
+      :root {
+        color-scheme: light;
+        font-family: "Nunito Sans", "Aptos", "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        background: linear-gradient(135deg, #fff7ed, #ecfeff);
+        color: #123047;
+      }
+      .mock-caption,
+      .mock-shell {
+        border: 3px solid #0f766e;
+        background: #fffbeb;
+        box-shadow: 12px 12px 0 #0f766e;
+      }
+      .dot {
+        background: #fb7185;
+      }
+      .topbar {
+        background: #fff7ed;
+        border-bottom: 3px solid #0f766e;
+      }
+      .mark {
+        border: 3px solid #0f766e;
+        border-radius: 18px;
+        background: #fde68a;
+        color: #0f766e;
+      }
+      .brand p,
+      .muted {
+        color: #466778;
+      }
+      .pill {
+        border: 2px solid #0f766e;
+        background: #ccfbf1;
+        color: #115e59;
+      }
+      .pill.good {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .grid {
+        grid-template-columns: 350px 1fr 320px;
+        background: #fffdf5;
+      }
+      .lesson {
+        padding: 20px;
+        border-right: 3px solid #0f766e;
+        background: #fff7ed;
+      }
+      .stage {
+        padding: 24px;
+        background:
+          radial-gradient(circle, #bae6fd 2px, transparent 3px), #f8fafc;
+        background-size: 28px 28px;
+      }
+      .coach {
+        padding: 20px;
+        border-left: 3px solid #0f766e;
+        background: #ecfeff;
+      }
+      .panel,
+      .map-node,
+      .lane,
+      .consumer,
+      .event {
+        border: 3px solid #0f766e;
+        background: #fff;
+        border-radius: 24px;
+      }
+      .map-node {
+        box-shadow: 8px 8px 0 #99f6e4;
+      }
+      .diagram {
+        display: grid;
+        grid-template-columns: 170px 1fr 210px;
+        align-items: center;
+        gap: 24px;
+        margin-top: 72px;
+      }
+      .lane {
+        margin-top: 12px;
+      }
+      .offset {
+        border: 2px solid #0f766e;
+        background: #ccfbf1;
+        color: #115e59;
+      }
+      .offset.hot {
+        background: #fb7185;
+        color: #fff;
+        border-color: #be123c;
+        font-weight: 900;
+      }
+      .consumer {
+        margin-top: 10px;
+        background: #dcfce7;
+      }
+      .btn {
+        background: #0f766e;
+        color: white;
+      }
+      .kicker {
+        color: #0f766e;
+      }
+      .quiz button {
+        display: block;
+        width: 100%;
+        margin-top: 8px;
+        text-align: left;
+      }
+      .quiz .right {
+        background: #dcfce7;
+        color: #166534;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mock-caption">
+      <span class="dot"></span><b>STYLE 04 · PLAYFUL LEARNING STUDIO</b
+      ><span>Friendly course-like visual style for beginners.</span>
+    </div>
+    <div class="mock-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">★</div>
+          <div>
+            <h1>Kafka Learning Studio</h1>
+            <p>playful guided style</p>
+          </div>
+        </div>
+        <span class="pill good">Beginner mode</span><span class="spacer"></span
+        ><button class="btn">Start guided run</button>
+      </header>
+      <main class="grid">
+        <aside class="lesson">
+          <section class="panel">
+            <p class="kicker">Today’s mission</p>
+            <h2>Follow one message through Kafka</h2>
+            <p class="muted">
+              Friendly, colorful, course-like. Best for onboarding and
+              classrooms.
+            </p>
+          </section>
+          <section class="panel" style="margin-top: 14px">
+            <p class="kicker">Steps</p>
+            <p>1 Produce → 2 Partition → 3 Consume → 4 Commit</p>
+          </section>
+        </aside>
+        <section class="stage">
+          <p class="kicker">Interactive story canvas</p>
+          <div class="diagram">
+            <section class="map-node">
+              <h2>Producer</h2>
+              <p class="muted">key user-1</p>
+            </section>
+            <section class="map-node">
+              <h2>Topic log</h2>
+              <div class="lane">
+                Partition 0
+                <div class="offsets">
+                  <span class="offset">102</span><span class="offset">103</span
+                  ><span class="offset hot">105</span
+                  ><span class="offset">106</span>
+                </div>
+              </div>
+              <div class="lane">
+                Partition 1
+                <div class="offsets">
+                  <span class="offset">81</span><span class="offset">82</span
+                  ><span class="offset">83</span>
+                </div>
+              </div>
+            </section>
+            <section class="map-node">
+              <h2>Consumer 1</h2>
+              <p class="muted">gets P0 offset 105</p>
+            </section>
+          </div>
+          <section class="panel" style="margin-top: 40px">
+            <h3>Coach note</h3>
+            <p class="muted">
+              Same key keeps a user’s events in the same ordered lane.
+            </p>
+          </section>
+        </section>
+        <aside class="coach">
+          <section class="panel quiz">
+            <p class="kicker">Checkpoint</p>
+            <h3>Why is C3 idle?</h3>
+            <button class="btn">It crashed</button
+            ><button class="btn right">Only 2 partitions exist</button
+            ><button class="btn">Producer stopped</button>
+          </section>
+          <section class="panel" style="margin-top: 14px">
+            <p class="kicker">Try next</p>
+            <button class="btn">Use random keys</button>
+          </section>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>

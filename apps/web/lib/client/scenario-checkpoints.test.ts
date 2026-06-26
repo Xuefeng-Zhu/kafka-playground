@@ -147,6 +147,7 @@ function snapshot(overrides: Partial<RunSnapshot>): RunSnapshot {
     status: "running",
     topicName: "kplay.test",
     partitionCount: 2,
+    consumerLimit: 3,
     consumerGroupId: "kplay.test.workers",
     producerStatus: "stopped",
     productionRate: 1,

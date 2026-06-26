@@ -110,7 +110,7 @@ export function ControlsPanel({
         </Button>
         <Button
           onClick={onAddConsumer}
-          disabled={activeConsumerCount >= 3}
+          disabled={activeConsumerCount >= snapshot.consumerLimit}
           variant="primary"
           className="h-9 px-3 text-xs"
         >

@@ -2,7 +2,7 @@ import {
   loadServerEnv,
   maskBrokerHost,
   parseBrokerList,
-  sanitizeKafkaError
+  sanitizeKafkaError,
 } from "@kplay/kafka-runtime";
 
 const confirm = process.argv.includes("--confirm");
@@ -20,13 +20,16 @@ async function main() {
   const missing = [
     env.AIVEN_KAFKA_BROKERS ? null : "AIVEN_KAFKA_BROKERS",
     env.AIVEN_KAFKA_USERNAME ? null : "AIVEN_KAFKA_USERNAME",
-    env.AIVEN_KAFKA_PASSWORD ? null : "AIVEN_KAFKA_PASSWORD"
+    env.AIVEN_KAFKA_PASSWORD ? null : "AIVEN_KAFKA_PASSWORD",
   ].filter(Boolean);
   if (missing.length > 0) {
-    throw new Error(`Missing required Aiven configuration: ${missing.join(", ")}`);
+    throw new Error(
+      `Missing required Aiven configuration: ${missing.join(", ")}`,
+    );
   }
   const kafka = await import("@confluentinc/kafka-javascript");
-  const Kafka = (kafka as any).KafkaJS?.Kafka ?? (kafka as any).default?.KafkaJS?.Kafka;
+  const Kafka =
+    (kafka as any).KafkaJS?.Kafka ?? (kafka as any).default?.KafkaJS?.Kafka;
   if (!Kafka) throw new Error("Confluent KafkaJS promise API is unavailable.");
   const admin = new Kafka().admin({
     "bootstrap.servers": parseBrokerList(env.AIVEN_KAFKA_BROKERS).join(","),
@@ -34,12 +37,14 @@ async function main() {
     "sasl.mechanisms": env.AIVEN_KAFKA_SASL_MECHANISM,
     "sasl.username": env.AIVEN_KAFKA_USERNAME,
     "sasl.password": env.AIVEN_KAFKA_PASSWORD,
-    "ssl.ca.location": env.AIVEN_KAFKA_CA_PATH
+    "ssl.ca.location": env.AIVEN_KAFKA_CA_PATH,
   });
   try {
     await admin.connect();
     const topics = (await admin.listTopics?.()) as string[];
-    const matches = topics.filter((topic) => topic.startsWith(`${env.KAFKA_TOPIC_PREFIX}.`));
+    const matches = topics.filter((topic) =>
+      topic.startsWith(`${env.KAFKA_TOPIC_PREFIX}.`),
+    );
     console.log(`Connected to ${maskBrokerHost(env.AIVEN_KAFKA_BROKERS)}.`);
     if (matches.length === 0) {
       console.log("No matching playground topics found.");
@@ -48,7 +53,9 @@ async function main() {
     console.log(`Matching topics (${matches.length}):`);
     for (const topic of matches) console.log(`- ${topic}`);
     if (!confirm) {
-      console.log("Dry run only. Re-run with --confirm to delete these topics.");
+      console.log(
+        "Dry run only. Re-run with --confirm to delete these topics.",
+      );
       return;
     }
     for (const topic of matches) {

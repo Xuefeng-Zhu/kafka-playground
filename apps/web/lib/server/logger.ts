@@ -10,8 +10,8 @@ export const logger = pino({
       "*.password",
       "*.username",
       "*.sasl",
-      "*.headers.authorization"
+      "*.headers.authorization",
     ],
-    censor: "[REDACTED]"
-  }
+    censor: "[REDACTED]",
+  },
 });

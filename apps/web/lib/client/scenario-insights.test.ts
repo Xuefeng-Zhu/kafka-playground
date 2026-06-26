@@ -5,8 +5,12 @@ import { deriveScenarioInsight } from "./scenario-insights";
 
 describe("deriveScenarioInsight", () => {
   it("provides scenario-specific insight copy for every non-primary scenario", () => {
-    for (const scenario of SCENARIOS.filter((item) => item.id !== "partitioning")) {
-      const insight = deriveScenarioInsight(snapshot({ scenarioId: scenario.id }));
+    for (const scenario of SCENARIOS.filter(
+      (item) => item.id !== "partitioning",
+    )) {
+      const insight = deriveScenarioInsight(
+        snapshot({ scenarioId: scenario.id }),
+      );
       expect(insight.title, scenario.id).not.toBe("Partitioning run");
       expect(insight.summary, scenario.id).toBeTruthy();
       expect(insight.metrics.length, scenario.id).toBeGreaterThan(0);
@@ -19,36 +23,62 @@ describe("deriveScenarioInsight", () => {
       snapshot({
         scenarioId: "hot-partitions-key-skew",
         keyStrategy: { type: "fixed", value: "celebrity-user" },
-        messageCounts: { produced: 4, received: 0, processed: 0, committed: 0, failed: 0, "0": 1, "2": 3 }
-      })
+        messageCounts: {
+          produced: 4,
+          received: 0,
+          processed: 0,
+          committed: 0,
+          failed: 0,
+          "0": 1,
+          "2": 3,
+        },
+      }),
     );
 
     expect(insight.title).toBe("Hot partition detector");
-    expect(insight.metrics).toContainEqual({ label: "Busiest partition", value: "P2", tone: "rose" });
+    expect(insight.metrics).toContainEqual({
+      label: "Busiest partition",
+      value: "P2",
+      tone: "rose",
+    });
   });
 
   it("summarizes retry and dead-letter failures", () => {
     const insight = deriveScenarioInsight(
       snapshot({
         scenarioId: "retry-dead-letter-queues",
-        messageCounts: { produced: 3, received: 3, processed: 2, committed: 2, failed: 1 },
+        messageCounts: {
+          produced: 3,
+          received: 3,
+          processed: 2,
+          committed: 2,
+          failed: 1,
+        },
         recentMessages: [
           message({
             state: "failed",
             value: {
               payload: {
                 retryTopic: "orders.retry.30s",
-                deadLetterTopic: "orders.dlq"
-              }
-            }
-          })
-        ]
-      })
+                deadLetterTopic: "orders.dlq",
+              },
+            },
+          }),
+        ],
+      }),
     );
 
     expect(insight.title).toBe("Retry and dead-letter routing");
-    expect(insight.metrics).toContainEqual({ label: "Failed", value: "1", tone: "rose" });
-    expect(insight.metrics).toContainEqual({ label: "DLQ", value: "orders.dlq", tone: "rose" });
+    expect(insight.metrics).toContainEqual({
+      label: "Failed",
+      value: "1",
+      tone: "rose",
+    });
+    expect(insight.metrics).toContainEqual({
+      label: "DLQ",
+      value: "orders.dlq",
+      tone: "rose",
+    });
   });
 });
 
@@ -60,6 +90,7 @@ function snapshot(overrides: Partial<RunSnapshot>): RunSnapshot {
     status: "running",
     topicName: "kplay.test",
     partitionCount: 2,
+    consumerLimit: 3,
     consumerGroupId: "kplay.test.workers",
     producerStatus: "stopped",
     productionRate: 1,
@@ -68,16 +99,24 @@ function snapshot(overrides: Partial<RunSnapshot>): RunSnapshot {
     consumers: [],
     latestPartitionOffsets: {},
     latestCommittedOffsets: {},
-    messageCounts: { produced: 0, received: 0, processed: 0, committed: 0, failed: 0 },
+    messageCounts: {
+      produced: 0,
+      received: 0,
+      processed: 0,
+      committed: 0,
+      failed: 0,
+    },
     recentMessages: [],
     recentEvents: [],
     cleanupStatus: "not_requested",
     sequence: 0,
-    ...overrides
+    ...overrides,
   };
 }
 
-function message(overrides: Partial<RunSnapshot["recentMessages"][number]>): RunSnapshot["recentMessages"][number] {
+function message(
+  overrides: Partial<RunSnapshot["recentMessages"][number]>,
+): RunSnapshot["recentMessages"][number] {
   return {
     messageId: "message-1",
     runId: "run-1",
@@ -93,6 +132,6 @@ function message(overrides: Partial<RunSnapshot["recentMessages"][number]>): Run
     committedOffset: null,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
-    ...overrides
+    ...overrides,
   };
 }

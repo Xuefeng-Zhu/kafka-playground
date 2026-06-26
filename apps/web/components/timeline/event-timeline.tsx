@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeEvent } from "@kplay/contracts";
 import { Maximize2, Minimize2, Trash2 } from "lucide-react";
 
@@ -42,14 +42,23 @@ export function EventTimeline({
   const [activeFilters, setActiveFilters] = useState<Set<TimelineFilter>>(
     () => new Set(filters),
   );
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [clearedThroughSequence, setClearedThroughSequence] = useState(0);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const visibleEvents = useMemo(
     () =>
       events
+        .filter((event) => event.sequence > clearedThroughSequence)
         .filter((event) => activeFilters.has(categoryFor(event)))
         .slice()
         .reverse(),
-    [activeFilters, events],
+    [activeFilters, clearedThroughSequence, events],
   );
+  const allFiltersSelected = activeFilters.size === filters.length;
+
+  useEffect(() => {
+    if (autoScroll) scrollRef.current?.scrollTo({ top: 0 });
+  }, [autoScroll, visibleEvents.length]);
 
   function toggleFilter(filter: TimelineFilter) {
     setActiveFilters((current) => {
@@ -63,6 +72,15 @@ export function EventTimeline({
     });
   }
 
+  function selectAllFilters() {
+    setActiveFilters(new Set(filters));
+  }
+
+  function clearVisibleEvents() {
+    const latestSequence = events.at(-1)?.sequence ?? 0;
+    setClearedThroughSequence(latestSequence);
+  }
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col px-3 pb-3"
@@ -70,7 +88,16 @@ export function EventTimeline({
     >
       <div className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border-[3px] border-teal-700 bg-[#fff7ed] px-3 py-1.5 pr-28 sm:pr-32">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <button className="rounded-full border-2 border-teal-700 bg-[#fffdf5] px-3 py-1 text-xs font-extrabold text-teal-800">
+          <button
+            type="button"
+            aria-pressed={allFiltersSelected}
+            onClick={selectAllFilters}
+            className={
+              allFiltersSelected
+                ? "rounded-full border-2 border-sky-500 bg-sky-100 px-3 py-1 text-xs font-extrabold text-sky-800"
+                : "rounded-full border-2 border-teal-700 bg-[#fffdf5] px-3 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
+            }
+          >
             All
           </button>
           {filters.map((filter) => (
@@ -95,13 +122,31 @@ export function EventTimeline({
               Sequence gap detected
             </span>
           )}
-          <label className="flex items-center gap-2 whitespace-nowrap">
+          <button
+            type="button"
+            aria-pressed={autoScroll}
+            onClick={() => setAutoScroll((current) => !current)}
+            className="flex items-center gap-2 whitespace-nowrap rounded-xl px-1 py-1 focus:outline-none focus:ring-4 focus:ring-sky-200"
+          >
             Auto scroll
-            <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-emerald-500">
-              <span className="ml-auto mr-0.5 size-4 rounded-full bg-white" />
+            <span
+              className={`relative inline-flex h-5 w-9 items-center rounded-full ${
+                autoScroll ? "bg-emerald-500" : "bg-slate-400"
+              }`}
+            >
+              <span
+                className={`size-4 rounded-full bg-white transition ${
+                  autoScroll ? "ml-auto mr-0.5" : "ml-0.5"
+                }`}
+              />
             </span>
-          </label>
-          <button className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 font-extrabold text-teal-800">
+          </button>
+          <button
+            type="button"
+            onClick={clearVisibleEvents}
+            disabled={events.length === 0}
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 font-extrabold text-teal-800 disabled:opacity-45"
+          >
             <Trash2 size={14} aria-hidden /> Clear
           </button>
           <button
@@ -122,7 +167,10 @@ export function EventTimeline({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5]">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-auto rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5]"
+      >
         <div
           className={`${timelineGridClass} border-b-[3px] border-teal-700 bg-[#fff7ed] px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-teal-700`}
         >

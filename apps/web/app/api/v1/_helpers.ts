@@ -10,7 +10,10 @@ export function json<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
 }
 
-export async function safe(request: Request, handler: (requestId: string) => Promise<Response>) {
+export async function safe(
+  request: Request,
+  handler: (requestId: string) => Promise<Response>,
+) {
   const id = requestId(request);
   try {
     enforceMutationRateLimit(request);
@@ -23,9 +26,17 @@ export async function safe(request: Request, handler: (requestId: string) => Pro
 }
 
 function enforceMutationRateLimit(request: Request) {
-  if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") return;
+  if (
+    request.method === "GET" ||
+    request.method === "HEAD" ||
+    request.method === "OPTIONS"
+  )
+    return;
   const now = Date.now();
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const forwardedFor = request.headers
+    .get("x-forwarded-for")
+    ?.split(",")[0]
+    ?.trim();
   const key = forwardedFor || request.headers.get("x-real-ip") || "local";
   const bucket = mutationBuckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
@@ -34,11 +45,27 @@ function enforceMutationRateLimit(request: Request) {
   }
   bucket.count += 1;
   if (bucket.count > MUTATION_LIMIT) {
-    throw new ApiError("RATE_LIMIT_EXCEEDED", "Too many mutation requests. Please slow down.", 429);
+    throw new ApiError(
+      "RATE_LIMIT_EXCEEDED",
+      "Too many mutation requests. Please slow down.",
+      429,
+    );
   }
 }
 
-export async function parseJson<T extends z.ZodType>(request: Request, schema: T): Promise<z.infer<T>> {
-  const body = await request.json().catch(() => ({}));
+export async function parseJson<T extends z.ZodType>(
+  request: Request,
+  schema: T,
+): Promise<z.infer<T>> {
+  let body: unknown;
+  const rawBody = await request.text();
+  if (rawBody.trim() === "") {
+    return schema.parse({});
+  }
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    throw new ApiError("INVALID_JSON", "Request body must be valid JSON.", 400);
+  }
   return schema.parse(body);
 }

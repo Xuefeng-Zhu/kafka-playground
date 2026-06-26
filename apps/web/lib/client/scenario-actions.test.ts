@@ -6,9 +6,13 @@ import { deriveScenarioActions } from "./scenario-actions";
 describe("deriveScenarioActions", () => {
   it("provides a guided action for every catalog scenario", () => {
     for (const scenario of SCENARIOS) {
-      const actions = deriveScenarioActions(snapshot({ scenarioId: scenario.id }));
+      const actions = deriveScenarioActions(
+        snapshot({ scenarioId: scenario.id }),
+      );
       expect(actions.length, scenario.id).toBeGreaterThan(0);
-      expect(actions.every((action) => action.label && action.description)).toBe(true);
+      expect(
+        actions.every((action) => action.label && action.description),
+      ).toBe(true);
     }
   });
 
@@ -17,42 +21,46 @@ describe("deriveScenarioActions", () => {
       deriveScenarioActions(
         snapshot({
           scenarioId: "retry-dead-letter-queues",
-          recentMessages: [message({ value: { sequence: 2 } })]
-        })
-      )
+          recentMessages: [message({ value: { sequence: 2 } })],
+        }),
+      ),
     ).toContainEqual(
       expect.objectContaining({
         id: "trigger-retry-failure",
-        produceCount: 1
-      })
+        produceCount: 1,
+      }),
     );
 
     expect(
-      deriveScenarioActions(snapshot({ scenarioId: "retry-dead-letter-queues" }))
+      deriveScenarioActions(
+        snapshot({ scenarioId: "retry-dead-letter-queues" }),
+      ),
     ).toContainEqual(
       expect.objectContaining({
         id: "trigger-retry-failure",
-        produceCount: 3
-      })
+        produceCount: 3,
+      }),
     );
   });
 
   it("offers hot-key and balanced comparison actions for skew scenarios", () => {
-    const actions = deriveScenarioActions(snapshot({ scenarioId: "hot-partitions-key-skew" }));
+    const actions = deriveScenarioActions(
+      snapshot({ scenarioId: "hot-partitions-key-skew" }),
+    );
 
     expect(actions).toContainEqual(
       expect.objectContaining({
         id: "hot-key-burst",
         keyStrategy: { type: "fixed", value: "celebrity-user" },
-        produceCount: 5
-      })
+        produceCount: 5,
+      }),
     );
     expect(actions).toContainEqual(
       expect.objectContaining({
         id: "balanced-comparison",
         keyStrategy: { type: "no_key" },
-        produceCount: 4
-      })
+        produceCount: 4,
+      }),
     );
   });
 });
@@ -65,6 +73,7 @@ function snapshot(overrides: Partial<RunSnapshot>): RunSnapshot {
     status: "running",
     topicName: "kplay.test",
     partitionCount: 2,
+    consumerLimit: 3,
     consumerGroupId: "kplay.test.workers",
     producerStatus: "stopped",
     productionRate: 1,
@@ -73,16 +82,24 @@ function snapshot(overrides: Partial<RunSnapshot>): RunSnapshot {
     consumers: [],
     latestPartitionOffsets: {},
     latestCommittedOffsets: {},
-    messageCounts: { produced: 0, received: 0, processed: 0, committed: 0, failed: 0 },
+    messageCounts: {
+      produced: 0,
+      received: 0,
+      processed: 0,
+      committed: 0,
+      failed: 0,
+    },
     recentMessages: [],
     recentEvents: [],
     cleanupStatus: "not_requested",
     sequence: 0,
-    ...overrides
+    ...overrides,
   };
 }
 
-function message(overrides: Partial<RunSnapshot["recentMessages"][number]>): RunSnapshot["recentMessages"][number] {
+function message(
+  overrides: Partial<RunSnapshot["recentMessages"][number]>,
+): RunSnapshot["recentMessages"][number] {
   return {
     messageId: "message-1",
     runId: "run-1",
@@ -98,6 +115,6 @@ function message(overrides: Partial<RunSnapshot["recentMessages"][number]>): Run
     committedOffset: null,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
-    ...overrides
+    ...overrides,
   };
 }

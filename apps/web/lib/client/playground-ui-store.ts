@@ -15,9 +15,10 @@ export const usePlaygroundUiStore = create<PlaygroundUiState>((set) => ({
   selectedEventSequence: null,
   theme: "dark",
   setSelectedMessageId: (selectedMessageId) => set({ selectedMessageId }),
-  setSelectedEventSequence: (selectedEventSequence) => set({ selectedEventSequence }),
+  setSelectedEventSequence: (selectedEventSequence) =>
+    set({ selectedEventSequence }),
   toggleTheme: () =>
     set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
   resetSelection: () =>
-    set({ selectedMessageId: null, selectedEventSequence: null })
+    set({ selectedMessageId: null, selectedEventSequence: null }),
 }));

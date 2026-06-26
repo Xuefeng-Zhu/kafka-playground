@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   consumerSnapshotSchema,
+  runtimeEventTypes,
   runtimeEventSchema,
   settingsRequestSchema,
 } from "./index";
@@ -51,5 +52,17 @@ describe("contracts", () => {
 
   it("rejects excessive producer rates", () => {
     expect(() => settingsRequestSchema.parse({ productionRate: 11 })).toThrow();
+  });
+
+  it("exports every runtime event type for client listeners", () => {
+    expect(runtimeEventTypes).toEqual(
+      expect.arrayContaining([
+        "message.produced",
+        "consumer.crashed",
+        "offset.committed",
+        "resource.cleanup_failed",
+      ]),
+    );
+    expect(new Set(runtimeEventTypes).size).toBe(runtimeEventTypes.length);
   });
 });

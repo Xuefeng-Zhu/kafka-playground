@@ -1,23 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type {
-  ConnectionStatus,
-  KeyStrategy,
-  RunSnapshot,
-  RuntimeEvent,
-  ScenarioDefinition,
-} from "@kplay/contracts";
 import {
-  BookOpen,
-  Grid3X3,
-  Network,
-  PanelRightOpen,
-  RotateCcw,
-  SlidersHorizontal,
-} from "lucide-react";
+  connectionStatusSchema,
+  runSnapshotSchema,
+  runtimeEventSchema,
+  runtimeEventTypes,
+  scenarioDefinitionSchema,
+  type ConnectionStatus,
+  type KeyStrategy,
+  type RunSnapshot,
+  type RuntimeEvent,
+  type ScenarioDefinition,
+} from "@kplay/contracts";
+import { PanelRightOpen, RotateCcw, SlidersHorizontal } from "lucide-react";
 import {
   initializeFromSnapshot,
   mergeSnapshot,
@@ -31,6 +28,7 @@ import { EventTimeline } from "@/components/timeline/event-timeline";
 import { InspectorPanel } from "@/components/inspector/inspector-panel";
 import { EducationPanel } from "@/components/education/education-panel";
 import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
+import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
 import type { ScenarioAction } from "@/lib/client/scenario-actions";
 import type { TopologySelection } from "@/lib/client/topology-selection";
@@ -74,33 +72,53 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   );
 
   useEffect(() => {
-    void fetch("/api/v1/connection")
-      .then((res) => res.json())
-      .then(setConnection);
-    void fetch("/api/v1/scenarios")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload: { scenarios: ScenarioDefinition[] } | null) => {
-        if (payload?.scenarios) setScenarios(payload.scenarios);
+    let cancelled = false;
+    void fetchJson("/api/v1/connection")
+      .then((payload) => {
+        if (!cancelled) setConnection(connectionStatusSchema.parse(payload));
+      })
+      .catch(() => {
+        if (!cancelled) setConnection(null);
       });
+    void fetchJson("/api/v1/scenarios")
+      .then((payload) => {
+        const parsed = scenarioDefinitionSchema
+          .array()
+          .parse((payload as { scenarios?: unknown }).scenarios ?? []);
+        if (!cancelled) setScenarios(parsed);
+      })
+      .catch(() => {
+        if (!cancelled) setScenarios([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     dispatch({ type: "clear" });
 
     let cancelled = false;
-    void fetch("/api/v1/runs")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload: { run: RunSnapshot | null } | null) => {
+    void fetchJson("/api/v1/runs")
+      .then((payload) => {
         if (cancelled) return;
         resetSelection();
         setSelectedTopologyNode(null);
         setInspectorOpen(false);
-        if (!payload?.run) return;
-        if (payload.run.scenarioId === scenarioId) {
-          dispatch({ type: "snapshot", snapshot: payload.run });
+        const runPayload =
+          payload && typeof payload === "object" && "run" in payload
+            ? payload.run
+            : null;
+        if (!runPayload) return;
+        const snapshot = runSnapshotSchema.parse(runPayload);
+        if (snapshot.scenarioId === scenarioId) {
+          dispatch({ type: "snapshot", snapshot });
           return;
         }
-        router.replace(`/scenarios/${payload.run.scenarioId}`);
+        router.replace(`/scenarios/${snapshot.scenarioId}`);
+      })
+      .catch(() => {
+        if (!cancelled) setActionError("Unable to load the active run.");
       });
     return () => {
       cancelled = true;
@@ -112,52 +130,38 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     const source = new EventSource(`/api/v1/runs/${run.runId}/events`);
     eventSourceRef.current = source;
     source.addEventListener("snapshot", (message) => {
-      const payload = JSON.parse(message.data) as { snapshot: RunSnapshot };
-      dispatch({ type: "snapshot", snapshot: payload.snapshot });
+      try {
+        const payload = JSON.parse(message.data) as { snapshot: unknown };
+        dispatch({
+          type: "snapshot",
+          snapshot: runSnapshotSchema.parse(payload.snapshot),
+        });
+      } catch {
+        setActionError("Live snapshot payload could not be parsed.");
+      }
     });
     source.onmessage = () => undefined;
-    const eventTypes = [
-      "run.started",
-      "run.stopping",
-      "run.stopped",
-      "run.error",
-      "topic.creating",
-      "topic.created",
-      "producer.starting",
-      "producer.started",
-      "producer.paused",
-      "producer.stopped",
-      "message.producing",
-      "message.produced",
-      "message.received",
-      "message.processing_started",
-      "message.processing_completed",
-      "message.processing_failed",
-      "consumer.starting",
-      "consumer.started",
-      "consumer.partitions_assigned",
-      "consumer.partitions_revoked",
-      "consumer.idle",
-      "consumer.stopping",
-      "consumer.stopped",
-      "consumer.crashing",
-      "consumer.crashed",
-      "offset.commit_requested",
-      "offset.committed",
-      "offset.commit_failed",
-      "resource.cleanup_started",
-      "resource.cleanup_completed",
-      "resource.cleanup_failed",
-    ];
-    eventTypes.forEach((type) => {
+    runtimeEventTypes.forEach((type) => {
       source.addEventListener(type, (message) => {
-        dispatch({
-          type: "event",
-          event: JSON.parse(message.data) as RuntimeEvent,
+        try {
+          dispatch({
+            type: "event",
+            event: runtimeEventSchema.parse(JSON.parse(message.data)),
+          });
+        } catch {
+          setActionError("Live event payload could not be parsed.");
+          return;
+        }
+        void refreshSnapshot(run.runId, dispatch).catch(() => {
+          setActionError("Unable to refresh the latest run snapshot.");
         });
-        void refreshSnapshot(run.runId, dispatch);
       });
     });
+    source.onerror = () => {
+      void refreshSnapshot(run.runId, dispatch).catch(() => {
+        setActionError("Live updates disconnected.");
+      });
+    };
     return () => {
       source.close();
       if (eventSourceRef.current === source) eventSourceRef.current = null;
@@ -268,6 +272,20 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     setSelectedEventSequence(null);
     setSelectedTopologyNode(null);
     setInspectorOpen(true);
+  }
+
+  function selectAdjacentMessage(direction: -1 | 1) {
+    if (!run?.recentMessages.length || !selectedMessage) return;
+    const currentIndex = run.recentMessages.findIndex(
+      (message) => message.messageId === selectedMessage.messageId,
+    );
+    if (currentIndex < 0) return;
+    const nextIndex = Math.min(
+      run.recentMessages.length - 1,
+      Math.max(0, currentIndex + direction),
+    );
+    const nextMessage = run.recentMessages[nextIndex];
+    if (nextMessage) selectMessage(nextMessage.messageId);
   }
 
   function selectEvent(sequence: number) {
@@ -478,6 +496,8 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
               event={selectedEvent}
               snapshot={run}
               selectedNode={selectedTopologyNode}
+              onPreviousMessage={() => selectAdjacentMessage(-1)}
+              onNextMessage={() => selectAdjacentMessage(1)}
               onClose={() => setInspectorOpen(false)}
             />
           </aside>
@@ -526,110 +546,6 @@ function StatusPill({
   );
 }
 
-function ScenarioSidebar({
-  scenarios,
-  scenarioId,
-}: {
-  scenarios: ScenarioDefinition[];
-  scenarioId: string;
-}) {
-  const current =
-    scenarios.find((scenario) => scenario.id === scenarioId) ??
-    scenarios.find((scenario) => !scenario.disabled);
-  const otherScenarios = scenarios.filter(
-    (scenario) => scenario.id !== current?.id,
-  );
-  return (
-    <div className="min-h-0">
-      <h2 className="kplay-section-title">Scenario</h2>
-      <div className="mt-3 rounded-2xl border-[3px] border-teal-700 bg-teal-100 p-3 shadow-[7px_7px_0_rgba(15,118,110,0.14)]">
-        <div className="flex items-start gap-3">
-          <Grid3X3
-            className="mt-0.5 shrink-0 text-teal-700"
-            size={24}
-            aria-hidden
-          />
-          <div>
-            <h3 className="text-sm font-extrabold text-[#123047]">
-              {current?.title ?? "Scenario"}
-            </h3>
-            <p className="mt-1 text-xs leading-5 text-[#31566a]">
-              {current?.description ??
-                "Select a scenario to start exploring Kafka behavior."}
-            </p>
-            {current && (
-              <div className="mt-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-teal-700">
-                {current.topic.partitions} partitions
-              </div>
-            )}
-          </div>
-          <span className="ml-auto mt-7 size-2.5 rounded-full bg-sky-500" />
-        </div>
-      </div>
-      <div className="mt-3 space-y-2">
-        {otherScenarios.map((scenario) =>
-          scenario.disabled ? (
-            <div
-              key={scenario.id}
-              className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)]"
-              aria-disabled
-            >
-              <div className="flex gap-3">
-                <Network
-                  className="mt-0.5 shrink-0 text-teal-700"
-                  size={22}
-                  aria-hidden
-                />
-                <div>
-                  <div className="font-extrabold text-[#123047]">
-                    {scenario.title}
-                  </div>
-                  <div className="mt-1 leading-5">{scenario.description}</div>
-                  <div className="mt-2 font-extrabold text-[#60798d]">
-                    Locked
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <Link
-              key={scenario.id}
-              href={`/scenarios/${scenario.id}`}
-              className="block rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
-            >
-              <div className="flex gap-3">
-                <Network
-                  className="mt-0.5 shrink-0 text-teal-700"
-                  size={22}
-                  aria-hidden
-                />
-                <div>
-                  <div className="font-extrabold text-[#123047]">
-                    {scenario.title}
-                  </div>
-                  <div className="mt-1 leading-5">{scenario.description}</div>
-                  <div className="mt-2 font-extrabold text-emerald-700">
-                    Available
-                  </div>
-                </div>
-              </div>
-            </Link>
-          ),
-        )}
-      </div>
-      <a
-        href="#how-it-works"
-        className="mt-3 flex items-center justify-between rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] px-3 py-2 text-xs font-extrabold text-teal-800 shadow-[7px_7px_0_rgba(15,118,110,0.1)]"
-      >
-        <span className="flex items-center gap-2">
-          <BookOpen size={15} aria-hidden /> How it works
-        </span>
-        <span aria-hidden>↗</span>
-      </a>
-    </div>
-  );
-}
-
 function connectionLabel(connection: ConnectionStatus | null) {
   if (!connection) return "Checking";
   if (connection.status === "demo_mode") return "Demo mode";
@@ -657,6 +573,12 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function fetchJson(path: string) {
+  const response = await fetch(path);
+  if (!response.ok) return null;
+  return response.json() as Promise<unknown>;
+}
+
 async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
   return api<RunSnapshot>(`/api/v1/runs/${runId}/messages`, {
     method: "POST",
@@ -670,7 +592,6 @@ async function refreshSnapshot(
 ) {
   const response = await fetch(`/api/v1/runs/${runId}`);
   if (!response.ok) return;
-  const snapshot = (await response.json()) as RunSnapshot;
-  if (!snapshot.runId || !Array.isArray(snapshot.consumers)) return;
+  const snapshot = runSnapshotSchema.parse(await response.json());
   dispatch({ type: "snapshot", snapshot });
 }

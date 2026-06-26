@@ -149,15 +149,31 @@ html,
 body {
   min-height: 100%;
   background:
-    radial-gradient(circle at 18% 8%, rgba(251, 113, 133, 0.16), transparent 28rem),
-    radial-gradient(circle at 82% 18%, rgba(45, 212, 191, 0.20), transparent 30rem),
+    radial-gradient(
+      circle at 18% 8%,
+      rgba(251, 113, 133, 0.16),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 82% 18%,
+      rgba(45, 212, 191, 0.2),
+      transparent 30rem
+    ),
     linear-gradient(135deg, #fff7ed, #ecfeff 62%, #eff6ff);
   color: var(--kplay-text);
 }
 
 body {
   margin: 0;
-  font-family: "Nunito Sans", "Aptos", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Nunito Sans",
+    "Aptos",
+    "Segoe UI",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
 }
 ```
 
@@ -219,7 +235,9 @@ Add reusable classes copied conceptually from the approved mock:
   background:
     radial-gradient(circle, rgba(14, 165, 233, 0.35) 2px, transparent 3px),
     linear-gradient(180deg, #f8fafc, #ecfeff);
-  background-size: 28px 28px, 100% 100%;
+  background-size:
+    28px 28px,
+    100% 100%;
 }
 ```
 
@@ -255,16 +273,24 @@ git commit -m "style: add playful Kafka UI design tokens"
 Replace the current class set with Style 04-friendly variants:
 
 ```tsx
-export function Button({ className, variant = "secondary", ...props }: ButtonProps) {
+export function Button({
+  className,
+  variant = "secondary",
+  ...props
+}: ButtonProps) {
   return (
     <button
       className={cn(
         "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition focus:outline-none focus:ring-4 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-45",
-        variant === "primary" && "border-teal-700 bg-teal-700 text-white shadow-[4px_4px_0_rgba(15,118,110,0.18)] hover:bg-teal-800",
-        variant === "secondary" && "border-teal-700 bg-[#fffdf5] text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.14)] hover:bg-teal-50",
-        variant === "danger" && "border-rose-700 bg-rose-100 text-rose-800 shadow-[4px_4px_0_rgba(190,18,60,0.14)] hover:bg-rose-200",
-        variant === "ghost" && "border-teal-700 bg-transparent text-teal-800 hover:bg-teal-50",
-        className
+        variant === "primary" &&
+          "border-teal-700 bg-teal-700 text-white shadow-[4px_4px_0_rgba(15,118,110,0.18)] hover:bg-teal-800",
+        variant === "secondary" &&
+          "border-teal-700 bg-[#fffdf5] text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.14)] hover:bg-teal-50",
+        variant === "danger" &&
+          "border-rose-700 bg-rose-100 text-rose-800 shadow-[4px_4px_0_rgba(190,18,60,0.14)] hover:bg-rose-200",
+        variant === "ghost" &&
+          "border-teal-700 bg-transparent text-teal-800 hover:bg-teal-50",
+        className,
       )}
       {...props}
     />
@@ -336,14 +362,26 @@ Title text:
 Update `StatusPill` in `playground-workspace.tsx` to use Style 04 colors:
 
 ```tsx
-function StatusPill({ label, tone }: { label: string; tone: "green" | "amber" | "sky" | "slate" }) {
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "green" | "amber" | "sky" | "slate";
+}) {
   const color = {
     green: "border-emerald-500 bg-emerald-100 text-emerald-800",
     amber: "border-amber-500 bg-amber-100 text-amber-800",
     sky: "border-teal-700 bg-teal-100 text-teal-800",
-    slate: "border-teal-700 bg-[#fffdf5] text-teal-800"
+    slate: "border-teal-700 bg-[#fffdf5] text-teal-800",
   }[tone];
-  return <span className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}>{label}</span>;
+  return (
+    <span
+      className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}
+    >
+      {label}
+    </span>
+  );
 }
 ```
 
@@ -369,7 +407,9 @@ In `UtilityRail`, make active buttons mint + chunky border:
 Active button:
 
 ```tsx
-item.active ? "bg-teal-100 text-teal-800 shadow-[inset_0_0_0_2px_#0f766e,4px_4px_0_rgba(15,118,110,0.16)]" : "hover:bg-teal-50 hover:text-teal-900"
+item.active
+  ? "bg-teal-100 text-teal-800 shadow-[inset_0_0_0_2px_#0f766e,4px_4px_0_rgba(15,118,110,0.16)]"
+  : "hover:bg-teal-50 hover:text-teal-900";
 ```
 
 **Step 6: Restyle scenario sidebar cards**
@@ -475,7 +515,7 @@ selectedMessageId === message.messageId
   ? "border-rose-700 bg-rose-400 text-white shadow-[0_0_0_5px_rgba(251,113,133,0.16)]"
   : partition === 0
     ? "border-teal-700 bg-teal-100 text-teal-800"
-    : "border-violet-500 bg-violet-100 text-violet-800"
+    : "border-violet-500 bg-violet-100 text-violet-800";
 ```
 
 Include `border-2 rounded-xl` in the base chip class.
@@ -562,7 +602,7 @@ Use larger colored dots/icons if possible while keeping current lucide icons:
 If keeping JSON payload text in future, use:
 
 ```tsx
-className="rounded-xl bg-slate-50 p-3 font-mono text-xs text-[#123047]"
+className = "rounded-xl bg-slate-50 p-3 font-mono text-xs text-[#123047]";
 ```
 
 Do not add payload rendering in this task unless it already exists in the component.
@@ -614,13 +654,14 @@ Replace slate borders with teal:
 Use cream backgrounds and teal borders:
 
 ```tsx
-className="mb-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]"
+className =
+  "mb-2 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 text-sm font-semibold text-[#123047]";
 ```
 
 Range inputs:
 
 ```tsx
-className="w-full accent-sky-500"
+className = "w-full accent-sky-500";
 ```
 
 **Step 4: Use button variants intentionally**
@@ -667,13 +708,13 @@ Root filter bar:
 Active filter button:
 
 ```tsx
-"inline-flex items-center gap-2 rounded-full border-2 border-sky-500 bg-sky-100 px-2 py-1 text-xs font-extrabold text-sky-800"
+"inline-flex items-center gap-2 rounded-full border-2 border-sky-500 bg-sky-100 px-2 py-1 text-xs font-extrabold text-sky-800";
 ```
 
 Inactive filter button:
 
 ```tsx
-"inline-flex items-center gap-2 rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
+"inline-flex items-center gap-2 rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50";
 ```
 
 **Step 2: Restyle timeline container**
@@ -687,7 +728,8 @@ Inactive filter button:
 Preferred for narrow column: keep current row data but style each row like a compact card:
 
 ```tsx
-className="grid min-w-[760px] grid-cols-[120px_160px_190px_minmax(260px,1fr)] border-b-[3px] border-teal-700 px-4 py-2 text-left text-xs text-[#123047] hover:bg-sky-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+className =
+  "grid min-w-[760px] grid-cols-[120px_160px_190px_minmax(260px,1fr)] border-b-[3px] border-teal-700 px-4 py-2 text-left text-xs text-[#123047] hover:bg-sky-50 focus:outline-none focus:ring-4 focus:ring-sky-200";
 ```
 
 If horizontal scrolling is visually poor after screenshot review, convert rows to a stacked event-card layout in a follow-up task.
@@ -697,12 +739,12 @@ If horizontal scrolling is visually poor after screenshot review, convert rows t
 Keep current `filterTone`, but use brighter accessible colors if needed:
 
 ```tsx
-Messages: "bg-sky-500"
-Rebalances: "bg-amber-500"
-Commits: "bg-emerald-500"
-Lifecycle: "bg-cyan-500"
-Cleanup: "bg-violet-500"
-Errors: "bg-rose-500"
+Messages: "bg-sky-500";
+Rebalances: "bg-amber-500";
+Commits: "bg-emerald-500";
+Lifecycle: "bg-cyan-500";
+Cleanup: "bg-violet-500";
+Errors: "bg-rose-500";
 ```
 
 **Step 5: Run checks**
@@ -799,7 +841,8 @@ Use the same warm/mint background:
 Use shared playful button-like Link classes:
 
 ```tsx
-className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-teal-700 px-4 py-2 text-sm font-extrabold text-white shadow-[4px_4px_0_rgba(15,118,110,0.18)] transition hover:bg-teal-800 focus:outline-none focus:ring-4 focus:ring-sky-200"
+className =
+  "inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-teal-700 px-4 py-2 text-sm font-extrabold text-white shadow-[4px_4px_0_rgba(15,118,110,0.18)] transition hover:bg-teal-800 focus:outline-none focus:ring-4 focus:ring-sky-200";
 ```
 
 **Step 3: Restyle cards**
@@ -807,13 +850,15 @@ className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg
 Primary card:
 
 ```tsx
-className="group rounded-2xl border-[3px] border-teal-700 bg-teal-100 p-6 shadow-[7px_7px_0_rgba(15,118,110,0.14)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+className =
+  "group rounded-2xl border-[3px] border-teal-700 bg-teal-100 p-6 shadow-[7px_7px_0_rgba(15,118,110,0.14)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200";
 ```
 
 Runtime/future cards:
 
 ```tsx
-className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-6 shadow-[7px_7px_0_rgba(15,118,110,0.14)]"
+className =
+  "rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-6 shadow-[7px_7px_0_rgba(15,118,110,0.14)]";
 ```
 
 **Step 4: Run checks**

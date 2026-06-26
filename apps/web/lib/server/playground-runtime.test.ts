@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./env", () => ({
   getServerEnv: () => ({
@@ -19,6 +19,11 @@ vi.mock("./env", () => ({
 }));
 
 describe("PlaygroundRuntime demo integration", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("starts a run, produces, assigns two consumers, marks a third idle, and resets idempotently", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
@@ -130,6 +135,104 @@ describe("PlaygroundRuntime demo integration", () => {
     await expect(runtime.deleteRun(snapshot.runId)).resolves.toEqual({
       cleanupStatus: "requested",
     });
+  });
+
+  it("reports cleanup adapter rejections as failed cleanup", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const snapshot = await runtime.createRun("partitioning");
+    (
+      runtime as unknown as {
+        adapter: {
+          deleteRunResources: () => Promise<never>;
+        };
+      }
+    ).adapter.deleteRunResources = async () => {
+      throw new Error("cleanup unavailable");
+    };
+
+    await expect(runtime.reset(snapshot.runId)).resolves.toEqual({
+      cleanupStatus: "failed",
+    });
+  });
+
+  it("marks failed produce attempts and leaves an inspectable failed message", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const snapshot = await runtime.createRun("partitioning");
+    (
+      runtime as unknown as {
+        adapter: {
+          produce: () => Promise<never>;
+        };
+      }
+    ).adapter.produce = async () => {
+      throw new Error("producer unavailable");
+    };
+
+    await expect(runtime.produceOne(snapshot.runId)).rejects.toThrow(
+      "producer unavailable",
+    );
+    const failedSnapshot = runtime.snapshot(snapshot.runId);
+
+    expect(failedSnapshot.messageCounts.failed).toBe(1);
+    expect(failedSnapshot.recentMessages.at(-1)).toMatchObject({
+      state: "failed",
+      partition: null,
+      offset: null,
+    });
+    expect(
+      failedSnapshot.recentEvents.some(
+        (event) => event.type === "run.error" && event.messageId,
+      ),
+    ).toBe(true);
+
+    await runtime.reset(snapshot.runId);
+  });
+
+  it("serializes automatic producer ticks so async sends do not overlap", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("partitioning");
+    snapshot = await runtime.updateSettings(snapshot.runId, {
+      productionRate: 10,
+    });
+    let inFlight = 0;
+    let maxInFlight = 0;
+    (
+      runtime as unknown as {
+        adapter: {
+          produce: () => Promise<{
+            topic: string;
+            partition: number;
+            offset: string;
+            timestamp: string;
+          }>;
+        };
+      }
+    ).adapter.produce = async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      inFlight -= 1;
+      return {
+        topic: snapshot.topicName,
+        partition: 0,
+        offset: String(maxInFlight),
+        timestamp: new Date(0).toISOString(),
+      };
+    };
+
+    await runtime.startProducer(snapshot.runId);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(maxInFlight).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(runtime.snapshot(snapshot.runId).messageCounts.produced).toBe(1);
+
+    await runtime.reset(snapshot.runId);
   });
 
   it("requeues demo messages assigned to a stopped consumer before processing completes", async () => {

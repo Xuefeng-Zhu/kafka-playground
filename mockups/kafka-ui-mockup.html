@@ -1,1399 +1,1759 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kafka Visual Playground UI Mockup</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #05080c;
-      --panel: #0a1017;
-      --panel-2: #0d151e;
-      --panel-3: #111b26;
-      --line: #233244;
-      --line-strong: #38516e;
-      --text: #edf5ff;
-      --muted: #91a3b8;
-      --soft: #64748b;
-      --blue: #20b7ff;
-      --blue-2: #2f86ff;
-      --green: #25e09a;
-      --amber: #ffbf2f;
-      --orange: #ff7a18;
-      --purple: #9c6bff;
-      --red: #ff5d66;
-      --shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
-      --radius: 8px;
-      font-family:
-        "Aptos",
-        "Segoe UI",
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        sans-serif;
-    }
-
-    * { box-sizing: border-box; }
-
-    html,
-    body {
-      margin: 0;
-      min-height: 100%;
-      background: var(--bg);
-      color: var(--text);
-    }
-
-    body {
-      overflow: hidden;
-      font-size: 14px;
-    }
-
-    button,
-    input,
-    select {
-      font: inherit;
-    }
-
-    .app {
-      height: 100vh;
-      display: grid;
-      grid-template-rows: 64px minmax(0, 1fr);
-      background:
-        radial-gradient(circle at 40% 18%, rgba(32, 183, 255, 0.08), transparent 34%),
-        linear-gradient(180deg, #070b10, #030507 70%);
-    }
-
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      padding: 0 18px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(6, 10, 15, 0.96);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      min-width: 0;
-    }
-
-    .brand-mark {
-      width: 32px;
-      height: 32px;
-      color: #f8fbff;
-    }
-
-    .brand-title {
-      font-size: 18px;
-      line-height: 1;
-      font-weight: 750;
-      letter-spacing: 0;
-      white-space: nowrap;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      min-height: 28px;
-      border: 1px solid rgba(32, 183, 255, 0.42);
-      border-radius: 6px;
-      background: rgba(32, 183, 255, 0.12);
-      padding: 4px 10px;
-      color: #78d8ff;
-      font-weight: 700;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .aiven {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-left: 1px solid var(--line);
-      padding-left: 16px;
-      color: var(--orange);
-      font-size: 18px;
-      font-weight: 800;
-      letter-spacing: -0.01em;
-    }
-
-    .status-strip {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 18px;
-      min-width: 0;
-      margin-left: auto;
-    }
-
-    .status-block {
-      border-right: 1px solid var(--line-strong);
-      padding-right: 18px;
-      min-width: 160px;
-    }
-
-    .status-main {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 750;
-      color: white;
-    }
-
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--green);
-      box-shadow: 0 0 18px rgba(37, 224, 154, 0.7);
-    }
-
-    .status-sub {
-      margin-top: 2px;
-      color: var(--muted);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .status-inline {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-right: 1px solid var(--line-strong);
-      padding-right: 18px;
-      color: #dce6f1;
-      white-space: nowrap;
-    }
-
-    .run-pill {
-      border: 1px solid rgba(37, 224, 154, 0.34);
-      border-radius: 5px;
-      background: rgba(37, 224, 154, 0.13);
-      padding: 5px 10px;
-      color: var(--green);
-      font-weight: 800;
-      font-size: 12px;
-    }
-
-    .icon-button,
-    .command-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 36px;
-      border: 1px solid var(--line-strong);
-      border-radius: 6px;
-      background: rgba(13, 21, 30, 0.9);
-      color: #e7f0fb;
-      padding: 0 13px;
-      white-space: nowrap;
-    }
-
-    .icon-button {
-      width: 38px;
-      padding: 0;
-      border-radius: 999px;
-    }
-
-    .shell {
-      min-height: 0;
-      display: grid;
-      grid-template-columns: 72px 270px minmax(680px, 1fr) 360px;
-      grid-template-rows: minmax(0, 1fr) 318px;
-      overflow: hidden;
-    }
-
-    .rail {
-      grid-column: 1;
-      grid-row: 1 / span 2;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 10px;
-      padding: 16px 8px;
-      border-right: 1px solid var(--line);
-      background: #071019;
-    }
-
-    .rail-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      border: 0;
-      border-radius: 7px;
-      background: transparent;
-      color: #a8b8cb;
-      padding: 12px 4px;
-      font-size: 12px;
-    }
-
-    .rail-item.active {
-      background: rgba(32, 183, 255, 0.13);
-      color: #65d5ff;
-    }
-
-    .sidebar {
-      grid-column: 2;
-      grid-row: 1 / span 2;
-      min-height: 0;
-      overflow: auto;
-      border-right: 1px solid var(--line);
-      background: #0a1017;
-      padding: 16px;
-    }
-
-    .section-title {
-      margin: 0 0 12px;
-      color: #90a1b6;
-      font-size: 11px;
-      font-weight: 850;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-    }
-
-    .scenario-list {
-      display: grid;
-      gap: 10px;
-    }
-
-    .scenario-card {
-      position: relative;
-      display: grid;
-      grid-template-columns: 30px 1fr;
-      gap: 10px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(8, 14, 20, 0.7);
-      padding: 14px;
-      color: #b8c6d8;
-    }
-
-    .scenario-card.active {
-      border-color: var(--blue);
-      background: linear-gradient(135deg, rgba(13, 74, 101, 0.74), rgba(8, 18, 28, 0.76));
-      box-shadow: inset 0 0 34px rgba(32, 183, 255, 0.08);
-      color: #eaf8ff;
-    }
-
-    .scenario-card.active::after {
-      content: "";
-      position: absolute;
-      right: 13px;
-      top: 50%;
-      width: 4px;
-      height: 14px;
-      border-radius: 2px;
-      background: var(--blue);
-      transform: translateY(-50%);
-      box-shadow: 0 0 14px var(--blue);
-    }
-
-    .scenario-icon {
-      display: grid;
-      place-items: center;
-      width: 24px;
-      height: 24px;
-      color: var(--blue);
-    }
-
-    .scenario-card.locked .scenario-icon,
-    .scenario-card.locked h3 {
-      color: #8798ad;
-    }
-
-    .scenario-card h3 {
-      margin: 0;
-      font-size: 14px;
-      line-height: 1.25;
-      font-weight: 800;
-    }
-
-    .scenario-card p {
-      margin: 6px 0 0;
-      color: #9cafc3;
-      font-size: 12.5px;
-      line-height: 1.5;
-    }
-
-    .scenario-card small {
-      display: block;
-      margin-top: 8px;
-      color: #74859a;
-      font-size: 12px;
-    }
-
-    .learn-panel {
-      margin-top: 14px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(8, 14, 20, 0.82);
-      padding: 14px;
-    }
-
-    .learn-panel p {
-      margin: 0;
-      color: #cad6e4;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .stage {
-      grid-column: 3;
-      grid-row: 1;
-      min-width: 0;
-      min-height: 0;
-      position: relative;
-      overflow: hidden;
-      border-right: 1px solid var(--line);
-      background:
-        radial-gradient(circle, rgba(44, 70, 98, 0.62) 1px, transparent 1px),
-        linear-gradient(180deg, rgba(7, 13, 19, 0.98), rgba(3, 7, 11, 0.96));
-      background-size: 24px 24px, 100% 100%;
-    }
-
-    .stage-toolbar {
-      position: absolute;
-      z-index: 3;
-      top: 16px;
-      left: 22px;
-      right: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .stage-toolbar h2 {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 800;
-    }
-
-    .tool-cluster {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .zoom {
-      display: grid;
-      grid-template-columns: 42px 76px 42px;
-      overflow: hidden;
-      border: 1px solid var(--line-strong);
-      border-radius: 6px;
-      background: rgba(6, 10, 15, 0.82);
-    }
-
-    .zoom span {
-      display: grid;
-      place-items: center;
-      min-height: 34px;
-      border-right: 1px solid var(--line);
-      color: #d9e4ef;
-      font-size: 12px;
-      font-weight: 750;
-    }
-
-    .zoom span:last-child {
-      border-right: 0;
-    }
-
-    .diagram {
-      position: absolute;
-      inset: 82px 28px 46px;
-      display: grid;
-      grid-template-columns: 160px minmax(300px, 1fr) 220px;
-      align-items: center;
-      gap: 28px;
-    }
-
-    .wire-layer {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      opacity: 0.94;
-    }
-
-    .node {
-      position: relative;
-      z-index: 2;
-      border: 1px solid var(--line-strong);
-      border-radius: var(--radius);
-      background: rgba(10, 17, 24, 0.94);
-      box-shadow: var(--shadow);
-    }
-
-    .producer {
-      min-height: 168px;
-      display: grid;
-      place-items: center;
-      text-align: center;
-      padding: 18px;
-    }
-
-    .producer .code {
-      display: grid;
-      place-items: center;
-      width: 58px;
-      height: 58px;
-      border: 1px solid var(--blue);
-      border-radius: 999px;
-      background: rgba(32, 183, 255, 0.1);
-      color: var(--blue);
-      font-size: 30px;
-      font-weight: 700;
-    }
-
-    .node-label {
-      margin-top: 14px;
-      font-weight: 850;
-      color: white;
-    }
-
-    .mini-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      margin-top: 8px;
-      color: var(--green);
-      font-size: 12px;
-      font-weight: 750;
-    }
-
-    .topic {
-      padding: 14px;
-    }
-
-    .node-kicker {
-      color: #dce6f1;
-      font-size: 12px;
-      font-weight: 850;
-      letter-spacing: 0.13em;
-      text-transform: uppercase;
-      text-align: center;
-    }
-
-    .topic-name {
-      margin-top: 8px;
-      color: white;
-      font-size: 18px;
-      font-weight: 850;
-      text-align: center;
-    }
-
-    .node-sub {
-      margin-top: 2px;
-      color: var(--muted);
-      font-size: 13px;
-      text-align: center;
-    }
-
-    .partition {
-      margin-top: 12px;
-      border: 1px solid var(--line-strong);
-      border-radius: 6px;
-      background: rgba(5, 9, 13, 0.48);
-      padding: 10px;
-    }
-
-    .partition-title {
-      margin-bottom: 8px;
-      color: #70d8ff;
-      font-weight: 850;
-    }
-
-    .partition.purple .partition-title {
-      color: #c59dff;
-    }
-
-    .offsets {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      overflow: hidden;
-    }
-
-    .offset {
-      min-width: 34px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      border: 1px solid #34475f;
-      border-radius: 5px;
-      background: #101927;
-      color: #9cafc5;
-      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-      font-size: 12px;
-    }
-
-    .offset.hot {
-      border-color: var(--blue);
-      background: var(--blue-2);
-      color: white;
-      box-shadow: 0 0 20px rgba(47, 134, 255, 0.42);
-    }
-
-    .partition.purple .offset.hot {
-      border-color: var(--purple);
-      background: var(--purple);
-    }
-
-    .lane-dot {
-      margin-left: auto;
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      background: var(--blue);
-      box-shadow: 0 0 16px currentColor;
-    }
-
-    .partition.purple .lane-dot {
-      background: var(--purple);
-    }
-
-    .group {
-      padding: 14px;
-    }
-
-    .consumer {
-      margin-top: 10px;
-      border: 1px solid var(--blue);
-      border-radius: 6px;
-      background: rgba(32, 183, 255, 0.1);
-      padding: 12px;
-    }
-
-    .consumer.purple {
-      border-color: var(--purple);
-      background: rgba(156, 107, 255, 0.12);
-    }
-
-    .consumer.idle {
-      border-color: #56687d;
-      background: rgba(10, 16, 23, 0.88);
-    }
-
-    .consumer-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .avatar {
-      display: grid;
-      place-items: center;
-      width: 34px;
-      height: 34px;
-      border-radius: 999px;
-      background: rgba(32, 183, 255, 0.16);
-      color: #8cddff;
-    }
-
-    .consumer.purple .avatar {
-      background: rgba(156, 107, 255, 0.18);
-      color: #cab0ff;
-    }
-
-    .consumer-name {
-      flex: 1;
-      min-width: 0;
-      font-weight: 850;
-      color: white;
-    }
-
-    .consumer-name small {
-      display: block;
-      margin-top: 2px;
-      color: #9cafc3;
-      font-weight: 500;
-    }
-
-    .assignment {
-      border: 1px solid rgba(32, 183, 255, 0.5);
-      border-radius: 5px;
-      background: rgba(32, 183, 255, 0.12);
-      padding: 5px 8px;
-      color: #90deff;
-      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-      font-weight: 750;
-      font-size: 12px;
-    }
-
-    .consumer-state {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      margin-top: 8px;
-      color: var(--green);
-      font-size: 12px;
-      font-weight: 750;
-    }
-
-    .consumer.idle .consumer-state {
-      color: #9cafc3;
-    }
-
-    .inspector {
-      grid-column: 4;
-      grid-row: 1 / span 2;
-      min-height: 0;
-      overflow: auto;
-      background: #0a1017;
-    }
-
-    .panel-header {
-      min-height: 54px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--line);
-      padding: 0 18px;
-    }
-
-    .panel-header h2 {
-      margin: 0;
-      color: #91a3b8;
-      font-size: 12px;
-      font-weight: 850;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-    }
-
-    .inspector-section {
-      border-bottom: 1px solid var(--line);
-      padding: 18px;
-    }
-
-    .selection-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .message-chip {
-      border: 1px solid rgba(32, 183, 255, 0.42);
-      border-radius: 6px;
-      background: rgba(32, 183, 255, 0.12);
-      padding: 8px 10px;
-      color: #69d3ff;
-      font-weight: 850;
-    }
-
-    .pager {
-      display: flex;
-      gap: 8px;
-    }
-
-    dl {
-      margin: 0;
-      display: grid;
-      grid-template-columns: 110px minmax(0, 1fr);
-      gap: 8px 14px;
-      font-size: 13px;
-    }
-
-    dt {
-      color: #91a3b8;
-    }
-
-    dd {
-      margin: 0;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: #eef5ff;
-      font-weight: 650;
-    }
-
-    .steps {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 14px;
-    }
-
-    .step {
-      display: grid;
-      grid-template-columns: 18px 1fr auto;
-      gap: 10px;
-      align-items: start;
-      font-size: 13px;
-    }
-
-    .step-marker {
-      width: 16px;
-      height: 16px;
-      border: 2px solid currentColor;
-      border-radius: 999px;
-      color: var(--green);
-    }
-
-    .step.processing .step-marker {
-      color: var(--amber);
-    }
-
-    .step-title {
-      color: var(--green);
-      font-weight: 850;
-    }
-
-    .step.processing .step-title {
-      color: var(--amber);
-    }
-
-    .step-detail {
-      margin-top: 3px;
-      color: #aab8c9;
-    }
-
-    .console {
-      grid-column: 3;
-      grid-row: 2;
-      min-width: 0;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid var(--line);
-      border-top: 1px solid var(--line);
-      background: #081017;
-    }
-
-    .controls {
-      margin: 12px;
-      display: grid;
-      grid-template-columns: 220px 95px 140px 125px minmax(120px, 1fr);
-      gap: 10px;
-      border: 1px solid var(--line-strong);
-      border-radius: var(--radius);
-      background: rgba(13, 21, 30, 0.78);
-      padding: 12px;
-    }
-
-    .control-cell {
-      min-width: 0;
-      border-right: 1px solid var(--line);
-      padding-right: 10px;
-    }
-
-    .control-cell:last-child {
-      border-right: 0;
-      padding-right: 0;
-    }
-
-    .control-title {
-      margin: 0 0 9px;
-      color: #8295ac;
-      font-size: 11px;
-      font-weight: 850;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    .button-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .primary {
-      border-color: transparent;
-      background: var(--blue);
-      color: #00131c;
-      font-weight: 850;
-    }
-
-    .danger-soft {
-      border-color: #4b5e74;
-      background: #111827;
-    }
-
-    .field {
-      width: 100%;
-      height: 34px;
-      border: 1px solid #3b5270;
-      border-radius: 6px;
-      background: #060b16;
-      color: white;
-      padding: 0 9px;
-    }
-
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--blue);
-    }
-
-    .consumer-buttons {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .timeline {
-      min-height: 0;
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      padding: 0 12px 12px;
-    }
-
-    .filters {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      border: 1px solid var(--line);
-      border-radius: 7px 7px 0 0;
-      background: #0b1219;
-      padding: 8px 12px;
-    }
-
-    .filter-left,
-    .filter-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-      flex-wrap: wrap;
-    }
-
-    .filter {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      border: 1px solid #354a64;
-      border-radius: 5px;
-      background: #111b27;
-      padding: 6px 10px;
-      color: #e7f0fb;
-      font-weight: 750;
-      font-size: 12px;
-    }
-
-    .swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-      background: var(--blue);
-    }
-
-    .switch {
-      width: 36px;
-      height: 20px;
-      border-radius: 999px;
-      background: rgba(37, 224, 154, 0.8);
-      padding: 2px;
-    }
-
-    .switch::after {
-      content: "";
-      display: block;
-      margin-left: auto;
-      width: 16px;
-      height: 16px;
-      border-radius: 999px;
-      background: white;
-    }
-
-    .table-wrap {
-      min-height: 0;
-      overflow: auto;
-      border: 1px solid var(--line);
-      border-top: 0;
-      border-radius: 0 0 7px 7px;
-    }
-
-    table {
-      width: 100%;
-      min-width: 850px;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-
-    th,
-    td {
-      border-bottom: 1px solid #1e2c3c;
-      padding: 9px 12px;
-      text-align: left;
-      white-space: nowrap;
-    }
-
-    th {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: #081017;
-      color: #9babc0;
-      font-size: 12px;
-      font-weight: 850;
-    }
-
-    td {
-      color: #d8e4f2;
-    }
-
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      color: #5bd1ff;
-      font-weight: 850;
-    }
-
-    @media (max-width: 1100px) {
-      body { overflow: auto; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kafka Visual Playground UI Mockup</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #05080c;
+        --panel: #0a1017;
+        --panel-2: #0d151e;
+        --panel-3: #111b26;
+        --line: #233244;
+        --line-strong: #38516e;
+        --text: #edf5ff;
+        --muted: #91a3b8;
+        --soft: #64748b;
+        --blue: #20b7ff;
+        --blue-2: #2f86ff;
+        --green: #25e09a;
+        --amber: #ffbf2f;
+        --orange: #ff7a18;
+        --purple: #9c6bff;
+        --red: #ff5d66;
+        --shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+        --radius: 8px;
+        font-family:
+          "Aptos",
+          "Segoe UI",
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body {
+        overflow: hidden;
+        font-size: 14px;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
 
       .app {
-        height: auto;
-        min-height: 100vh;
-        display: block;
+        height: 100vh;
+        display: grid;
+        grid-template-rows: 64px minmax(0, 1fr);
+        background:
+          radial-gradient(
+            circle at 40% 18%,
+            rgba(32, 183, 255, 0.08),
+            transparent 34%
+          ),
+          linear-gradient(180deg, #070b10, #030507 70%);
       }
 
       .topbar {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        flex-wrap: wrap;
-        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(6, 10, 15, 0.96);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .brand-mark {
+        width: 32px;
+        height: 32px;
+        color: #f8fbff;
       }
 
       .brand-title {
-        max-width: 220px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 750;
+        letter-spacing: 0;
+        white-space: nowrap;
       }
 
-      .aiven,
-      .status-block,
-      .status-inline {
-        display: none;
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 28px;
+        border: 1px solid rgba(32, 183, 255, 0.42);
+        border-radius: 6px;
+        background: rgba(32, 183, 255, 0.12);
+        padding: 4px 10px;
+        color: #78d8ff;
+        font-weight: 700;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .aiven {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-left: 1px solid var(--line);
+        padding-left: 16px;
+        color: var(--orange);
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
       }
 
       .status-strip {
-        width: 100%;
-        justify-content: flex-start;
-        margin-left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 18px;
+        min-width: 0;
+        margin-left: auto;
+      }
+
+      .status-block {
+        border-right: 1px solid var(--line-strong);
+        padding-right: 18px;
+        min-width: 160px;
+      }
+
+      .status-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 750;
+        color: white;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--green);
+        box-shadow: 0 0 18px rgba(37, 224, 154, 0.7);
+      }
+
+      .status-sub {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .status-inline {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-right: 1px solid var(--line-strong);
+        padding-right: 18px;
+        color: #dce6f1;
+        white-space: nowrap;
+      }
+
+      .run-pill {
+        border: 1px solid rgba(37, 224, 154, 0.34);
+        border-radius: 5px;
+        background: rgba(37, 224, 154, 0.13);
+        padding: 5px 10px;
+        color: var(--green);
+        font-weight: 800;
+        font-size: 12px;
+      }
+
+      .icon-button,
+      .command-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 36px;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        background: rgba(13, 21, 30, 0.9);
+        color: #e7f0fb;
+        padding: 0 13px;
+        white-space: nowrap;
+      }
+
+      .icon-button {
+        width: 38px;
+        padding: 0;
+        border-radius: 999px;
       }
 
       .shell {
-        display: block;
-        overflow: visible;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 72px 270px minmax(680px, 1fr) 360px;
+        grid-template-rows: minmax(0, 1fr) 318px;
+        overflow: hidden;
       }
 
       .rail {
-        position: sticky;
-        top: 82px;
-        z-index: 12;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-        padding: 8px;
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 16px 8px;
+        border-right: 1px solid var(--line);
+        background: #071019;
       }
 
       .rail-item {
-        flex-direction: row;
-        justify-content: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: #a8b8cb;
+        padding: 12px 4px;
+        font-size: 12px;
+      }
+
+      .rail-item.active {
+        background: rgba(32, 183, 255, 0.13);
+        color: #65d5ff;
       }
 
       .sidebar {
-        max-height: 460px;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        min-height: 0;
+        overflow: auto;
+        border-right: 1px solid var(--line);
+        background: #0a1017;
+        padding: 16px;
+      }
+
+      .section-title {
+        margin: 0 0 12px;
+        color: #90a1b6;
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .scenario-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .scenario-card {
+        position: relative;
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(8, 14, 20, 0.7);
+        padding: 14px;
+        color: #b8c6d8;
+      }
+
+      .scenario-card.active {
+        border-color: var(--blue);
+        background: linear-gradient(
+          135deg,
+          rgba(13, 74, 101, 0.74),
+          rgba(8, 18, 28, 0.76)
+        );
+        box-shadow: inset 0 0 34px rgba(32, 183, 255, 0.08);
+        color: #eaf8ff;
+      }
+
+      .scenario-card.active::after {
+        content: "";
+        position: absolute;
+        right: 13px;
+        top: 50%;
+        width: 4px;
+        height: 14px;
+        border-radius: 2px;
+        background: var(--blue);
+        transform: translateY(-50%);
+        box-shadow: 0 0 14px var(--blue);
+      }
+
+      .scenario-icon {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        color: var(--blue);
+      }
+
+      .scenario-card.locked .scenario-icon,
+      .scenario-card.locked h3 {
+        color: #8798ad;
+      }
+
+      .scenario-card h3 {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.25;
+        font-weight: 800;
+      }
+
+      .scenario-card p {
+        margin: 6px 0 0;
+        color: #9cafc3;
+        font-size: 12.5px;
+        line-height: 1.5;
+      }
+
+      .scenario-card small {
+        display: block;
+        margin-top: 8px;
+        color: #74859a;
+        font-size: 12px;
+      }
+
+      .learn-panel {
+        margin-top: 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(8, 14, 20, 0.82);
+        padding: 14px;
+      }
+
+      .learn-panel p {
+        margin: 0;
+        color: #cad6e4;
+        font-size: 13px;
+        line-height: 1.6;
       }
 
       .stage {
-        min-height: 820px;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
+        grid-column: 3;
+        grid-row: 1;
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+        border-right: 1px solid var(--line);
+        background:
+          radial-gradient(circle, rgba(44, 70, 98, 0.62) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(7, 13, 19, 0.98), rgba(3, 7, 11, 0.96));
+        background-size:
+          24px 24px,
+          100% 100%;
       }
 
       .stage-toolbar {
-        left: 12px;
-        right: 12px;
-        flex-wrap: wrap;
+        position: absolute;
+        z-index: 3;
+        top: 16px;
+        left: 22px;
+        right: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .stage-toolbar h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 800;
       }
 
       .tool-cluster {
-        width: 100%;
-        gap: 8px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .zoom {
+        display: grid;
+        grid-template-columns: 42px 76px 42px;
+        overflow: hidden;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        background: rgba(6, 10, 15, 0.82);
+      }
+
+      .zoom span {
+        display: grid;
+        place-items: center;
+        min-height: 34px;
+        border-right: 1px solid var(--line);
+        color: #d9e4ef;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .zoom span:last-child {
+        border-right: 0;
       }
 
       .diagram {
-        position: relative;
-        inset: auto;
+        position: absolute;
+        inset: 82px 28px 46px;
         display: grid;
-        grid-template-columns: 1fr;
-        gap: 12px;
-        padding: 96px 12px 16px;
+        grid-template-columns: 160px minmax(300px, 1fr) 220px;
+        align-items: center;
+        gap: 28px;
       }
 
       .wire-layer {
-        display: none;
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.94;
+      }
+
+      .node {
+        position: relative;
+        z-index: 2;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        background: rgba(10, 17, 24, 0.94);
+        box-shadow: var(--shadow);
+      }
+
+      .producer {
+        min-height: 168px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 18px;
+      }
+
+      .producer .code {
+        display: grid;
+        place-items: center;
+        width: 58px;
+        height: 58px;
+        border: 1px solid var(--blue);
+        border-radius: 999px;
+        background: rgba(32, 183, 255, 0.1);
+        color: var(--blue);
+        font-size: 30px;
+        font-weight: 700;
+      }
+
+      .node-label {
+        margin-top: 14px;
+        font-weight: 850;
+        color: white;
+      }
+
+      .mini-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 8px;
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .topic {
+        padding: 14px;
+      }
+
+      .node-kicker {
+        color: #dce6f1;
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        text-align: center;
+      }
+
+      .topic-name {
+        margin-top: 8px;
+        color: white;
+        font-size: 18px;
+        font-weight: 850;
+        text-align: center;
+      }
+
+      .node-sub {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      .partition {
+        margin-top: 12px;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        background: rgba(5, 9, 13, 0.48);
+        padding: 10px;
+      }
+
+      .partition-title {
+        margin-bottom: 8px;
+        color: #70d8ff;
+        font-weight: 850;
+      }
+
+      .partition.purple .partition-title {
+        color: #c59dff;
+      }
+
+      .offsets {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        overflow: hidden;
+      }
+
+      .offset {
+        min-width: 34px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #34475f;
+        border-radius: 5px;
+        background: #101927;
+        color: #9cafc5;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+        font-size: 12px;
+      }
+
+      .offset.hot {
+        border-color: var(--blue);
+        background: var(--blue-2);
+        color: white;
+        box-shadow: 0 0 20px rgba(47, 134, 255, 0.42);
+      }
+
+      .partition.purple .offset.hot {
+        border-color: var(--purple);
+        background: var(--purple);
+      }
+
+      .lane-dot {
+        margin-left: auto;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--blue);
+        box-shadow: 0 0 16px currentColor;
+      }
+
+      .partition.purple .lane-dot {
+        background: var(--purple);
+      }
+
+      .group {
+        padding: 14px;
+      }
+
+      .consumer {
+        margin-top: 10px;
+        border: 1px solid var(--blue);
+        border-radius: 6px;
+        background: rgba(32, 183, 255, 0.1);
+        padding: 12px;
+      }
+
+      .consumer.purple {
+        border-color: var(--purple);
+        background: rgba(156, 107, 255, 0.12);
+      }
+
+      .consumer.idle {
+        border-color: #56687d;
+        background: rgba(10, 16, 23, 0.88);
+      }
+
+      .consumer-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: rgba(32, 183, 255, 0.16);
+        color: #8cddff;
+      }
+
+      .consumer.purple .avatar {
+        background: rgba(156, 107, 255, 0.18);
+        color: #cab0ff;
+      }
+
+      .consumer-name {
+        flex: 1;
+        min-width: 0;
+        font-weight: 850;
+        color: white;
+      }
+
+      .consumer-name small {
+        display: block;
+        margin-top: 2px;
+        color: #9cafc3;
+        font-weight: 500;
+      }
+
+      .assignment {
+        border: 1px solid rgba(32, 183, 255, 0.5);
+        border-radius: 5px;
+        background: rgba(32, 183, 255, 0.12);
+        padding: 5px 8px;
+        color: #90deff;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+        font-weight: 750;
+        font-size: 12px;
+      }
+
+      .consumer-state {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 8px;
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .consumer.idle .consumer-state {
+        color: #9cafc3;
       }
 
       .inspector {
-        max-height: none;
+        grid-column: 4;
+        grid-row: 1 / span 2;
+        min-height: 0;
+        overflow: auto;
+        background: #0a1017;
+      }
+
+      .panel-header {
+        min-height: 54px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         border-bottom: 1px solid var(--line);
+        padding: 0 18px;
       }
 
-      .controls {
-        grid-template-columns: 1fr;
+      .panel-header h2 {
+        margin: 0;
+        color: #91a3b8;
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
       }
 
-      .control-cell {
-        border-right: 0;
+      .inspector-section {
         border-bottom: 1px solid var(--line);
-        padding-right: 0;
-        padding-bottom: 12px;
+        padding: 18px;
       }
 
-      .control-cell:last-child {
-        border-bottom: 0;
-        padding-bottom: 0;
+      .selection-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .message-chip {
+        border: 1px solid rgba(32, 183, 255, 0.42);
+        border-radius: 6px;
+        background: rgba(32, 183, 255, 0.12);
+        padding: 8px 10px;
+        color: #69d3ff;
+        font-weight: 850;
+      }
+
+      .pager {
+        display: flex;
+        gap: 8px;
+      }
+
+      dl {
+        margin: 0;
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 8px 14px;
+        font-size: 13px;
+      }
+
+      dt {
+        color: #91a3b8;
+      }
+
+      dd {
+        margin: 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #eef5ff;
+        font-weight: 650;
+      }
+
+      .steps {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 14px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        gap: 10px;
+        align-items: start;
+        font-size: 13px;
+      }
+
+      .step-marker {
+        width: 16px;
+        height: 16px;
+        border: 2px solid currentColor;
+        border-radius: 999px;
+        color: var(--green);
+      }
+
+      .step.processing .step-marker {
+        color: var(--amber);
+      }
+
+      .step-title {
+        color: var(--green);
+        font-weight: 850;
+      }
+
+      .step.processing .step-title {
+        color: var(--amber);
+      }
+
+      .step-detail {
+        margin-top: 3px;
+        color: #aab8c9;
       }
 
       .console {
-        min-height: 720px;
+        grid-column: 3;
+        grid-row: 2;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--line);
+        border-top: 1px solid var(--line);
+        background: #081017;
+      }
+
+      .controls {
+        margin: 12px;
+        display: grid;
+        grid-template-columns: 220px 95px 140px 125px minmax(120px, 1fr);
+        gap: 10px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        background: rgba(13, 21, 30, 0.78);
+        padding: 12px;
+      }
+
+      .control-cell {
+        min-width: 0;
+        border-right: 1px solid var(--line);
+        padding-right: 10px;
+      }
+
+      .control-cell:last-child {
         border-right: 0;
+        padding-right: 0;
+      }
+
+      .control-title {
+        margin: 0 0 9px;
+        color: #8295ac;
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .primary {
+        border-color: transparent;
+        background: var(--blue);
+        color: #00131c;
+        font-weight: 850;
+      }
+
+      .danger-soft {
+        border-color: #4b5e74;
+        background: #111827;
+      }
+
+      .field {
+        width: 100%;
+        height: 34px;
+        border: 1px solid #3b5270;
+        border-radius: 6px;
+        background: #060b16;
+        color: white;
+        padding: 0 9px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--blue);
+      }
+
+      .consumer-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .timeline {
+        min-height: 0;
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        padding: 0 12px 12px;
       }
 
       .filters {
-        align-items: flex-start;
-        flex-direction: column;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px 7px 0 0;
+        background: #0b1219;
+        padding: 8px 12px;
       }
-    }
 
-    @media (max-width: 520px) {
-      .brand-title { max-width: 190px; font-size: 15px; }
-      .brand-mark { width: 25px; height: 25px; }
-      .pill { min-height: 24px; padding: 3px 8px; }
-      .command-button { min-height: 34px; padding: 0 10px; }
-      .sidebar { max-height: 420px; padding: 12px; }
-      .scenario-card { padding: 12px; }
-      .stage { min-height: 760px; }
-      .offset { min-width: 31px; height: 28px; }
-      dl { grid-template-columns: 92px minmax(0, 1fr); }
-    }
-  </style>
-</head>
-<body>
-  <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <path d="M16 4v8m0 8v8M9 8l7 4 7-4M9 24l7-4 7 4M9 8v16m14-16v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="16" cy="16" r="3" stroke="currentColor" stroke-width="2"/>
-        </svg>
-        <div class="brand-title">Kafka Visual Playground</div>
-        <span class="pill">Aiven</span>
-        <div class="aiven">aiven</div>
+      .filter-left,
+      .filter-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+
+      .filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid #354a64;
+        border-radius: 5px;
+        background: #111b27;
+        padding: 6px 10px;
+        color: #e7f0fb;
+        font-weight: 750;
+        font-size: 12px;
+      }
+
+      .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        background: var(--blue);
+      }
+
+      .switch {
+        width: 36px;
+        height: 20px;
+        border-radius: 999px;
+        background: rgba(37, 224, 154, 0.8);
+        padding: 2px;
+      }
+
+      .switch::after {
+        content: "";
+        display: block;
+        margin-left: auto;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        background: white;
+      }
+
+      .table-wrap {
+        min-height: 0;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0 0 7px 7px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 850px;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid #1e2c3c;
+        padding: 9px 12px;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #081017;
+        color: #9babc0;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      td {
+        color: #d8e4f2;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #5bd1ff;
+        font-weight: 850;
+      }
+
+      @media (max-width: 1100px) {
+        body {
+          overflow: auto;
+        }
+
+        .app {
+          height: auto;
+          min-height: 100vh;
+          display: block;
+        }
+
+        .topbar {
+          position: sticky;
+          top: 0;
+          z-index: 20;
+          flex-wrap: wrap;
+          padding: 10px 12px;
+        }
+
+        .brand-title {
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .aiven,
+        .status-block,
+        .status-inline {
+          display: none;
+        }
+
+        .status-strip {
+          width: 100%;
+          justify-content: flex-start;
+          margin-left: 0;
+        }
+
+        .shell {
+          display: block;
+          overflow: visible;
+        }
+
+        .rail {
+          position: sticky;
+          top: 82px;
+          z-index: 12;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          padding: 8px;
+        }
+
+        .rail-item {
+          flex-direction: row;
+          justify-content: center;
+        }
+
+        .sidebar {
+          max-height: 460px;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .stage {
+          min-height: 820px;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .stage-toolbar {
+          left: 12px;
+          right: 12px;
+          flex-wrap: wrap;
+        }
+
+        .tool-cluster {
+          width: 100%;
+          gap: 8px;
+        }
+
+        .diagram {
+          position: relative;
+          inset: auto;
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+          padding: 96px 12px 16px;
+        }
+
+        .wire-layer {
+          display: none;
+        }
+
+        .inspector {
+          max-height: none;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .controls {
+          grid-template-columns: 1fr;
+        }
+
+        .control-cell {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          padding-right: 0;
+          padding-bottom: 12px;
+        }
+
+        .control-cell:last-child {
+          border-bottom: 0;
+          padding-bottom: 0;
+        }
+
+        .console {
+          min-height: 720px;
+          border-right: 0;
+        }
+
+        .filters {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .brand-title {
+          max-width: 190px;
+          font-size: 15px;
+        }
+        .brand-mark {
+          width: 25px;
+          height: 25px;
+        }
+        .pill {
+          min-height: 24px;
+          padding: 3px 8px;
+        }
+        .command-button {
+          min-height: 34px;
+          padding: 0 10px;
+        }
+        .sidebar {
+          max-height: 420px;
+          padding: 12px;
+        }
+        .scenario-card {
+          padding: 12px;
+        }
+        .stage {
+          min-height: 760px;
+        }
+        .offset {
+          min-width: 31px;
+          height: 28px;
+        }
+        dl {
+          grid-template-columns: 92px minmax(0, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <svg
+            class="brand-mark"
+            viewBox="0 0 32 32"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M16 4v8m0 8v8M9 8l7 4 7-4M9 24l7-4 7 4M9 8v16m14-16v16"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle
+              cx="16"
+              cy="16"
+              r="3"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+          </svg>
+          <div class="brand-title">Kafka Visual Playground</div>
+          <span class="pill">Aiven</span>
+          <div class="aiven">aiven</div>
+        </div>
+        <div class="status-strip">
+          <div class="status-block">
+            <div class="status-main"><span class="dot"></span>Connected</div>
+            <div class="status-sub">demo.aivencloud.com:9092</div>
+          </div>
+          <div class="status-inline">
+            Run status <span class="run-pill">Running</span>
+          </div>
+          <button class="command-button" type="button">↺ Reset</button>
+          <button class="icon-button" type="button" aria-label="Theme">
+            ☼
+          </button>
+        </div>
+      </header>
+
+      <div class="shell">
+        <nav class="rail" aria-label="Workspace">
+          <button class="rail-item active" type="button">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <rect
+                x="4"
+                y="4"
+                width="6"
+                height="6"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <rect
+                x="14"
+                y="4"
+                width="6"
+                height="6"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <rect
+                x="4"
+                y="14"
+                width="6"
+                height="6"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <rect
+                x="14"
+                y="14"
+                width="6"
+                height="6"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+            </svg>
+            Events
+          </button>
+          <button class="rail-item" type="button">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 4v5m0 6v5M6 9h12M6 15h12"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+              <circle
+                cx="12"
+                cy="4"
+                r="2"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <circle
+                cx="6"
+                cy="9"
+                r="2"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <circle
+                cx="18"
+                cy="9"
+                r="2"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+            </svg>
+            Topology
+          </button>
+          <button class="rail-item" type="button">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 8a4 4 0 100 8 4 4 0 000-8z"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <path
+                d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10l2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10l2.1-2.1"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+            Config
+          </button>
+        </nav>
+
+        <aside class="sidebar">
+          <h2 class="section-title">Scenarios</h2>
+          <div class="scenario-list">
+            <article class="scenario-card active">
+              <div class="scenario-icon">▦</div>
+              <div>
+                <h3>Partitioning</h3>
+                <p>
+                  Understand how messages are distributed across partitions.
+                </p>
+              </div>
+            </article>
+            <article class="scenario-card locked">
+              <div class="scenario-icon">⌁</div>
+              <div>
+                <h3>Consumer Rebalancing</h3>
+                <p>
+                  See how consumers are rebalanced when group membership
+                  changes.
+                </p>
+                <small>Locked</small>
+              </div>
+            </article>
+            <article class="scenario-card locked">
+              <div class="scenario-icon">⟲</div>
+              <div>
+                <h3>Exactly-Once Semantics</h3>
+                <p>
+                  Understand idempotent producers and transactional consumers.
+                </p>
+                <small>Locked</small>
+              </div>
+            </article>
+            <article class="scenario-card locked">
+              <div class="scenario-icon">▤</div>
+              <div>
+                <h3>Log Compaction</h3>
+                <p>See how compacted topics retain the latest key values.</p>
+                <small>Locked</small>
+              </div>
+            </article>
+            <article class="scenario-card locked">
+              <div class="scenario-icon">⇥</div>
+              <div>
+                <h3>Retry Topics and DLQ</h3>
+                <p>
+                  Route failed records through backoff and terminal dead-letter
+                  handling.
+                </p>
+                <small>Locked</small>
+              </div>
+            </article>
+          </div>
+          <section class="learn-panel">
+            <h2 class="section-title">What you are seeing</h2>
+            <p>
+              This topic has two partitions, so two members can actively consume
+              while the third remains idle until the group is reassigned.
+            </p>
+          </section>
+        </aside>
+
+        <main class="stage">
+          <div class="stage-toolbar">
+            <h2>Topology</h2>
+            <div class="tool-cluster">
+              <button class="command-button" type="button">
+                ⌘ Auto layout
+              </button>
+              <div class="zoom">
+                <span>−</span><span>100%</span><span>+</span>
+              </div>
+              <button class="command-button" type="button">⛶</button>
+            </div>
+          </div>
+
+          <svg
+            class="wire-layer"
+            viewBox="0 0 1000 620"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <marker
+                id="arrowBlue"
+                markerWidth="8"
+                markerHeight="8"
+                refX="7"
+                refY="4"
+                orient="auto"
+              >
+                <path d="M0 0 L8 4 L0 8z" fill="#20b7ff" />
+              </marker>
+              <marker
+                id="arrowPurple"
+                markerWidth="8"
+                markerHeight="8"
+                refX="7"
+                refY="4"
+                orient="auto"
+              >
+                <path d="M0 0 L8 4 L0 8z" fill="#9c6bff" />
+              </marker>
+            </defs>
+            <path
+              d="M202 302 C264 302 264 286 330 286"
+              fill="none"
+              stroke="#9aa9ba"
+              stroke-width="1.5"
+              marker-end="url(#arrowBlue)"
+            />
+            <path
+              d="M620 255 C708 255 708 216 785 216"
+              fill="none"
+              stroke="#20b7ff"
+              stroke-width="1.8"
+              marker-end="url(#arrowBlue)"
+            />
+            <path
+              d="M620 345 C708 345 708 312 785 312"
+              fill="none"
+              stroke="#9c6bff"
+              stroke-width="1.8"
+              marker-end="url(#arrowPurple)"
+            />
+            <path
+              d="M620 392 C704 392 710 407 785 407"
+              fill="none"
+              stroke="#94a3b8"
+              stroke-width="1.6"
+              stroke-dasharray="6 6"
+              marker-end="url(#arrowBlue)"
+            />
+          </svg>
+
+          <div class="diagram">
+            <section class="node producer">
+              <div>
+                <div class="code">&lt;/&gt;</div>
+                <div class="node-label">Producer</div>
+                <div class="mini-status"><span class="dot"></span>Running</div>
+              </div>
+            </section>
+
+            <section class="node topic">
+              <div class="node-kicker">Topic</div>
+              <div class="topic-name">user-events</div>
+              <div class="node-sub">2 partitions</div>
+              <div class="partition">
+                <div class="partition-title">Partition 0</div>
+                <div class="offsets">
+                  <span class="offset">98</span><span class="offset">99</span
+                  ><span class="offset">100</span><span class="offset">101</span
+                  ><span class="offset hot">102</span
+                  ><span class="offset">103</span><span class="offset">104</span
+                  ><span class="lane-dot"></span>
+                </div>
+              </div>
+              <div class="partition purple">
+                <div class="partition-title">Partition 1</div>
+                <div class="offsets">
+                  <span class="offset">98</span><span class="offset">99</span
+                  ><span class="offset">100</span
+                  ><span class="offset hot">101</span
+                  ><span class="offset">102</span><span class="offset">103</span
+                  ><span class="offset">104</span><span class="lane-dot"></span>
+                </div>
+              </div>
+            </section>
+
+            <section class="node group">
+              <div class="node-kicker">Consumer Group</div>
+              <div class="node-sub">cg-demo</div>
+              <div class="node-sub">3 consumers</div>
+              <article class="consumer">
+                <div class="consumer-row">
+                  <div class="avatar">♙</div>
+                  <div class="consumer-name">
+                    Consumer 1<small>member-1</small>
+                  </div>
+                  <div class="assignment">P0</div>
+                </div>
+                <div class="consumer-state">
+                  <span class="dot"></span>Active
+                </div>
+              </article>
+              <article class="consumer purple">
+                <div class="consumer-row">
+                  <div class="avatar">♙</div>
+                  <div class="consumer-name">
+                    Consumer 2<small>member-2</small>
+                  </div>
+                  <div class="assignment">P1</div>
+                </div>
+                <div class="consumer-state">
+                  <span class="dot"></span>Active
+                </div>
+              </article>
+              <article class="consumer idle">
+                <div class="consumer-row">
+                  <div class="avatar">♙</div>
+                  <div class="consumer-name">
+                    Consumer 3<small>member-3</small>
+                  </div>
+                  <div class="assignment">-</div>
+                </div>
+                <div class="consumer-state">
+                  <span
+                    class="dot"
+                    style="background: #718096; box-shadow: none"
+                  ></span
+                  >Idle
+                </div>
+              </article>
+              <div class="status-sub" style="margin-top: 14px">
+                Group protocol: consumer (v3)
+              </div>
+            </section>
+          </div>
+        </main>
+
+        <aside class="inspector">
+          <div class="panel-header">
+            <h2>Message Inspector</h2>
+            <span>×</span>
+          </div>
+          <section class="inspector-section">
+            <div class="status-sub">Selected message</div>
+            <div class="selection-row">
+              <div class="message-chip">Partition 0 / Offset 102</div>
+              <div class="pager">
+                <button class="icon-button" type="button">‹</button>
+                <button class="icon-button" type="button">›</button>
+              </div>
+            </div>
+          </section>
+          <section class="inspector-section">
+            <h3 class="section-title">Overview</h3>
+            <dl>
+              <dt>Topic</dt>
+              <dd>user-events</dd>
+              <dt>Partition</dt>
+              <dd style="color: var(--blue)">0</dd>
+              <dt>Offset</dt>
+              <dd>102</dd>
+              <dt>Timestamp</dt>
+              <dd>2025-05-20 14:36:21.123</dd>
+              <dt>Key</dt>
+              <dd>user-42</dd>
+              <dt>Value</dt>
+              <dd>68 bytes</dd>
+              <dt>Headers</dt>
+              <dd>2</dd>
+              <dt>Size</dt>
+              <dd>210 bytes</dd>
+            </dl>
+          </section>
+          <section class="inspector-section">
+            <h3 class="section-title">Processing State</h3>
+            <ol class="steps">
+              <li class="step">
+                <span class="step-marker"></span>
+                <div>
+                  <div class="step-title">Received by</div>
+                  <div class="step-detail">Consumer 1 (member-1)</div>
+                </div>
+                <div class="step-detail">14:36:21.126</div>
+              </li>
+              <li class="step processing">
+                <span class="step-marker"></span>
+                <div>
+                  <div class="step-title">Processing</div>
+                  <div class="step-detail">In progress</div>
+                </div>
+                <div class="step-detail">210 ms</div>
+              </li>
+              <li class="step">
+                <span class="step-marker"></span>
+                <div>
+                  <div class="step-title">Committed</div>
+                  <div class="step-detail">Offset 102</div>
+                </div>
+                <div class="step-detail">14:36:21.338</div>
+              </li>
+            </ol>
+          </section>
+          <section class="inspector-section">
+            <h3 class="section-title">Commit Details</h3>
+            <dl>
+              <dt>Committer</dt>
+              <dd>Consumer 1</dd>
+              <dt>Commit latency</dt>
+              <dd>212 ms</dd>
+              <dt>Commit strategy</dt>
+              <dd>auto.commit = false</dd>
+              <dt>Isolation level</dt>
+              <dd>read_committed</dd>
+            </dl>
+          </section>
+        </aside>
+
+        <section class="console">
+          <div class="controls">
+            <section class="control-cell">
+              <h3 class="control-title">Producer Controls</h3>
+              <div class="button-row">
+                <button class="command-button primary" type="button">
+                  Ⅱ Pause
+                </button>
+                <button class="command-button danger-soft" type="button">
+                  ■ Stop
+                </button>
+                <button class="command-button" type="button">
+                  Produce one +1
+                </button>
+              </div>
+              <div class="mini-status">
+                <span class="dot"></span>Status: Running
+              </div>
+            </section>
+            <label class="control-cell">
+              <span class="control-title">Produce Rate</span>
+              <input class="field" value="5" aria-label="Produce rate" />
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value="5"
+                aria-label="Produce rate slider"
+              />
+            </label>
+            <label class="control-cell">
+              <span class="control-title">Key Strategy</span>
+              <select class="field" aria-label="Key strategy">
+                <option>By key (consistent)</option>
+                <option>Round robin</option>
+                <option>No key</option>
+              </select>
+              <div class="status-sub">key: user-42</div>
+            </label>
+            <label class="control-cell">
+              <span class="control-title">Latency</span>
+              <input class="field" value="210 ms" aria-label="Latency" />
+              <input
+                type="range"
+                min="0"
+                max="2000"
+                value="210"
+                aria-label="Latency slider"
+              />
+            </label>
+            <section class="control-cell">
+              <h3 class="control-title">Consumers</h3>
+              <div class="consumer-buttons">
+                <button class="command-button" type="button">−</button>
+                <button class="command-button primary" type="button">3</button>
+                <button class="command-button" type="button">+</button>
+                <button class="command-button" type="button">Stop all</button>
+              </div>
+              <div class="status-sub">Group: cg-demo</div>
+            </section>
+          </div>
+
+          <div class="timeline">
+            <div class="filters">
+              <div class="filter-left">
+                <span class="filter">All</span>
+                <span class="filter"><span class="swatch"></span>Messages</span>
+                <span class="filter"
+                  ><span class="swatch" style="background: var(--orange)"></span
+                  >Rebalances</span
+                >
+                <span class="filter"
+                  ><span class="swatch" style="background: var(--green)"></span
+                  >Commits</span
+                >
+                <span class="filter"
+                  ><span class="swatch" style="background: var(--purple)"></span
+                  >Cleanup</span
+                >
+                <span class="filter"
+                  ><span class="swatch" style="background: var(--red)"></span
+                  >Errors</span
+                >
+              </div>
+              <div class="filter-right">
+                <span>Auto scroll</span><span class="switch"></span>
+                <button class="command-button" type="button">Clear</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Component</th>
+                    <th>Details</th>
+                    <th>Metadata</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>14:36:21.338</td>
+                    <td>
+                      <span class="tag"
+                        ><span
+                          class="swatch"
+                          style="background: var(--green)"
+                        ></span
+                        >Commits</span
+                      >
+                    </td>
+                    <td>Consumer 1</td>
+                    <td>Committed offset 102 for user-events partition 0</td>
+                    <td><span class="run-pill">offset=102</span></td>
+                  </tr>
+                  <tr>
+                    <td>14:36:21.338</td>
+                    <td>
+                      <span class="tag"
+                        ><span class="swatch"></span>Messages</span
+                      >
+                    </td>
+                    <td>Consumer 1</td>
+                    <td>
+                      Processed message from user-events partition 0 offset 102
+                    </td>
+                    <td><span class="pill">210ms</span></td>
+                  </tr>
+                  <tr>
+                    <td>14:36:21.126</td>
+                    <td>
+                      <span class="tag"
+                        ><span class="swatch"></span>Messages</span
+                      >
+                    </td>
+                    <td>Consumer 1</td>
+                    <td>
+                      Received message from user-events partition 0 offset 102
+                    </td>
+                    <td><span class="pill">key=user-42</span></td>
+                  </tr>
+                  <tr>
+                    <td>14:36:20.912</td>
+                    <td>
+                      <span class="tag"
+                        ><span class="swatch"></span>Messages</span
+                      >
+                    </td>
+                    <td>Producer</td>
+                    <td>
+                      Produced message to user-events partition 0 offset 102
+                    </td>
+                    <td><span class="pill">size=210B</span></td>
+                  </tr>
+                  <tr>
+                    <td>14:36:18.512</td>
+                    <td>
+                      <span class="tag"
+                        ><span
+                          class="swatch"
+                          style="background: var(--orange)"
+                        ></span
+                        >Rebalances</span
+                      >
+                    </td>
+                    <td>Coordinator</td>
+                    <td>Rebalance completed: 2 assignments in 45 ms</td>
+                    <td><span class="pill">2 members</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       </div>
-      <div class="status-strip">
-        <div class="status-block">
-          <div class="status-main"><span class="dot"></span>Connected</div>
-          <div class="status-sub">demo.aivencloud.com:9092</div>
-        </div>
-        <div class="status-inline">Run status <span class="run-pill">Running</span></div>
-        <button class="command-button" type="button">↺ Reset</button>
-        <button class="icon-button" type="button" aria-label="Theme">☼</button>
-      </div>
-    </header>
-
-    <div class="shell">
-      <nav class="rail" aria-label="Workspace">
-        <button class="rail-item active" type="button">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="4" width="6" height="6" stroke="currentColor" stroke-width="2"/><rect x="14" y="4" width="6" height="6" stroke="currentColor" stroke-width="2"/><rect x="4" y="14" width="6" height="6" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="6" height="6" stroke="currentColor" stroke-width="2"/></svg>
-          Events
-        </button>
-        <button class="rail-item" type="button">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v5m0 6v5M6 9h12M6 15h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="2"/><circle cx="6" cy="9" r="2" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="9" r="2" stroke="currentColor" stroke-width="2"/></svg>
-          Topology
-        </button>
-        <button class="rail-item" type="button">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8a4 4 0 100 8 4 4 0 000-8z" stroke="currentColor" stroke-width="2"/><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10l2.1 2.1M2 12h3m14 0h3M4.9 19.1l2.1-2.1m10-10l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          Config
-        </button>
-      </nav>
-
-      <aside class="sidebar">
-        <h2 class="section-title">Scenarios</h2>
-        <div class="scenario-list">
-          <article class="scenario-card active">
-            <div class="scenario-icon">▦</div>
-            <div>
-              <h3>Partitioning</h3>
-              <p>Understand how messages are distributed across partitions.</p>
-            </div>
-          </article>
-          <article class="scenario-card locked">
-            <div class="scenario-icon">⌁</div>
-            <div>
-              <h3>Consumer Rebalancing</h3>
-              <p>See how consumers are rebalanced when group membership changes.</p>
-              <small>Locked</small>
-            </div>
-          </article>
-          <article class="scenario-card locked">
-            <div class="scenario-icon">⟲</div>
-            <div>
-              <h3>Exactly-Once Semantics</h3>
-              <p>Understand idempotent producers and transactional consumers.</p>
-              <small>Locked</small>
-            </div>
-          </article>
-          <article class="scenario-card locked">
-            <div class="scenario-icon">▤</div>
-            <div>
-              <h3>Log Compaction</h3>
-              <p>See how compacted topics retain the latest key values.</p>
-              <small>Locked</small>
-            </div>
-          </article>
-          <article class="scenario-card locked">
-            <div class="scenario-icon">⇥</div>
-            <div>
-              <h3>Retry Topics and DLQ</h3>
-              <p>Route failed records through backoff and terminal dead-letter handling.</p>
-              <small>Locked</small>
-            </div>
-          </article>
-        </div>
-        <section class="learn-panel">
-          <h2 class="section-title">What you are seeing</h2>
-          <p>This topic has two partitions, so two members can actively consume while the third remains idle until the group is reassigned.</p>
-        </section>
-      </aside>
-
-      <main class="stage">
-        <div class="stage-toolbar">
-          <h2>Topology</h2>
-          <div class="tool-cluster">
-            <button class="command-button" type="button">⌘ Auto layout</button>
-            <div class="zoom"><span>−</span><span>100%</span><span>+</span></div>
-            <button class="command-button" type="button">⛶</button>
-          </div>
-        </div>
-
-        <svg class="wire-layer" viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M0 0 L8 4 L0 8z" fill="#20b7ff"/>
-            </marker>
-            <marker id="arrowPurple" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M0 0 L8 4 L0 8z" fill="#9c6bff"/>
-            </marker>
-          </defs>
-          <path d="M202 302 C264 302 264 286 330 286" fill="none" stroke="#9aa9ba" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
-          <path d="M620 255 C708 255 708 216 785 216" fill="none" stroke="#20b7ff" stroke-width="1.8" marker-end="url(#arrowBlue)"/>
-          <path d="M620 345 C708 345 708 312 785 312" fill="none" stroke="#9c6bff" stroke-width="1.8" marker-end="url(#arrowPurple)"/>
-          <path d="M620 392 C704 392 710 407 785 407" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 6" marker-end="url(#arrowBlue)"/>
-        </svg>
-
-        <div class="diagram">
-          <section class="node producer">
-            <div>
-              <div class="code">&lt;/&gt;</div>
-              <div class="node-label">Producer</div>
-              <div class="mini-status"><span class="dot"></span>Running</div>
-            </div>
-          </section>
-
-          <section class="node topic">
-            <div class="node-kicker">Topic</div>
-            <div class="topic-name">user-events</div>
-            <div class="node-sub">2 partitions</div>
-            <div class="partition">
-              <div class="partition-title">Partition 0</div>
-              <div class="offsets">
-                <span class="offset">98</span><span class="offset">99</span><span class="offset">100</span><span class="offset">101</span><span class="offset hot">102</span><span class="offset">103</span><span class="offset">104</span><span class="lane-dot"></span>
-              </div>
-            </div>
-            <div class="partition purple">
-              <div class="partition-title">Partition 1</div>
-              <div class="offsets">
-                <span class="offset">98</span><span class="offset">99</span><span class="offset">100</span><span class="offset hot">101</span><span class="offset">102</span><span class="offset">103</span><span class="offset">104</span><span class="lane-dot"></span>
-              </div>
-            </div>
-          </section>
-
-          <section class="node group">
-            <div class="node-kicker">Consumer Group</div>
-            <div class="node-sub">cg-demo</div>
-            <div class="node-sub">3 consumers</div>
-            <article class="consumer">
-              <div class="consumer-row">
-                <div class="avatar">♙</div>
-                <div class="consumer-name">Consumer 1<small>member-1</small></div>
-                <div class="assignment">P0</div>
-              </div>
-              <div class="consumer-state"><span class="dot"></span>Active</div>
-            </article>
-            <article class="consumer purple">
-              <div class="consumer-row">
-                <div class="avatar">♙</div>
-                <div class="consumer-name">Consumer 2<small>member-2</small></div>
-                <div class="assignment">P1</div>
-              </div>
-              <div class="consumer-state"><span class="dot"></span>Active</div>
-            </article>
-            <article class="consumer idle">
-              <div class="consumer-row">
-                <div class="avatar">♙</div>
-                <div class="consumer-name">Consumer 3<small>member-3</small></div>
-                <div class="assignment">-</div>
-              </div>
-              <div class="consumer-state"><span class="dot" style="background:#718096;box-shadow:none"></span>Idle</div>
-            </article>
-            <div class="status-sub" style="margin-top:14px">Group protocol: consumer (v3)</div>
-          </section>
-        </div>
-      </main>
-
-      <aside class="inspector">
-        <div class="panel-header">
-          <h2>Message Inspector</h2>
-          <span>×</span>
-        </div>
-        <section class="inspector-section">
-          <div class="status-sub">Selected message</div>
-          <div class="selection-row">
-            <div class="message-chip">Partition 0 / Offset 102</div>
-            <div class="pager">
-              <button class="icon-button" type="button">‹</button>
-              <button class="icon-button" type="button">›</button>
-            </div>
-          </div>
-        </section>
-        <section class="inspector-section">
-          <h3 class="section-title">Overview</h3>
-          <dl>
-            <dt>Topic</dt><dd>user-events</dd>
-            <dt>Partition</dt><dd style="color:var(--blue)">0</dd>
-            <dt>Offset</dt><dd>102</dd>
-            <dt>Timestamp</dt><dd>2025-05-20 14:36:21.123</dd>
-            <dt>Key</dt><dd>user-42</dd>
-            <dt>Value</dt><dd>68 bytes</dd>
-            <dt>Headers</dt><dd>2</dd>
-            <dt>Size</dt><dd>210 bytes</dd>
-          </dl>
-        </section>
-        <section class="inspector-section">
-          <h3 class="section-title">Processing State</h3>
-          <ol class="steps">
-            <li class="step">
-              <span class="step-marker"></span>
-              <div><div class="step-title">Received by</div><div class="step-detail">Consumer 1 (member-1)</div></div>
-              <div class="step-detail">14:36:21.126</div>
-            </li>
-            <li class="step processing">
-              <span class="step-marker"></span>
-              <div><div class="step-title">Processing</div><div class="step-detail">In progress</div></div>
-              <div class="step-detail">210 ms</div>
-            </li>
-            <li class="step">
-              <span class="step-marker"></span>
-              <div><div class="step-title">Committed</div><div class="step-detail">Offset 102</div></div>
-              <div class="step-detail">14:36:21.338</div>
-            </li>
-          </ol>
-        </section>
-        <section class="inspector-section">
-          <h3 class="section-title">Commit Details</h3>
-          <dl>
-            <dt>Committer</dt><dd>Consumer 1</dd>
-            <dt>Commit latency</dt><dd>212 ms</dd>
-            <dt>Commit strategy</dt><dd>auto.commit = false</dd>
-            <dt>Isolation level</dt><dd>read_committed</dd>
-          </dl>
-        </section>
-      </aside>
-
-      <section class="console">
-        <div class="controls">
-          <section class="control-cell">
-            <h3 class="control-title">Producer Controls</h3>
-            <div class="button-row">
-              <button class="command-button primary" type="button">Ⅱ Pause</button>
-              <button class="command-button danger-soft" type="button">■ Stop</button>
-              <button class="command-button" type="button">Produce one +1</button>
-            </div>
-            <div class="mini-status"><span class="dot"></span>Status: Running</div>
-          </section>
-          <label class="control-cell">
-            <span class="control-title">Produce Rate</span>
-            <input class="field" value="5" aria-label="Produce rate">
-            <input type="range" min="1" max="10" value="5" aria-label="Produce rate slider">
-          </label>
-          <label class="control-cell">
-            <span class="control-title">Key Strategy</span>
-            <select class="field" aria-label="Key strategy">
-              <option>By key (consistent)</option>
-              <option>Round robin</option>
-              <option>No key</option>
-            </select>
-            <div class="status-sub">key: user-42</div>
-          </label>
-          <label class="control-cell">
-            <span class="control-title">Latency</span>
-            <input class="field" value="210 ms" aria-label="Latency">
-            <input type="range" min="0" max="2000" value="210" aria-label="Latency slider">
-          </label>
-          <section class="control-cell">
-            <h3 class="control-title">Consumers</h3>
-            <div class="consumer-buttons">
-              <button class="command-button" type="button">−</button>
-              <button class="command-button primary" type="button">3</button>
-              <button class="command-button" type="button">+</button>
-              <button class="command-button" type="button">Stop all</button>
-            </div>
-            <div class="status-sub">Group: cg-demo</div>
-          </section>
-        </div>
-
-        <div class="timeline">
-          <div class="filters">
-            <div class="filter-left">
-              <span class="filter">All</span>
-              <span class="filter"><span class="swatch"></span>Messages</span>
-              <span class="filter"><span class="swatch" style="background:var(--orange)"></span>Rebalances</span>
-              <span class="filter"><span class="swatch" style="background:var(--green)"></span>Commits</span>
-              <span class="filter"><span class="swatch" style="background:var(--purple)"></span>Cleanup</span>
-              <span class="filter"><span class="swatch" style="background:var(--red)"></span>Errors</span>
-            </div>
-            <div class="filter-right">
-              <span>Auto scroll</span><span class="switch"></span>
-              <button class="command-button" type="button">Clear</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Time</th><th>Type</th><th>Component</th><th>Details</th><th>Metadata</th></tr>
-              </thead>
-              <tbody>
-                <tr><td>14:36:21.338</td><td><span class="tag"><span class="swatch" style="background:var(--green)"></span>Commits</span></td><td>Consumer 1</td><td>Committed offset 102 for user-events partition 0</td><td><span class="run-pill">offset=102</span></td></tr>
-                <tr><td>14:36:21.338</td><td><span class="tag"><span class="swatch"></span>Messages</span></td><td>Consumer 1</td><td>Processed message from user-events partition 0 offset 102</td><td><span class="pill">210ms</span></td></tr>
-                <tr><td>14:36:21.126</td><td><span class="tag"><span class="swatch"></span>Messages</span></td><td>Consumer 1</td><td>Received message from user-events partition 0 offset 102</td><td><span class="pill">key=user-42</span></td></tr>
-                <tr><td>14:36:20.912</td><td><span class="tag"><span class="swatch"></span>Messages</span></td><td>Producer</td><td>Produced message to user-events partition 0 offset 102</td><td><span class="pill">size=210B</span></td></tr>
-                <tr><td>14:36:18.512</td><td><span class="tag"><span class="swatch" style="background:var(--orange)"></span>Rebalances</span></td><td>Coordinator</td><td>Rebalance completed: 2 assignments in 45 ms</td><td><span class="pill">2 members</span></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
     </div>
-  </div>
-</body>
+  </body>
 </html>

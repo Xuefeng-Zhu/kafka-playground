@@ -1,6 +1,5 @@
 import "server-only";
 import type {
-  CleanupResult,
   ConsumerSnapshot,
   KeyStrategy,
   PlaygroundMessage,
@@ -56,6 +55,8 @@ type InternalRun = CreateRunInput & {
   sequence: number;
   keyState: KeyStrategyState;
   producerTimer: NodeJS.Timeout | null;
+  producerTickInFlight: boolean;
+  producerTimerGeneration: number;
   processingTimers: Map<string, NodeJS.Timeout>;
   consumerHandles: Map<string, PlaygroundConsumerHandle>;
   subscribers: Map<string, Subscriber>;
@@ -126,6 +127,8 @@ export class PlaygroundRuntime {
       sequence: 0,
       keyState: new KeyStrategyState(),
       producerTimer: null,
+      producerTickInFlight: false,
+      producerTimerGeneration: 0,
       processingTimers: new Map(),
       consumerHandles: new Map(),
       subscribers: new Map(),
@@ -147,7 +150,7 @@ export class PlaygroundRuntime {
       );
       run.status = "error";
       this.emit("run.error", { message: "Failed to start run." });
-      await this.cleanup(run, "failed");
+      await this.cleanup(run);
       throw error;
     }
   }
@@ -162,6 +165,7 @@ export class PlaygroundRuntime {
       status: run.status,
       topicName: run.topicName,
       partitionCount: run.partitionCount,
+      consumerLimit: this.consumerLimit(run),
       consumerGroupId: run.consumerGroupId,
       producerStatus: run.producerStatus,
       productionRate: run.productionRate,
@@ -291,14 +295,27 @@ export class PlaygroundRuntime {
     run.messages.push(message);
     this.boundMessages(run);
     this.emit("message.producing", { messageId: eventId, actor: "producer" });
-    const delivery = await this.adapter.produce({
-      runId,
-      topicName: run.topicName,
-      key: messageKey,
-      value,
-      headers,
-      keyStrategy,
-    });
+    let delivery;
+    try {
+      delivery = await this.adapter.produce({
+        runId,
+        topicName: run.topicName,
+        key: messageKey,
+        value,
+        headers,
+        keyStrategy,
+      });
+    } catch (error) {
+      message.state = "failed";
+      message.updatedAt = new Date().toISOString();
+      run.messageCounts.failed += 1;
+      this.emit("run.error", {
+        messageId: eventId,
+        actor: "producer",
+        message: "Message production failed.",
+      });
+      throw error;
+    }
     message.partition = delivery.partition;
     message.offset = delivery.offset;
     message.timestamp = delivery.timestamp;
@@ -485,7 +502,7 @@ export class PlaygroundRuntime {
 
   async reset(runId: string) {
     const run = this.requireRun(runId);
-    await this.cleanup(run, "completed");
+    await this.cleanup(run);
     this.activeRun = null;
     return { cleanupStatus: run.cleanupStatus };
   }
@@ -514,7 +531,7 @@ export class PlaygroundRuntime {
     if (this.shutdownStarted) return;
     this.shutdownStarted = true;
     if (this.activeRun) {
-      await this.cleanup(this.activeRun, "completed").catch((error) =>
+      await this.cleanup(this.activeRun).catch((error) =>
         logger.error({ err: error }, "Runtime shutdown cleanup failed"),
       );
     }
@@ -557,20 +574,43 @@ export class PlaygroundRuntime {
 
   private restartProducerTimer(run: InternalRun) {
     this.clearProducerTimer(run);
+    if (!run.producerTickInFlight) {
+      this.scheduleProducerTick(run);
+    }
+  }
+
+  private scheduleProducerTick(run: InternalRun) {
+    if (run.producerStatus !== "running" || run.producerTimer) return;
+    const generation = run.producerTimerGeneration;
     const intervalMs = Math.max(100, Math.floor(1000 / run.productionRate));
-    run.producerTimer = setInterval(() => {
-      this.produceOne(run.runId).catch((error) => {
+    run.producerTimer = setTimeout(async () => {
+      run.producerTimer = null;
+      if (
+        run.producerStatus !== "running" ||
+        run.producerTimerGeneration !== generation
+      ) {
+        return;
+      }
+      run.producerTickInFlight = true;
+      try {
+        await this.produceOne(run.runId);
+      } catch (error) {
         logger.error(
           { err: error, runId: run.runId },
           "Automatic production failed",
         );
-        this.emit("run.error", { message: "Automatic production failed." });
-      });
+      } finally {
+        run.producerTickInFlight = false;
+        if (run.producerStatus === "running") {
+          this.scheduleProducerTick(run);
+        }
+      }
     }, intervalMs);
   }
 
   private clearProducerTimer(run: InternalRun) {
-    if (run.producerTimer) clearInterval(run.producerTimer);
+    run.producerTimerGeneration += 1;
+    if (run.producerTimer) clearTimeout(run.producerTimer);
     run.producerTimer = null;
   }
 
@@ -859,10 +899,7 @@ export class PlaygroundRuntime {
     }
   }
 
-  private async cleanup(
-    run: InternalRun,
-    fallbackStatus: CleanupResult["status"],
-  ) {
+  private async cleanup(run: InternalRun) {
     this.clearProducerTimer(run);
     for (const timer of run.processingTimers.values()) clearTimeout(timer);
     run.processingTimers.clear();
@@ -883,7 +920,7 @@ export class PlaygroundRuntime {
     const result = await this.adapter
       .deleteRunResources(run)
       .catch((error) => ({
-        status: fallbackStatus,
+        status: "failed" as const,
         steps: [
           {
             name: "adapter.cleanup",

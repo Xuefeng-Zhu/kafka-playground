@@ -6,8 +6,8 @@ const nextConfig: NextConfig = {
   transpilePackages: [
     "@kplay/contracts",
     "@kplay/scenario-engine",
-    "@kplay/kafka-runtime"
-  ]
+    "@kplay/kafka-runtime",
+  ],
 };
 
 export default nextConfig;

@@ -1,6 +1,348 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Style 05 Editorial Data Story</title><style>
-*{box-sizing:border-box}body{margin:0}.mock-caption{width:min(1500px,calc(100vw - 32px));margin:18px auto 10px;padding:10px 12px;border-radius:14px;display:flex;gap:10px;align-items:center}.mock-caption b{letter-spacing:.12em;font-size:12px}.dot{width:9px;height:9px;border-radius:50%}.mock-shell{width:min(1500px,calc(100vw - 32px));height:940px;margin:0 auto 34px;overflow:hidden}.topbar{height:68px;display:flex;align-items:center;gap:14px;padding:0 18px}.brand{display:flex;align-items:center;gap:12px;min-width:320px}.mark{width:38px;height:38px;display:grid;place-items:center}.brand h1{font-size:18px;margin:0}.brand p{margin:2px 0 0;font-size:12px}.spacer{margin-left:auto}.pill{display:inline-flex;align-items:center;white-space:nowrap;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800}.panel{border-radius:18px;padding:16px}.kicker{margin:0 0 12px;font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}.muted{line-height:1.55}.mono{font-family:"SFMono-Regular","Cascadia Code",Menlo,monospace}.btn{border:0;border-radius:12px;padding:10px 13px;font-weight:850}.map-node,.lane,.consumer,.event{border-radius:16px;padding:12px}.offsets{display:flex;gap:7px;margin-top:10px}.offset{min-width:38px;height:34px;border-radius:10px;display:grid;place-items:center;font-family:"SFMono-Regular","Cascadia Code",Menlo,monospace;font-size:11px}.grid{display:grid;min-height:0;height:calc(100% - 68px)}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Style 05 Editorial Data Story</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      .mock-caption {
+        width: min(1500px, calc(100vw - 32px));
+        margin: 18px auto 10px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .mock-caption b {
+        letter-spacing: 0.12em;
+        font-size: 12px;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+      .mock-shell {
+        width: min(1500px, calc(100vw - 32px));
+        height: 940px;
+        margin: 0 auto 34px;
+        overflow: hidden;
+      }
+      .topbar {
+        height: 68px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 18px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 320px;
+      }
+      .mark {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+      }
+      .brand h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      .brand p {
+        margin: 2px 0 0;
+        font-size: 12px;
+      }
+      .spacer {
+        margin-left: auto;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        white-space: nowrap;
+        border-radius: 999px;
+        padding: 7px 11px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .panel {
+        border-radius: 18px;
+        padding: 16px;
+      }
+      .kicker {
+        margin: 0 0 12px;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      .muted {
+        line-height: 1.55;
+      }
+      .mono {
+        font-family: "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+      }
+      .btn {
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 13px;
+        font-weight: 850;
+      }
+      .map-node,
+      .lane,
+      .consumer,
+      .event {
+        border-radius: 16px;
+        padding: 12px;
+      }
+      .offsets {
+        display: flex;
+        gap: 7px;
+        margin-top: 10px;
+      }
+      .offset {
+        min-width: 38px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        font-family: "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+        font-size: 11px;
+      }
+      .grid {
+        display: grid;
+        min-height: 0;
+        height: calc(100% - 68px);
+      }
 
-
-:root{color-scheme:dark;font-family:"Newsreader","Iowan Old Style",Georgia,serif}body{background:#18140f;color:#f7efe2}.mock-caption,.mock-shell{border:1px solid #8b6f47;background:#241d15;box-shadow:0 32px 90px rgba(0,0,0,.42)}.dot{background:#d6a85f}.topbar{background:#211911;border-bottom:1px solid #8b6f47}.mark{border:1px solid #d6a85f;border-radius:50%;background:#342719;color:#f7d08a}.brand h1{font-family:Georgia,serif}.brand p,.muted{color:#c7b89f}.pill{border:1px solid #8b6f47;background:#33281c;color:#f7d08a}.pill.good{border-color:#7aa87a;color:#bff0bf}.grid{grid-template-columns:390px 1fr;grid-template-rows:1fr 270px;background:#1d1710}.essay{padding:28px;border-right:1px solid #8b6f47;background:#211911}.visual{padding:28px;background:radial-gradient(circle at 76% 20%,rgba(214,168,95,.16),transparent 25rem),#1d1710}.bottom{grid-column:1/3;border-top:1px solid #8b6f47;display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:18px;padding:18px;background:#211911}.panel,.map-node,.lane,.consumer,.event{border:1px solid #8b6f47;background:#2a2117}.panel h2,.map-node h2{font-size:30px;line-height:1;margin:0 0 10px}.diagram{height:520px;display:grid;grid-template-columns:190px 1fr 250px;align-items:center;gap:30px}.lane{margin-top:14px}.offset{border:1px solid #8b6f47;background:#211911;color:#f7d08a}.offset.hot{background:#d6a85f;color:#211300;font-weight:900}.consumer{margin-top:10px}.btn{background:#d6a85f;color:#211300}.kicker{color:#d6a85f;font-family:"Aptos","Segoe UI",sans-serif}.sans{font-family:"Aptos","Segoe UI",sans-serif}.big-stat{font-size:52px;line-height:1;color:#f7d08a}
-</style></head><body><div class="mock-caption"><span class="dot"></span><b>STYLE 05 · EDITORIAL DATA STORY</b><span>Premium narrative/data-story style for polished demos.</span></div><div class="mock-shell"><header class="topbar"><div class="brand"><div class="mark">§</div><div><h1>Kafka Field Notes</h1><p>premium editorial / data-story style</p></div></div><span class="pill">Narrative mode</span><span class="spacer"></span><span class="pill good">Live observation</span></header><main class="grid"><aside class="essay"><p class="kicker">Chapter 01</p><section class="panel"><h2>The journey of a keyed record</h2><p class="muted">A more premium, publication-like interface for demos, executive storytelling, and polished tutorials.</p></section><section class="panel" style="margin-top:18px"><p class="kicker">Thesis</p><p class="muted">Ordering is not global. It is local to a partition. The UI tells that story as a narrative.</p></section></aside><section class="visual"><p class="kicker">Annotated system portrait</p><div class="diagram"><section class="map-node"><p class="big-stat">01</p><h2>Producer</h2><p class="muted sans">key user-1</p></section><section class="map-node"><p class="kicker">Topic</p><h2>partitioning.ab12cd</h2><div class="lane sans">Partition 0<div class="offsets"><span class="offset">102</span><span class="offset">103</span><span class="offset hot">105</span><span class="offset">106</span></div></div><div class="lane sans">Partition 1<div class="offsets"><span class="offset">81</span><span class="offset">82</span><span class="offset">83</span></div></div></section><section class="map-node"><p class="big-stat">02</p><h2>Consumer group</h2><div class="consumer sans">C1 owns P0</div><div class="consumer sans">C2 owns P1</div><div class="consumer sans">C3 observes, idle</div></section></div></section><section class="bottom"><section class="panel"><p class="kicker">Insight</p><p class="muted">The selected offset is a story beat: produced, received, processed, committed.</p></section><section class="panel sans"><p class="kicker">Controls</p><button class="btn">Produce one</button> <button class="btn">Change key</button></section><section class="panel sans"><p class="kicker">Event</p><div class="event">message.received · Consumer 1 fetched partition 0 offset 105</div></section></section></main></div></body></html>
+      :root {
+        color-scheme: dark;
+        font-family: "Newsreader", "Iowan Old Style", Georgia, serif;
+      }
+      body {
+        background: #18140f;
+        color: #f7efe2;
+      }
+      .mock-caption,
+      .mock-shell {
+        border: 1px solid #8b6f47;
+        background: #241d15;
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
+      }
+      .dot {
+        background: #d6a85f;
+      }
+      .topbar {
+        background: #211911;
+        border-bottom: 1px solid #8b6f47;
+      }
+      .mark {
+        border: 1px solid #d6a85f;
+        border-radius: 50%;
+        background: #342719;
+        color: #f7d08a;
+      }
+      .brand h1 {
+        font-family: Georgia, serif;
+      }
+      .brand p,
+      .muted {
+        color: #c7b89f;
+      }
+      .pill {
+        border: 1px solid #8b6f47;
+        background: #33281c;
+        color: #f7d08a;
+      }
+      .pill.good {
+        border-color: #7aa87a;
+        color: #bff0bf;
+      }
+      .grid {
+        grid-template-columns: 390px 1fr;
+        grid-template-rows: 1fr 270px;
+        background: #1d1710;
+      }
+      .essay {
+        padding: 28px;
+        border-right: 1px solid #8b6f47;
+        background: #211911;
+      }
+      .visual {
+        padding: 28px;
+        background:
+          radial-gradient(
+            circle at 76% 20%,
+            rgba(214, 168, 95, 0.16),
+            transparent 25rem
+          ),
+          #1d1710;
+      }
+      .bottom {
+        grid-column: 1/3;
+        border-top: 1px solid #8b6f47;
+        display: grid;
+        grid-template-columns: 1.1fr 1fr 1fr;
+        gap: 18px;
+        padding: 18px;
+        background: #211911;
+      }
+      .panel,
+      .map-node,
+      .lane,
+      .consumer,
+      .event {
+        border: 1px solid #8b6f47;
+        background: #2a2117;
+      }
+      .panel h2,
+      .map-node h2 {
+        font-size: 30px;
+        line-height: 1;
+        margin: 0 0 10px;
+      }
+      .diagram {
+        height: 520px;
+        display: grid;
+        grid-template-columns: 190px 1fr 250px;
+        align-items: center;
+        gap: 30px;
+      }
+      .lane {
+        margin-top: 14px;
+      }
+      .offset {
+        border: 1px solid #8b6f47;
+        background: #211911;
+        color: #f7d08a;
+      }
+      .offset.hot {
+        background: #d6a85f;
+        color: #211300;
+        font-weight: 900;
+      }
+      .consumer {
+        margin-top: 10px;
+      }
+      .btn {
+        background: #d6a85f;
+        color: #211300;
+      }
+      .kicker {
+        color: #d6a85f;
+        font-family: "Aptos", "Segoe UI", sans-serif;
+      }
+      .sans {
+        font-family: "Aptos", "Segoe UI", sans-serif;
+      }
+      .big-stat {
+        font-size: 52px;
+        line-height: 1;
+        color: #f7d08a;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mock-caption">
+      <span class="dot"></span><b>STYLE 05 · EDITORIAL DATA STORY</b
+      ><span>Premium narrative/data-story style for polished demos.</span>
+    </div>
+    <div class="mock-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">§</div>
+          <div>
+            <h1>Kafka Field Notes</h1>
+            <p>premium editorial / data-story style</p>
+          </div>
+        </div>
+        <span class="pill">Narrative mode</span><span class="spacer"></span
+        ><span class="pill good">Live observation</span>
+      </header>
+      <main class="grid">
+        <aside class="essay">
+          <p class="kicker">Chapter 01</p>
+          <section class="panel">
+            <h2>The journey of a keyed record</h2>
+            <p class="muted">
+              A more premium, publication-like interface for demos, executive
+              storytelling, and polished tutorials.
+            </p>
+          </section>
+          <section class="panel" style="margin-top: 18px">
+            <p class="kicker">Thesis</p>
+            <p class="muted">
+              Ordering is not global. It is local to a partition. The UI tells
+              that story as a narrative.
+            </p>
+          </section>
+        </aside>
+        <section class="visual">
+          <p class="kicker">Annotated system portrait</p>
+          <div class="diagram">
+            <section class="map-node">
+              <p class="big-stat">01</p>
+              <h2>Producer</h2>
+              <p class="muted sans">key user-1</p>
+            </section>
+            <section class="map-node">
+              <p class="kicker">Topic</p>
+              <h2>partitioning.ab12cd</h2>
+              <div class="lane sans">
+                Partition 0
+                <div class="offsets">
+                  <span class="offset">102</span><span class="offset">103</span
+                  ><span class="offset hot">105</span
+                  ><span class="offset">106</span>
+                </div>
+              </div>
+              <div class="lane sans">
+                Partition 1
+                <div class="offsets">
+                  <span class="offset">81</span><span class="offset">82</span
+                  ><span class="offset">83</span>
+                </div>
+              </div>
+            </section>
+            <section class="map-node">
+              <p class="big-stat">02</p>
+              <h2>Consumer group</h2>
+              <div class="consumer sans">C1 owns P0</div>
+              <div class="consumer sans">C2 owns P1</div>
+              <div class="consumer sans">C3 observes, idle</div>
+            </section>
+          </div>
+        </section>
+        <section class="bottom">
+          <section class="panel">
+            <p class="kicker">Insight</p>
+            <p class="muted">
+              The selected offset is a story beat: produced, received,
+              processed, committed.
+            </p>
+          </section>
+          <section class="panel sans">
+            <p class="kicker">Controls</p>
+            <button class="btn">Produce one</button>
+            <button class="btn">Change key</button>
+          </section>
+          <section class="panel sans">
+            <p class="kicker">Event</p>
+            <div class="event">
+              message.received · Consumer 1 fetched partition 0 offset 105
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

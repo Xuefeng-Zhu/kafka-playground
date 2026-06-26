@@ -4,12 +4,15 @@ import {
   loadServerEnv,
   maskBrokerHost,
   parseBrokerList,
-  stablePartition
+  stablePartition,
 } from "./index";
 
 describe("kafka runtime", () => {
   it("parses broker lists", () => {
-    expect(parseBrokerList("one:9092, two:9092")).toEqual(["one:9092", "two:9092"]);
+    expect(parseBrokerList("one:9092, two:9092")).toEqual([
+      "one:9092",
+      "two:9092",
+    ]);
   });
 
   it("masks broker hostnames", () => {
@@ -28,8 +31,8 @@ describe("kafka runtime", () => {
       missingVariables: [
         "AIVEN_KAFKA_BROKERS",
         "AIVEN_KAFKA_USERNAME",
-        "AIVEN_KAFKA_PASSWORD"
-      ]
+        "AIVEN_KAFKA_PASSWORD",
+      ],
     });
   });
 
@@ -44,7 +47,7 @@ describe("kafka runtime", () => {
       scenarioId: "partitioning",
       topicName: "topic",
       consumerGroupId: "group",
-      partitionCount: 2
+      partitionCount: 2,
     });
     const first = await adapter.produce({
       runId: "run",
@@ -52,7 +55,7 @@ describe("kafka runtime", () => {
       key: "user-1",
       value: {},
       headers: {},
-      keyStrategy: { type: "fixed", value: "user-1" }
+      keyStrategy: { type: "fixed", value: "user-1" },
     });
     const second = await adapter.produce({
       runId: "run",
@@ -60,7 +63,7 @@ describe("kafka runtime", () => {
       key: "user-1",
       value: {},
       headers: {},
-      keyStrategy: { type: "fixed", value: "user-1" }
+      keyStrategy: { type: "fixed", value: "user-1" },
     });
     expect(second.partition).toBe(first.partition);
     expect(second.offset).toBe("1");
@@ -73,7 +76,7 @@ describe("kafka runtime", () => {
       scenarioId: "partitioning",
       topicName: "topic",
       consumerGroupId: "group",
-      partitionCount: 2
+      partitionCount: 2,
     });
     const first = await adapter.produce({
       runId: "run",
@@ -81,7 +84,7 @@ describe("kafka runtime", () => {
       key: null,
       value: {},
       headers: {},
-      keyStrategy: { type: "no_key" }
+      keyStrategy: { type: "no_key" },
     });
     const second = await adapter.produce({
       runId: "run",
@@ -89,7 +92,7 @@ describe("kafka runtime", () => {
       key: null,
       value: {},
       headers: {},
-      keyStrategy: { type: "no_key" }
+      keyStrategy: { type: "no_key" },
     });
     expect([first.partition, second.partition]).toEqual([0, 1]);
   });

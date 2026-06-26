@@ -6,7 +6,7 @@ import {
   createResourceNames,
   evaluateScenarioProcessing,
   sanitizeResourceSegment,
-  validateTopicPrefix
+  validateTopicPrefix,
 } from "./index";
 import { scenarioDefinitionSchema } from "@kplay/contracts";
 
@@ -15,9 +15,11 @@ describe("scenario engine", () => {
     const names = createResourceNames({
       prefix: "kplay",
       scenarioId: "Partitioning!",
-      now: new Date("2026-06-24T12:00:00Z")
+      now: new Date("2026-06-24T12:00:00Z"),
     });
-    expect(names.topicName).toMatch(/^kplay\.partitioning\.20260624\.[a-f0-9]{6}$/);
+    expect(names.topicName).toMatch(
+      /^kplay\.partitioning\.20260624\.[a-f0-9]{6}$/,
+    );
     expect(names.consumerGroupId).toContain(".workers");
   });
 
@@ -39,11 +41,11 @@ describe("scenario engine", () => {
     expect([
       first.next({ type: "random_user" }),
       first.next({ type: "random_user" }),
-      first.next({ type: "random_user" })
+      first.next({ type: "random_user" }),
     ]).toEqual([
       second.next({ type: "random_user" }),
       second.next({ type: "random_user" }),
-      second.next({ type: "random_user" })
+      second.next({ type: "random_user" }),
     ]);
   });
 
@@ -60,18 +62,24 @@ describe("scenario engine", () => {
   it("keeps every catalog scenario available with a stable route id", () => {
     expect(SCENARIOS).toHaveLength(15);
     expect(SCENARIOS.every((scenario) => !scenario.disabled)).toBe(true);
-    expect(new Set(SCENARIOS.map((scenario) => scenario.id)).size).toBe(SCENARIOS.length);
-    expect(SCENARIOS.every((scenario) => scenario.learningObjectives.length > 0)).toBe(true);
+    expect(new Set(SCENARIOS.map((scenario) => scenario.id)).size).toBe(
+      SCENARIOS.length,
+    );
+    expect(
+      SCENARIOS.every((scenario) => scenario.learningObjectives.length > 0),
+    ).toBe(true);
   });
 
   it("creates distinct scenario payloads for specialized scenarios", () => {
-    for (const scenario of SCENARIOS.filter((item) => item.id !== "partitioning")) {
+    for (const scenario of SCENARIOS.filter(
+      (item) => item.id !== "partitioning",
+    )) {
       const value = createPlaygroundValue({
         eventId: `evt-${scenario.id}`,
         runId: "run-1",
         scenarioId: scenario.id,
         sequence: 6,
-        userId: "user-1"
+        userId: "user-1",
       });
 
       expect(value.type, scenario.id).not.toBe("user.activity");
@@ -84,15 +92,15 @@ describe("scenario engine", () => {
         runId: "run-1",
         scenarioId: "retry-dead-letter-queues",
         sequence: 3,
-        userId: "user-1"
-      })
+        userId: "user-1",
+      }),
     ).toMatchObject({
       type: "fulfillment.request",
       payload: {
         shouldFail: true,
         retryTopic: "orders.retry.30s",
-        deadLetterTopic: "orders.dlq"
-      }
+        deadLetterTopic: "orders.dlq",
+      },
     });
 
     expect(
@@ -101,14 +109,14 @@ describe("scenario engine", () => {
         runId: "run-1",
         scenarioId: "streams-joins-windows",
         sequence: 6,
-        userId: "user-2"
-      })
+        userId: "user-2",
+      }),
     ).toMatchObject({
       type: "stream.window.event",
       payload: {
         lateArrival: true,
-        streamName: "payments"
-      }
+        streamName: "payments",
+      },
     });
   });
 
@@ -117,15 +125,15 @@ describe("scenario engine", () => {
       evaluateScenarioProcessing({
         scenarioId: "schema-evolution-karapace",
         sequence: 4,
-        value: {}
-      })
+        value: {},
+      }),
     ).toMatchObject({ code: "SCHEMA_INCOMPATIBLE" });
     expect(
       evaluateScenarioProcessing({
         scenarioId: "partitioning",
         sequence: 4,
-        value: {}
-      })
+        value: {},
+      }),
     ).toBeNull();
   });
 });

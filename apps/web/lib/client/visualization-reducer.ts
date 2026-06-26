@@ -1,4 +1,8 @@
-import type { RunSnapshot, RuntimeEvent, PlaygroundMessage } from "@kplay/contracts";
+import type {
+  RunSnapshot,
+  RuntimeEvent,
+  PlaygroundMessage,
+} from "@kplay/contracts";
 
 export type VisualizationState = {
   snapshot: RunSnapshot | null;
@@ -17,21 +21,29 @@ export const initialVisualizationState: VisualizationState = {
   lastSequence: 0,
   hasSequenceGap: false,
   selectedMessageId: null,
-  selectedEventSequence: null
+  selectedEventSequence: null,
 };
 
-export function initializeFromSnapshot(snapshot: RunSnapshot): VisualizationState {
+export function initializeFromSnapshot(
+  snapshot: RunSnapshot,
+): VisualizationState {
   return {
     ...initialVisualizationState,
     snapshot,
     events: snapshot.recentEvents,
     messages: snapshot.recentMessages,
-    lastSequence: snapshot.sequence
+    lastSequence: snapshot.sequence,
   };
 }
 
-export function applyRuntimeEvent(state: VisualizationState, event: RuntimeEvent): VisualizationState {
-  if (event.sequence <= state.lastSequence && state.events.some((item) => item.sequence === event.sequence)) {
+export function applyRuntimeEvent(
+  state: VisualizationState,
+  event: RuntimeEvent,
+): VisualizationState {
+  if (
+    event.sequence <= state.lastSequence &&
+    state.events.some((item) => item.sequence === event.sequence)
+  ) {
     return state;
   }
   const hasSequenceGap =
@@ -39,24 +51,35 @@ export function applyRuntimeEvent(state: VisualizationState, event: RuntimeEvent
       ? true
       : state.hasSequenceGap;
   const events = [...state.events, event].slice(-1000);
-  const snapshot = state.snapshot ? { ...state.snapshot, sequence: Math.max(state.snapshot.sequence, event.sequence) } : null;
+  const snapshot = state.snapshot
+    ? {
+        ...state.snapshot,
+        sequence: Math.max(state.snapshot.sequence, event.sequence),
+      }
+    : null;
   return {
     ...state,
     snapshot,
     events,
     hasSequenceGap,
-    lastSequence: Math.max(state.lastSequence, event.sequence)
+    lastSequence: Math.max(state.lastSequence, event.sequence),
   };
 }
 
-export function mergeSnapshot(state: VisualizationState, snapshot: RunSnapshot): VisualizationState {
+export function mergeSnapshot(
+  state: VisualizationState,
+  snapshot: RunSnapshot,
+): VisualizationState {
   const deduped = new Map<number, RuntimeEvent>();
-  for (const event of [...state.events, ...snapshot.recentEvents]) deduped.set(event.sequence, event);
+  for (const event of [...state.events, ...snapshot.recentEvents])
+    deduped.set(event.sequence, event);
   return {
     ...state,
     snapshot,
-    events: [...deduped.values()].sort((a, b) => a.sequence - b.sequence).slice(-1000),
+    events: [...deduped.values()]
+      .sort((a, b) => a.sequence - b.sequence)
+      .slice(-1000),
     messages: snapshot.recentMessages,
-    lastSequence: Math.max(state.lastSequence, snapshot.sequence)
+    lastSequence: Math.max(state.lastSequence, snapshot.sequence),
   };
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyRuntimeEvent, initializeFromSnapshot } from "./visualization-reducer";
+import {
+  applyRuntimeEvent,
+  initializeFromSnapshot,
+} from "./visualization-reducer";
 import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
 
 const snapshot: RunSnapshot = {
@@ -9,6 +12,7 @@ const snapshot: RunSnapshot = {
   status: "running",
   topicName: "topic",
   partitionCount: 2,
+  consumerLimit: 3,
   consumerGroupId: "group",
   producerStatus: "stopped",
   productionRate: 1,
@@ -21,7 +25,7 @@ const snapshot: RunSnapshot = {
   recentMessages: [],
   recentEvents: [],
   cleanupStatus: "not_requested",
-  sequence: 0
+  sequence: 0,
 };
 
 function event(sequence: number): RuntimeEvent {
@@ -30,7 +34,7 @@ function event(sequence: number): RuntimeEvent {
     runId: "run",
     sequence,
     occurredAt: new Date().toISOString(),
-    type: "producer.started"
+    type: "producer.started",
   };
 }
 
