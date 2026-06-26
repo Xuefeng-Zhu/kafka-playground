@@ -72,7 +72,9 @@ describe("PlaygroundRuntime demo integration", () => {
 
   it("removes failed SSE subscribers without blocking healthy subscribers", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { logger } = await import("./logger");
     const runtime = new PlaygroundRuntime();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
     const snapshot = await runtime.createRun("partitioning");
     const delivered: unknown[] = [];
 
@@ -100,6 +102,13 @@ describe("PlaygroundRuntime demo integration", () => {
           event.type === "message.produced",
       ),
     ).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: snapshot.runId,
+        subscriberId: "broken",
+      }),
+      "Removed failed runtime event subscriber",
+    );
 
     await runtime.reset(snapshot.runId);
   });

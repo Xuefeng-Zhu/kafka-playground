@@ -14,7 +14,7 @@ import {
   type RuntimeEvent,
   type ScenarioDefinition,
 } from "@kplay/contracts";
-import { PanelRightOpen, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { PanelRightOpen } from "lucide-react";
 import {
   initializeFromSnapshot,
   mergeSnapshot,
@@ -25,10 +25,18 @@ import { Button } from "@/components/ui/button";
 import { ControlsPanel } from "@/components/controls/controls-panel";
 import { KafkaTopology } from "@/components/topology/kafka-topology";
 import { EventTimeline } from "@/components/timeline/event-timeline";
-import { InspectorPanel } from "@/components/inspector/inspector-panel";
 import { EducationPanel } from "@/components/education/education-panel";
+import { InspectorDrawer } from "@/components/playground/inspector-drawer";
+import { StartRunPanel } from "@/components/playground/start-run-panel";
+import { WorkspaceHeader } from "@/components/playground/workspace-header";
 import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
 import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
+import {
+  api,
+  fetchJson,
+  fetchRunSnapshot,
+  produceMessage,
+} from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
 import type { ScenarioAction } from "@/lib/client/scenario-actions";
 import type { TopologySelection } from "@/lib/client/topology-selection";
@@ -324,56 +332,13 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
   return (
     <main className="min-h-screen overflow-auto bg-[var(--kplay-bg)] text-[var(--kplay-text)] lg:h-screen lg:overflow-hidden">
-      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b-[3px] border-teal-700 bg-[#fff7ed] px-3 py-3 shadow-[0_6px_0_rgba(15,118,110,0.12)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
-        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-2xl border-[3px] border-teal-700 bg-amber-200 text-teal-700 shadow-[5px_5px_0_rgba(15,118,110,0.18)]">
-            <SlidersHorizontal size={22} strokeWidth={2.6} aria-hidden />
-          </div>
-          <div className="min-w-0">
-            <h1 className="max-w-44 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">
-              Kafka Visual Playground
-            </h1>
-            <p className="hidden max-w-[34rem] truncate text-xs text-[#466778] sm:block">
-              {currentScenario?.title ?? "Scenario workspace"}
-            </p>
-          </div>
-          <StatusPill
-            label={run?.mode === "aiven" ? "Aiven" : "Demo mode"}
-            tone="sky"
-          />
-          <div className="hidden h-8 w-px bg-teal-700 lg:block" />
-          <div className="hidden items-center gap-2 text-sm font-extrabold text-orange-700 sm:flex">
-            Aiven-compatible
-          </div>
-        </div>
-        <div className="flex min-w-0 items-center gap-2 text-sm sm:gap-4">
-          <div className="hidden min-w-44 border-r-2 border-teal-700 pr-5 md:block">
-            <div className="flex items-center gap-2 font-extrabold text-[#123047]">
-              <span className="size-2.5 rounded-full bg-emerald-500" />
-              {connectionLabel(connection)}
-            </div>
-            <div className="mt-0.5 truncate text-xs text-[#466778]">
-              {connection?.maskedBrokerHost ?? "demo.aivencloud.com:9092"}
-            </div>
-          </div>
-          <div className="hidden items-center gap-3 border-r-2 border-teal-700 pr-5 sm:flex">
-            <span className="font-semibold text-[#466778]">Run status</span>
-            <StatusPill
-              label={run?.status ?? "No run"}
-              tone={run?.status === "running" ? "green" : "slate"}
-            />
-          </div>
-          <Button
-            onClick={resetRun}
-            disabled={!run || isActionPending}
-            variant="secondary"
-            aria-label="Reset run"
-            className="h-9 px-3 sm:px-4"
-          >
-            <RotateCcw size={15} aria-hidden /> Reset
-          </Button>
-        </div>
-      </header>
+      <WorkspaceHeader
+        scenarioTitle={currentScenario?.title}
+        run={run}
+        connection={connection}
+        disabled={isActionPending}
+        onReset={resetRun}
+      />
       {actionError && (
         <div
           role="alert"
@@ -410,27 +375,11 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
         <section className="relative min-h-[560px] border-b-[3px] border-teal-700 bg-[#ecfeff] lg:min-h-0 lg:border-b-0 lg:border-r-[3px]">
           {!run ? (
-            <div className="kplay-grid-bg flex h-full items-center justify-center p-10">
-              <div className="max-w-xl rounded-3xl border-[3px] border-teal-700 bg-[#fffdf5] p-8 text-center shadow-[12px_12px_0_rgba(15,118,110,0.22)]">
-                <h2 className="text-2xl font-extrabold text-[#123047]">
-                  Start a scenario run
-                </h2>
-                <p className="mt-3 text-sm leading-6 text-[#466778]">
-                  Demo mode creates a scenario-specific topic model and uses
-                  simulated Kafka behavior. Aiven mode creates real resources
-                  and only displays observed delivery reports and assignments.
-                </p>
-                <ConnectionNotice connection={connection} />
-                <Button
-                  className="mt-6"
-                  variant="primary"
-                  onClick={startRun}
-                  disabled={isActionPending}
-                >
-                  Start scenario run
-                </Button>
-              </div>
-            </div>
+            <StartRunPanel
+              connection={connection}
+              disabled={isActionPending}
+              onStartRun={startRun}
+            />
           ) : (
             <KafkaTopology
               snapshot={run}
@@ -496,117 +445,24 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       </div>
 
       {isInspectorOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-[#123047]/25"
-            aria-hidden="true"
-            onClick={() => setInspectorOpen(false)}
-          />
-          <aside
-            id="message-inspector-drawer"
-            className="fixed bottom-0 right-0 top-0 z-50 w-[min(100vw,390px)] overflow-y-auto border-l-[3px] border-teal-700 bg-[#fff7ed] shadow-[-14px_0_0_rgba(15,118,110,0.16)]"
-          >
-            <InspectorPanel
-              message={selectedMessage}
-              event={selectedEvent}
-              snapshot={run}
-              selectedNode={selectedTopologyNode}
-              onPreviousMessage={() => selectAdjacentMessage(-1)}
-              onNextMessage={() => selectAdjacentMessage(1)}
-              onClose={() => setInspectorOpen(false)}
-            />
-          </aside>
-        </>
+        <InspectorDrawer
+          message={selectedMessage}
+          event={selectedEvent}
+          snapshot={run}
+          selectedNode={selectedTopologyNode}
+          onPreviousMessage={() => selectAdjacentMessage(-1)}
+          onNextMessage={() => selectAdjacentMessage(1)}
+          onClose={() => setInspectorOpen(false)}
+        />
       )}
     </main>
   );
-}
-
-function ConnectionNotice({
-  connection,
-}: {
-  connection: ConnectionStatus | null;
-}) {
-  if (!connection || connection.status !== "configuration_missing") return null;
-  return (
-    <div className="mt-5 rounded-2xl border-[3px] border-amber-500 bg-amber-100 p-3 text-left text-sm text-amber-900 shadow-[7px_7px_0_rgba(245,158,11,0.18)]">
-      <div className="font-extrabold">Configuration missing</div>
-      <p className="mt-1 text-amber-900/80">
-        Set {connection.missingVariables.join(", ")} or switch
-        `KAFKA_MODE=demo`.
-      </p>
-    </div>
-  );
-}
-
-function StatusPill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "green" | "amber" | "sky" | "slate";
-}) {
-  const color = {
-    green: "border-emerald-500 bg-emerald-100 text-emerald-800",
-    amber: "border-amber-500 bg-amber-100 text-amber-800",
-    sky: "border-teal-700 bg-teal-100 text-teal-800",
-    slate: "border-teal-700 bg-[#fffdf5] text-teal-800",
-  }[tone];
-  return (
-    <span
-      className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function connectionLabel(connection: ConnectionStatus | null) {
-  if (!connection) return "Checking";
-  if (connection.status === "demo_mode") return "Demo mode";
-  if (connection.status === "connected") return "Connected";
-  if (connection.status === "configuration_missing")
-    return "Configuration missing";
-  if (connection.status === "connection_failed") return "Connection failed";
-  return "Disconnected";
-}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ message: response.statusText }));
-    throw new Error(error.message ?? response.statusText);
-  }
-  return response.json() as Promise<T>;
-}
-
-async function fetchJson(path: string) {
-  const response = await fetch(path);
-  if (!response.ok) return null;
-  return response.json() as Promise<unknown>;
-}
-
-async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
-  return api<RunSnapshot>(`/api/v1/runs/${runId}/messages`, {
-    method: "POST",
-    body: JSON.stringify(keyStrategy ? { keyStrategy } : {}),
-  });
 }
 
 async function refreshSnapshot(
   runId: string,
   dispatch: React.Dispatch<Action>,
 ) {
-  const response = await fetch(`/api/v1/runs/${runId}`);
-  if (!response.ok) return;
-  const snapshot = runSnapshotSchema.parse(await response.json());
-  dispatch({ type: "snapshot", snapshot });
+  const snapshot = await fetchRunSnapshot(runId);
+  if (snapshot) dispatch({ type: "snapshot", snapshot });
 }

@@ -1,4 +1,9 @@
-import type { PlaygroundMessage, RunSnapshot } from "@kplay/contracts";
+import type { RunSnapshot } from "@kplay/contracts";
+import {
+  busiestPartition,
+  countPayload,
+  latestPayloadString,
+} from "./scenario-metrics";
 
 export type ScenarioInsight = {
   title: string;
@@ -421,40 +426,4 @@ export function deriveScenarioInsight(snapshot: RunSnapshot): ScenarioInsight {
     ],
     chips: ["key routing", "partition order", "manual commit"],
   };
-}
-
-function countPayload(
-  messages: PlaygroundMessage[],
-  key: string,
-  expected: unknown,
-) {
-  return messages.filter((message) => payloadValue(message, key) === expected)
-    .length;
-}
-
-function latestPayloadString(
-  message: PlaygroundMessage | undefined,
-  key: string,
-) {
-  const value = message ? payloadValue(message, key) : null;
-  return value === null || value === undefined ? null : String(value);
-}
-
-function payloadValue(message: PlaygroundMessage, key: string) {
-  const payload = message.value.payload;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload))
-    return null;
-  return (payload as Record<string, unknown>)[key];
-}
-
-function busiestPartition(snapshot: RunSnapshot) {
-  const entries = Object.entries(snapshot.messageCounts)
-    .filter(([partition]) => /^\d+$/.test(partition))
-    .map(([partition, count]) => ({ partition: `P${partition}`, count }));
-  return (
-    entries.sort((a, b) => b.count - a.count)[0] ?? {
-      partition: "P-",
-      count: 0,
-    }
-  );
 }

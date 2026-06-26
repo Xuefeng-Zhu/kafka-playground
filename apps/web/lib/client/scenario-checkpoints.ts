@@ -1,4 +1,5 @@
 import type { RunSnapshot } from "@kplay/contracts";
+import { busiestPartition } from "./scenario-metrics";
 
 export type ScenarioCheckpointOption = {
   id: string;
@@ -334,17 +335,5 @@ function failedCount(snapshot: RunSnapshot) {
     snapshot.messageCounts.failed ??
     snapshot.recentMessages.filter((message) => message.state === "failed")
       .length
-  );
-}
-
-function busiestPartition(snapshot: RunSnapshot) {
-  const entries = Object.entries(snapshot.messageCounts)
-    .filter(([partition]) => /^\d+$/.test(partition))
-    .map(([partition, count]) => ({ partition: `P${partition}`, count }));
-  return (
-    entries.sort((a, b) => b.count - a.count)[0] ?? {
-      partition: "P-",
-      count: 0,
-    }
   );
 }

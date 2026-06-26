@@ -30,13 +30,15 @@ import {
 import { ApiError } from "./api-errors";
 import { getServerEnv } from "./env";
 import { logger } from "./logger";
-
-type Subscriber = {
-  id: string;
-  enqueue: (
-    event: RuntimeEvent | { type: "snapshot"; snapshot: RunSnapshot },
-  ) => void;
-};
+import {
+  clearProducerTimer,
+  restartProducerTimer,
+} from "./producer-scheduler";
+import {
+  emitRuntimeEvent,
+  subscribeToRun,
+  type RuntimeSubscriber,
+} from "./runtime-event-hub";
 
 type InternalRun = CreateRunInput & {
   mode: "demo" | "aiven";
@@ -59,7 +61,7 @@ type InternalRun = CreateRunInput & {
   producerTimerGeneration: number;
   processingTimers: Map<string, NodeJS.Timeout>;
   consumerHandles: Map<string, PlaygroundConsumerHandle>;
-  subscribers: Map<string, Subscriber>;
+  subscribers: Map<string, RuntimeSubscriber>;
 };
 
 export class PlaygroundRuntime {
@@ -210,7 +212,9 @@ export class PlaygroundRuntime {
         );
       }
       run.productionRate = settings.productionRate;
-      if (run.producerStatus === "running") this.restartProducerTimer(run);
+      if (run.producerStatus === "running") {
+        restartProducerTimer(run, (id) => this.produceOne(id));
+      }
     }
     if (settings.keyStrategy) run.keyStrategy = settings.keyStrategy;
     if (settings.processingLatencyMs !== undefined) {
@@ -236,13 +240,13 @@ export class PlaygroundRuntime {
     this.emit("producer.starting", { actor: "producer" });
     run.producerStatus = "running";
     this.emit("producer.started", { actor: "producer" });
-    this.restartProducerTimer(run);
+    restartProducerTimer(run, (id) => this.produceOne(id));
     return this.snapshot(runId);
   }
 
   async pauseProducer(runId: string) {
     const run = this.requireRun(runId);
-    this.clearProducerTimer(run);
+    clearProducerTimer(run);
     run.producerStatus = "paused";
     this.emit("producer.paused", { actor: "producer" });
     return this.snapshot(runId);
@@ -250,7 +254,7 @@ export class PlaygroundRuntime {
 
   async stopProducer(runId: string) {
     const run = this.requireRun(runId);
-    this.clearProducerTimer(run);
+    clearProducerTimer(run);
     run.producerStatus = "stopped";
     this.emit("producer.stopped", { actor: "producer" });
     return this.snapshot(runId);
@@ -514,37 +518,13 @@ export class PlaygroundRuntime {
     return this.reset(runId);
   }
 
-  subscribe(runId: string, lastEventId: number | null, subscriber: Subscriber) {
+  subscribe(
+    runId: string,
+    lastEventId: number | null,
+    subscriber: RuntimeSubscriber,
+  ) {
     const run = this.requireRun(runId);
-    run.subscribers.set(subscriber.id, subscriber);
-    try {
-      subscriber.enqueue({ type: "snapshot", snapshot: this.snapshot(runId) });
-    } catch (error) {
-      run.subscribers.delete(subscriber.id);
-      logger.warn(
-        { err: error, runId, subscriberId: subscriber.id },
-        "Runtime event subscriber rejected initial snapshot",
-      );
-      return () => undefined;
-    }
-    const missed = lastEventId
-      ? run.events.filter((event) => event.sequence > lastEventId)
-      : [];
-    for (const event of missed) {
-      try {
-        subscriber.enqueue(event);
-      } catch (error) {
-        run.subscribers.delete(subscriber.id);
-        logger.warn(
-          { err: error, runId, subscriberId: subscriber.id },
-          "Runtime event subscriber rejected replayed event",
-        );
-        return () => undefined;
-      }
-    }
-    return () => {
-      run.subscribers.delete(subscriber.id);
-    };
+    return subscribeToRun(run, this.snapshot(runId), lastEventId, subscriber);
   }
 
   async shutdown() {
@@ -574,73 +554,12 @@ export class PlaygroundRuntime {
     payload: Record<string, unknown> = {},
   ) {
     if (!this.activeRun) return;
-    const run = this.activeRun;
-    run.sequence += 1;
-    const event = {
-      eventId: crypto.randomUUID(),
-      runId: run.runId,
-      sequence: run.sequence,
-      occurredAt: new Date().toISOString(),
+    emitRuntimeEvent(
+      this.activeRun,
       type,
-      ...payload,
-    } as RuntimeEvent;
-    run.events.push(event);
-    if (run.events.length > this.env.EVENT_HISTORY_LIMIT) {
-      run.events.splice(0, run.events.length - this.env.EVENT_HISTORY_LIMIT);
-    }
-    for (const subscriber of run.subscribers.values()) {
-      try {
-        subscriber.enqueue(event);
-      } catch (error) {
-        run.subscribers.delete(subscriber.id);
-        logger.warn(
-          { err: error, runId: run.runId, subscriberId: subscriber.id },
-          "Removed failed runtime event subscriber",
-        );
-      }
-    }
-  }
-
-  private restartProducerTimer(run: InternalRun) {
-    this.clearProducerTimer(run);
-    if (!run.producerTickInFlight) {
-      this.scheduleProducerTick(run);
-    }
-  }
-
-  private scheduleProducerTick(run: InternalRun) {
-    if (run.producerStatus !== "running" || run.producerTimer) return;
-    const generation = run.producerTimerGeneration;
-    const intervalMs = Math.max(100, Math.floor(1000 / run.productionRate));
-    run.producerTimer = setTimeout(async () => {
-      run.producerTimer = null;
-      if (
-        run.producerStatus !== "running" ||
-        run.producerTimerGeneration !== generation
-      ) {
-        return;
-      }
-      run.producerTickInFlight = true;
-      try {
-        await this.produceOne(run.runId);
-      } catch (error) {
-        logger.error(
-          { err: error, runId: run.runId },
-          "Automatic production failed",
-        );
-      } finally {
-        run.producerTickInFlight = false;
-        if (run.producerStatus === "running") {
-          this.scheduleProducerTick(run);
-        }
-      }
-    }, intervalMs);
-  }
-
-  private clearProducerTimer(run: InternalRun) {
-    run.producerTimerGeneration += 1;
-    if (run.producerTimer) clearTimeout(run.producerTimer);
-    run.producerTimer = null;
+      payload,
+      this.env.EVENT_HISTORY_LIMIT,
+    );
   }
 
   private nextConsumerId(run: InternalRun) {
@@ -929,7 +848,7 @@ export class PlaygroundRuntime {
   }
 
   private async cleanup(run: InternalRun) {
-    this.clearProducerTimer(run);
+    clearProducerTimer(run);
     for (const timer of run.processingTimers.values()) clearTimeout(timer);
     run.processingTimers.clear();
     for (const [consumerId, handle] of run.consumerHandles) {
