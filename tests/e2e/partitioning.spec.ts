@@ -1,6 +1,108 @@
 import { expect, type Page, test } from "@playwright/test";
 
 const idleConsumerLabel = "idle - no partition available";
+const scenarioOverlayCases = [
+  { id: "partitioning", overlayId: "key-router", title: "Key router" },
+  {
+    id: "fan-out-load-balancing",
+    overlayId: "group-balancer",
+    title: "Group balancer",
+  },
+  {
+    id: "at-least-once-duplicates",
+    overlayId: "commit-gate",
+    title: "Commit gate",
+  },
+  {
+    id: "retry-dead-letter-queues",
+    overlayId: "retry-topic",
+    title: "Retry topic",
+  },
+  {
+    id: "schema-evolution-karapace",
+    overlayId: "schema-registry",
+    title: "Schema registry",
+  },
+  {
+    id: "transactional-producers",
+    overlayId: "transaction-coordinator",
+    title: "Transaction coordinator",
+  },
+  {
+    id: "event-replay-sourcing",
+    overlayId: "projection-store",
+    title: "Projection store",
+  },
+  {
+    id: "consumer-lag-backpressure",
+    overlayId: "backlog-buffer",
+    title: "Backlog buffer",
+  },
+  {
+    id: "hot-partitions-key-skew",
+    overlayId: "hot-key-router",
+    title: "Hot-key router",
+  },
+  {
+    id: "log-compaction-tombstones",
+    overlayId: "compacted-state-store",
+    title: "Compacted state",
+  },
+  {
+    id: "retention-data-loss",
+    overlayId: "retention-window",
+    title: "Retention window",
+  },
+  {
+    id: "cooperative-rebalancing",
+    overlayId: "rebalance-coordinator",
+    title: "Rebalance coordinator",
+  },
+  {
+    id: "streams-joins-windows",
+    overlayId: "window-state-store",
+    title: "Window state store",
+  },
+  { id: "outbox-cdc", overlayId: "cdc-connector", title: "CDC connector" },
+  {
+    id: "acl-least-privilege",
+    overlayId: "authorization-gate",
+    title: "Authorization gate",
+  },
+];
+
+const focusedOverlayActions = [
+  {
+    id: "retry-dead-letter-queues",
+    action: "Trigger retry",
+    overlayId: "retry-topic",
+    pattern: /Failed\s*[1-9]/,
+  },
+  {
+    id: "schema-evolution-karapace",
+    action: "Incompatible schema",
+    overlayId: "compatibility-gate",
+    pattern: /Rejected\s*[1-9]/,
+  },
+  {
+    id: "acl-least-privilege",
+    action: "Denied operation",
+    overlayId: "authorization-gate",
+    pattern: /Denied\s*[1-9]/,
+  },
+  {
+    id: "hot-partitions-key-skew",
+    action: "Hot-key burst",
+    overlayId: "hottest-partition",
+    pattern: /P\d+\s*[1-9]/,
+  },
+  {
+    id: "consumer-lag-backpressure",
+    action: "Build lag",
+    overlayId: "backlog-buffer",
+    pattern: /Lag\s*[1-9]/,
+  },
+];
 
 test("demo scenario visualizes assignments, idle consumer, message details, and reset", async ({
   page,
@@ -215,12 +317,13 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByText("Owner", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close topology inspector" }).click();
 
-  await expect(page.getByText("100%")).toBeVisible();
+  await expect(page.getByText("50%")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Zoom out" })).toBeDisabled();
   await page.getByRole("button", { name: "Zoom in" }).click();
-  await expect(page.getByText("115%")).toBeVisible();
+  await expect(page.getByText("65%")).toBeVisible();
   await expect
     .poll(async () => Math.round((await topologyViewportZoom(page)) * 100))
-    .toBe(115);
+    .toBe(65);
   const topologyCanvasBox = await page
     .getByTestId("topology-canvas")
     .boundingBox();
@@ -229,11 +332,11 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
     await page.mouse.move(topologyCanvasBox.x + 80, topologyCanvasBox.y + 80);
     await page.mouse.wheel(0, -120);
   }
-  await expect(page.getByText("130%")).toBeVisible();
+  await expect(page.getByText("80%")).toBeVisible();
   await expect
     .poll(async () => Math.round((await topologyViewportZoom(page)) * 100))
-    .toBe(130);
-  for (let index = 0; index < 6; index += 1) {
+    .toBe(80);
+  for (let index = 0; index < 2; index += 1) {
     await page.getByRole("button", { name: "Zoom out" }).click();
   }
   await expect(page.getByText("50%")).toBeVisible();
@@ -257,13 +360,13 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   }
 
   await page.getByRole("button", { name: "Fit view" }).click();
-  await expect(page.getByText("100%")).toBeVisible();
+  await expect(page.getByText("50%")).toBeVisible();
   await expect
     .poll(async () => Math.round((await topologyViewportZoom(page)) * 100))
-    .toBe(100);
-  await expect
-    .poll(async () => await topologyViewportTransform(page))
-    .toBe("matrix(1, 0, 0, 1, 0, 0)");
+    .toBe(50);
+  await expect(page.getByTestId("topology-node-producer")).toBeVisible();
+  await expect(page.getByTestId("topology-node-topic")).toBeVisible();
+  await expect(page.getByTestId("topology-node-consumer-group")).toBeVisible();
   await page.getByRole("button", { name: "Spread layout" }).click();
   await expect(
     page.getByRole("button", { name: "Auto layout" }),
@@ -283,28 +386,25 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   );
   await expect(page.getByTestId("topology-edge-partition-0")).toHaveCount(1);
   await expect(page.getByTestId("topology-edge-partition-1")).toHaveCount(1);
-  const [partitionLaneBox, ownershipConnectorBox] = await Promise.all([
+  const [partitionLaneBox, partitionSourceHandleBox] = await Promise.all([
     page.getByTestId("partition-lane-0").boundingBox(),
-    page
-      .getByTestId("topology-edge-partition-0")
-      .locator(".react-flow__edge-path")
-      .evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        return {
-          height: box.height,
-          width: box.width,
-          x: box.x,
-          y: box.y,
-        };
-      }),
+    page.locator('[data-handleid="partition-0-out"]').evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        height: box.height,
+        width: box.width,
+        x: box.x,
+        y: box.y,
+      };
+    }),
   ]);
   expect(partitionLaneBox).not.toBeNull();
-  expect(ownershipConnectorBox).not.toBeNull();
-  if (partitionLaneBox && ownershipConnectorBox) {
-    const connectorMidpoint =
-      ownershipConnectorBox.y + ownershipConnectorBox.height / 2;
-    expect(connectorMidpoint).toBeGreaterThan(partitionLaneBox.y);
-    expect(connectorMidpoint).toBeLessThan(
+  expect(partitionSourceHandleBox).not.toBeNull();
+  if (partitionLaneBox && partitionSourceHandleBox) {
+    const handleMidpoint =
+      partitionSourceHandleBox.y + partitionSourceHandleBox.height / 2;
+    expect(handleMidpoint).toBeGreaterThan(partitionLaneBox.y);
+    expect(handleMidpoint).toBeLessThan(
       partitionLaneBox.y + partitionLaneBox.height,
     );
   }
@@ -338,8 +438,16 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.getByRole("button", { name: "Close topology inspector" }).click();
 
   await page.getByRole("tab", { name: "Controls" }).click();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect(page.getByText("65%")).toBeVisible();
   await page.getByRole("button", { name: "Produce one" }).click();
   await expect(page.getByText("Message Inspector")).toBeVisible();
+  await expect(page.getByText("65%")).toBeVisible();
+  await expect
+    .poll(async () => Math.round((await topologyViewportZoom(page)) * 100))
+    .toBe(65);
+  await expect(page.getByTestId("topology-node-producer")).toBeVisible();
+  await expect(page.getByTestId("topology-edge-producer-topic")).toHaveCount(1);
   await expect(page.getByText("Topology Inspector")).toHaveCount(0);
   await expect(page.getByText("Selected message")).toBeVisible();
   await expect(page.getByText("Partition", { exact: true })).toBeVisible();
@@ -450,6 +558,74 @@ test("sidebar scenario navigation retires the active run", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("every scenario renders and inspects a distinct topology overlay", async ({
+  page,
+}) => {
+  for (const scenarioCase of scenarioOverlayCases) {
+    await resetActiveRun(page);
+    await page.goto(`/scenarios/${scenarioCase.id}`);
+    await page.getByRole("button", { name: "Start scenario run" }).click();
+    await expect(
+      page.getByRole("button", { name: "Produce one" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Fit view" }).click();
+
+    await expectTopologyNodeFramed(page, "topology-node-producer");
+    await expectTopologyNodeFramed(page, "topology-node-topic");
+    await expectTopologyNodeFramed(page, "topology-node-consumer-group");
+    await expectTopologyNodeFramed(
+      page,
+      `topology-scenario-node-${scenarioCase.overlayId}`,
+    );
+
+    const overlay = page.getByTestId(
+      `topology-scenario-node-${scenarioCase.overlayId}`,
+    );
+    await overlay.click();
+    const inspector = page.locator("#message-inspector-drawer");
+    await expect(inspector.getByText("Topology Inspector")).toBeVisible();
+    await expect(
+      inspector.locator("section").first().getByText(scenarioCase.title),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Close topology inspector" })
+      .click();
+  }
+});
+
+test("scenario topology overlays react to scenario actions", async ({
+  page,
+}) => {
+  for (const scenarioCase of focusedOverlayActions) {
+    await resetActiveRun(page);
+    await page.goto(`/scenarios/${scenarioCase.id}`);
+    await page.getByRole("button", { name: "Start scenario run" }).click();
+    await expect(
+      page.getByRole("button", { name: "Produce one" }),
+    ).toBeVisible();
+    if (
+      [
+        "retry-dead-letter-queues",
+        "schema-evolution-karapace",
+        "acl-least-privilege",
+      ].includes(scenarioCase.id)
+    ) {
+      await page.getByRole("button", { name: /^Consumer$/ }).click();
+      await expect(page.getByTestId("consumer-node-consumer-1")).toBeVisible();
+    }
+
+    await page.getByRole("tab", { name: "Insights" }).click();
+    await page.getByRole("button", { name: scenarioCase.action }).click();
+    await expect
+      .poll(async () =>
+        page
+          .getByTestId(`topology-scenario-node-${scenarioCase.overlayId}`)
+          .textContent(),
+      )
+      .toMatch(scenarioCase.pattern);
+  }
+});
+
 test("consumer crash remains visible and replays uncommitted work", async ({
   page,
 }) => {
@@ -497,6 +673,29 @@ async function topologyViewportZoom(page: Page) {
     if (!transform || transform === "none") return 1;
     return new DOMMatrixReadOnly(transform).a;
   });
+}
+
+async function expectTopologyNodeFramed(page: Page, testId: string) {
+  const node = page.getByTestId(testId);
+  await expect(node).toBeVisible();
+  await expect
+    .poll(async () =>
+      node.evaluate((element) => {
+        const canvas = document
+          .querySelector('[data-testid="topology-canvas"]')
+          ?.getBoundingClientRect();
+        if (!canvas) return false;
+        const box = element.getBoundingClientRect();
+        const visibleWidth =
+          Math.min(box.right, canvas.right, window.innerWidth) -
+          Math.max(box.left, canvas.left, 0);
+        const visibleHeight =
+          Math.min(box.bottom, canvas.bottom, window.innerHeight) -
+          Math.max(box.top, canvas.top, 0);
+        return visibleWidth > 12 && visibleHeight > 12;
+      }),
+    )
+    .toBe(true);
 }
 
 async function resetActiveRun(page: Page) {

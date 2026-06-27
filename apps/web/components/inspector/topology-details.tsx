@@ -1,5 +1,6 @@
 import type { RunSnapshot } from "@kplay/contracts";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
 
 export function TopologyDetails({
   snapshot,
@@ -98,6 +99,43 @@ export function TopologyDetails({
                 ).length,
               ),
             ],
+          ]}
+        />
+      </>
+    );
+  }
+
+  if (selectedNode.type === "scenarioNode") {
+    const scenarioNode = deriveScenarioTopology(snapshot).nodes.find(
+      (node) => node.id === selectedNode.nodeId,
+    );
+    if (!scenarioNode) {
+      return (
+        <>
+          <TopologyHeader
+            title="Scenario overlay"
+            detail="This overlay is no longer active in the current snapshot."
+            tone="teal"
+          />
+          <div className="p-5 text-sm text-[#466778]">
+            Select another topology node to inspect current run details.
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <TopologyHeader
+          title={scenarioNode.title}
+          detail={scenarioNode.description}
+          tone={scenarioNode.tone === "emerald" ? "green" : scenarioNode.tone}
+        />
+        <DetailSection
+          title={scenarioNode.eyebrow}
+          rows={[
+            [scenarioNode.metricLabel, scenarioNode.metricValue],
+            ...scenarioNode.details,
           ]}
         />
       </>
