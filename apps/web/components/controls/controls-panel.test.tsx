@@ -14,11 +14,10 @@ describe("ControlsPanel", () => {
     expect(button("Consumer").disabled).toBe(true);
   });
 
-  it("emits settings updates from expanded controls", () => {
+  it("emits settings updates from always-visible controls", () => {
     const onUpdateSettings = vi.fn();
     renderControls({ onUpdateSettings });
 
-    fireEvent.click(screen.getByTestId("run-settings-toggle"));
     fireEvent.change(screen.getByLabelText("Messages per second"), {
       target: { value: "7" },
     });
@@ -53,6 +52,13 @@ describe("ControlsPanel", () => {
 
     expect(onStopConsumer).toHaveBeenCalledWith("consumer-1");
     expect(onCrashConsumer).toHaveBeenCalledWith("consumer-1");
+  });
+
+  it("keeps Kafka group identifiers out of the controls surface", () => {
+    renderControls();
+
+    expect(screen.queryByText(/Group:/)).toBeNull();
+    expect(screen.queryByText("group")).toBeNull();
   });
 });
 

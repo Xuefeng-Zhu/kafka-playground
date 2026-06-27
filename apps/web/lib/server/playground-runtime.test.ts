@@ -179,6 +179,49 @@ describe("PlaygroundRuntime demo integration", () => {
     });
   });
 
+  it("clears incomplete runs when startup is blocked by configuration", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { logger } = await import("./logger");
+    const runtime = new PlaygroundRuntime();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const createRun = vi.fn(async () => {
+      const error = new Error(
+        "Aiven Kafka configuration is missing: AIVEN_KAFKA_BROKERS",
+      ) as Error & { code: string; status: number };
+      error.code = "AIVEN_CONFIGURATION_MISSING";
+      error.status = 503;
+      throw error;
+    });
+    const deleteRunResources = vi.fn();
+    (
+      runtime as unknown as {
+        adapter: {
+          createRun: typeof createRun;
+          deleteRunResources: typeof deleteRunResources;
+        };
+      }
+    ).adapter.createRun = createRun;
+    (
+      runtime as unknown as {
+        adapter: {
+          createRun: typeof createRun;
+          deleteRunResources: typeof deleteRunResources;
+        };
+      }
+    ).adapter.deleteRunResources = deleteRunResources;
+
+    await expect(runtime.createRun("partitioning")).rejects.toMatchObject({
+      code: "AIVEN_CONFIGURATION_MISSING",
+      status: 503,
+    });
+    expect(runtime.activeSnapshot()).toBeNull();
+    expect(deleteRunResources).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: expect.any(String) }),
+      "Scenario run blocked by incomplete Kafka configuration",
+    );
+  });
+
   it("reports cleanup adapter rejections as failed cleanup", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();

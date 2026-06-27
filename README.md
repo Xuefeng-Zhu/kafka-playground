@@ -9,7 +9,7 @@ The app ships with a deterministic local demo mode and an optional Aiven for Apa
 The current catalog includes:
 
 - Partitioning, Ordering, and Consumer Rebalancing
-- Fan-out versus load balancing
+- Consumer-group load balancing
 - At-least-once delivery and duplicate processing
 - Retry topics and dead-letter queues
 - Schema evolution using Karapace

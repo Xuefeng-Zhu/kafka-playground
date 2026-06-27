@@ -18,7 +18,7 @@ Recommended flow:
 
 Implemented scenario examples:
 
-- Fan-out versus load balancing.
+- Consumer-group load balancing.
 - At-least-once delivery and duplicate processing.
 - Retry and dead-letter queues.
 - Schema evolution using Karapace.

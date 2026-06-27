@@ -89,6 +89,18 @@ export type KafkaRuntimeDiagnostics = {
   }) => void;
 };
 
+export class KafkaConfigurationError extends Error {
+  readonly code = "AIVEN_CONFIGURATION_MISSING";
+  readonly status = 503;
+
+  constructor(readonly missingVariables: string[]) {
+    super(
+      `Aiven Kafka configuration is missing: ${missingVariables.join(", ")}`,
+    );
+    this.name = "KafkaConfigurationError";
+  }
+}
+
 export const serverEnvSchema = z.object({
   KAFKA_MODE: z.enum(["demo", "aiven"]).default("demo"),
   AIVEN_KAFKA_BROKERS: z.string().optional().default(""),
@@ -488,9 +500,7 @@ function getMissingAivenVariables(env: ServerEnv) {
 function assertAivenConfigured(env: ServerEnv) {
   const missing = getMissingAivenVariables(env);
   if (missing.length > 0) {
-    throw new Error(
-      `Missing required Aiven configuration: ${missing.join(", ")}`,
-    );
+    throw new KafkaConfigurationError(missing);
   }
 }
 

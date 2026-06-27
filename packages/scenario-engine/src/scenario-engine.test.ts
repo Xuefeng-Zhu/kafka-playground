@@ -70,6 +70,18 @@ describe("scenario engine", () => {
     ).toBe(true);
   });
 
+  it("describes the load-balancing scenario without promising extra groups", () => {
+    const scenario = SCENARIOS.find(
+      (item) => item.id === "fan-out-load-balancing",
+    );
+
+    expect(scenario).toMatchObject({
+      title: "Consumer-group load balancing",
+    });
+    expect(scenario?.description).toContain("one group");
+    expect(scenario?.description).not.toContain("independent consumer groups");
+  });
+
   it("creates distinct scenario payloads for specialized scenarios", () => {
     for (const scenario of SCENARIOS.filter(
       (item) => item.id !== "partitioning",
