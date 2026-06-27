@@ -2,7 +2,7 @@
 
 Kafka Visual Playground is a scenario-driven learning app for Kafka partitioning, ordering, consumer-group rebalancing, offset commits, delivery guarantees, retention, compaction, stream processing, and operational Kafka patterns.
 
-The app ships with a deterministic local demo mode and an optional Aiven for Apache Kafka mode. Demo mode is designed for repeatable learning and automated verification; Aiven mode creates real Kafka resources and shows observed delivery reports, assignments, and commits.
+The app ships with a deterministic local demo mode and an optional user-configured remote Kafka mode. Demo mode is designed for repeatable learning and automated verification; remote mode creates real Kafka resources and shows observed delivery reports, assignments, and commits.
 
 ## Scenario Catalog
 
@@ -46,7 +46,7 @@ flowchart LR
   API --> Runtime[Server-only PlaygroundRuntime singleton]
   Runtime --> Adapter{KafkaRuntimeAdapter}
   Adapter --> Demo[Deterministic demo adapter]
-  Adapter --> Aiven[Aiven Kafka adapter]
+  Adapter --> Remote[Remote Kafka adapter]
   Runtime --> SSE[SSE subscribers]
   SSE --> UI
 ```
@@ -57,7 +57,7 @@ Next.js serves both the UI and API, but Kafka clients are owned only by the cent
 
 - Node.js 22
 - npm
-- Optional: Aiven for Apache Kafka service and `certs/ca.pem`
+- Optional: a remote Kafka service with SASL credentials
 
 ## Setup
 
@@ -68,11 +68,13 @@ npm run dev:demo
 
 Open `http://localhost:3000` for the catalog or `http://localhost:3000/scenarios/partitioning` for the primary scenario.
 
-## Aiven Mode
+## Remote Kafka Mode
 
-Create an Aiven for Apache Kafka service, create a service user, copy the SASL/TLS broker URL, and download the CA certificate to `certs/ca.pem`.
+Open a scenario, choose **Remote Kafka**, and configure the connection in the web drawer. Remote mode supports comma-separated brokers, SASL username/password, `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, TLS on/off, and optional CA certificate text for providers that require a custom CA.
 
-Configure:
+The browser saves the remote connection form in `localStorage`, including the password, so users can revisit the playground without retyping it. The server receives the config only for connection tests and active runs, stores it only in memory for the current Node.js process, and never returns raw usernames, passwords, certificate text, or raw Kafka configuration in API responses.
+
+For server-configured Aiven smoke tests and cleanup workflows, configure:
 
 ```env
 KAFKA_MODE=aiven
@@ -84,7 +86,7 @@ AIVEN_KAFKA_CA_PATH=./certs/ca.pem
 KAFKA_TOPIC_PREFIX=kplay
 ```
 
-The browser never receives usernames, passwords, certificate contents, or raw Kafka configuration. The connection test returns only sanitized status, masked broker host, broker count, topic count when available, and sanitized errors.
+Connection tests return only sanitized status, masked broker host, broker count, topic count when available, and sanitized errors.
 
 ## Resource Naming
 
@@ -141,5 +143,5 @@ set -a; source .env.local; set +a; npm test -- packages/kafka-runtime/src/aiven-
 ## Known MVP Limitations
 
 - Demo mode simulates Kafka behavior deterministically, including scenario-specific outcomes such as retry failures, schema incompatibility, authorization denial, lag, skew, tombstones, retention windows, and windowed joins.
-- Consumer crashes are simulated in demo mode and represented as forced consumer disconnects in Aiven mode.
+- Consumer crashes are simulated in demo mode and represented as forced consumer disconnects in remote Kafka mode.
 - The optional real-Aiven smoke test is gated by `RUN_AIVEN_E2E=true` and requires live service credentials plus `certs/ca.pem`.

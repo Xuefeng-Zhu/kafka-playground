@@ -12,6 +12,7 @@ import type {
 } from "@kplay/contracts";
 import type {
   CreateRunInput,
+  KafkaRuntimeAdapter,
   PlaygroundConsumerHandle,
 } from "@kplay/kafka-runtime";
 import {
@@ -23,6 +24,7 @@ import type { RuntimeSubscriber } from "./runtime-event-hub";
 
 export type InternalRun = CreateRunInput & {
   mode: KafkaMode;
+  adapter: KafkaRuntimeAdapter;
   status: RunStatus;
   producerStatus: ProducerStatus;
   productionRate: number;
@@ -47,11 +49,13 @@ export type InternalRun = CreateRunInput & {
 
 export function createInternalRun({
   runId,
+  adapter,
   mode,
   scenario,
   names,
 }: {
   runId: string;
+  adapter: KafkaRuntimeAdapter;
   mode: KafkaMode;
   scenario: ScenarioDefinition;
   names: Pick<CreateRunInput, "topicName" | "consumerGroupId">;
@@ -60,6 +64,7 @@ export function createInternalRun({
     runId,
     scenarioId: scenario.id,
     mode,
+    adapter,
     partitionCount: scenario.topic.partitions,
     topicName: names.topicName,
     consumerGroupId: names.consumerGroupId,

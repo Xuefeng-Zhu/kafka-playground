@@ -64,9 +64,10 @@ export default function HomePage() {
             </h2>
             <div className="mt-4 space-y-3 text-sm leading-6 text-[#31566a]">
               <p>
-                Demo mode is deterministic and runs locally. Aiven mode uses
-                SASL/TLS and only displays partitions, offsets, assignments, and
-                commits observed from Kafka.
+                Demo mode is deterministic and runs locally. Remote Kafka mode
+                lets you configure brokers and SASL credentials in the browser,
+                then displays partitions, offsets, assignments, and commits
+                observed from Kafka.
               </p>
               <p className="rounded-2xl border-2 border-emerald-500 bg-emerald-100 p-3 font-semibold text-emerald-800">
                 Demo mode - Kafka behavior is simulated.

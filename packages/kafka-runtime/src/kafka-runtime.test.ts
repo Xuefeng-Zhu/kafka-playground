@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DemoKafkaRuntimeAdapter,
   KafkaConfigurationError,
+  RemoteKafkaBrokerPolicyError,
+  UserConfiguredKafkaRuntimeAdapter,
   loadServerEnv,
   maskBrokerHost,
   parseBrokerList,
@@ -120,5 +122,51 @@ describe("kafka runtime", () => {
       keyStrategy: { type: "no_key" },
     });
     expect([first.partition, second.partition]).toEqual([0, 1]);
+  });
+
+  it("rejects user-configured remote brokers that target localhost", async () => {
+    const adapter = new UserConfiguredKafkaRuntimeAdapter({
+      brokers: "127.0.0.1:9092",
+      username: "service-user",
+      password: "service-password",
+      saslMechanism: "SCRAM-SHA-256",
+      useTls: true,
+      caCertificate: "",
+    });
+
+    await expect(
+      adapter.createRun({
+        runId: "run",
+        scenarioId: "partitioning",
+        topicName: "topic",
+        consumerGroupId: "group",
+        partitionCount: 2,
+      }),
+    ).rejects.toMatchObject({
+      code: "REMOTE_KAFKA_BROKER_NOT_ALLOWED",
+      status: 400,
+      broker: "127.0.0.1:9092",
+    } satisfies Partial<RemoteKafkaBrokerPolicyError>);
+  });
+
+  it("reports blocked user-configured remote brokers as sanitized connection failures", async () => {
+    const adapter = new UserConfiguredKafkaRuntimeAdapter({
+      brokers: "localhost:9092",
+      username: "service-user",
+      password: "service-password",
+      saslMechanism: "SCRAM-SHA-256",
+      useTls: true,
+      caCertificate: "SECRET_CA",
+    });
+
+    await expect(adapter.testConnection()).resolves.toMatchObject({
+      status: "connection_failed",
+      mode: "remote",
+      error: {
+        code: "RemoteKafkaBrokerPolicyError",
+        message:
+          "Remote Kafka broker localhost:9092 is not allowed. Use a public broker hostname or IP address.",
+      },
+    });
   });
 });

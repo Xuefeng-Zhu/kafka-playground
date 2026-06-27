@@ -40,12 +40,14 @@ describe("playground shell components", () => {
         })}
         disabled={false}
         onStartRun={onStartRun}
+        onTestRemoteConnection={vi.fn()}
         scenario={scenarioFixture}
       />,
     );
 
-    expect(screen.queryByText("Configuration missing")).not.toBeNull();
-    expect(screen.queryByText(/AIVEN_KAFKA_BROKERS/)).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /Remote Kafka/ }));
+    expect(screen.queryByText("Remote configuration required")).not.toBeNull();
+    expect(screen.queryByText(/brokers, username, password/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Start scenario run" }));
     expect(onStartRun).not.toHaveBeenCalled();
   });
@@ -56,6 +58,7 @@ describe("playground shell components", () => {
         connection={connectionStatus()}
         disabled={false}
         onStartRun={vi.fn()}
+        onTestRemoteConnection={vi.fn()}
         scenario={scenarioFixture}
       />,
     );
@@ -63,6 +66,84 @@ describe("playground shell components", () => {
     expect(screen.queryByText("Partitioning scenario")).not.toBeNull();
     expect(screen.queryByText("2 partitions")).not.toBeNull();
     expect(screen.queryByText("Understand partition ownership")).not.toBeNull();
+  });
+
+  it("saves remote connection config and starts a remote run", () => {
+    window.localStorage.clear();
+    const onStartRun = vi.fn();
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={onStartRun}
+        onTestRemoteConnection={vi.fn()}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Remote Kafka/ }));
+    fireEvent.change(screen.getByLabelText("Brokers"), {
+      target: { value: "broker.example.com:9092" },
+    });
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "service-user" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "service-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start scenario run" }));
+
+    expect(onStartRun).toHaveBeenCalledWith({
+      mode: "remote",
+      remoteKafkaConfig: expect.objectContaining({
+        brokers: "broker.example.com:9092",
+        username: "service-user",
+        password: "service-password",
+      }),
+    });
+    expect(window.localStorage.getItem("kplay.remoteKafka.config")).toContain(
+      "service-password",
+    );
+  });
+
+  it("tests and clears remote connection config", async () => {
+    window.localStorage.clear();
+    const onTestRemoteConnection = vi.fn().mockResolvedValue(
+      connectionStatus({
+        status: "connected",
+        mode: "remote",
+        maskedBrokerHost: "br***.example.com",
+        brokerCount: 1,
+      }),
+    );
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={vi.fn()}
+        onTestRemoteConnection={onTestRemoteConnection}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Remote Kafka/ }));
+    fireEvent.change(screen.getByLabelText("Brokers"), {
+      target: { value: "broker.example.com:9092" },
+    });
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "service-user" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "service-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    expect(await screen.findByText(/br\*\*\*\.example\.com/)).not.toBeNull();
+    expect(screen.queryByText("service-password")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear saved config" }));
+
+    expect(window.localStorage.getItem("kplay.remoteKafka.config")).toBeNull();
   });
 
   it("shows Aiven configuration state before a run exists", () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -16,9 +17,11 @@ import {
   runtimeEventTypes,
   type ConnectionStatus,
   type KeyStrategy,
+  type RemoteKafkaConfig,
   type RunSnapshot,
   type RuntimeEvent,
   type ScenarioDefinition,
+  type UserSelectableKafkaMode,
 } from "@kplay/contracts";
 import {
   Lightbulb,
@@ -91,6 +94,7 @@ function reducer(state: typeof initialVisualizationState, action: Action) {
 }
 
 export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
+  const router = useRouter();
   const [state, dispatch] = useReducer(reducer, initialVisualizationState);
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
@@ -175,10 +179,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
           dispatch({ type: "snapshot", snapshot });
           return;
         }
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-        await api(`/api/v1/runs/${snapshot.runId}/reset`, { method: "POST" });
-        if (!cancelled) dispatch({ type: "clear" });
+        router.replace(`/scenarios/${snapshot.scenarioId}`);
       } catch {
         if (!cancelled) setActionError("Unable to load the active run.");
       }
@@ -186,7 +187,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [scenarioId, resetSelection]);
+  }, [router, scenarioId, resetSelection]);
 
   useEffect(() => {
     if (!run?.runId) return;
@@ -250,14 +251,31 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     [state.events, selectedEventSequence],
   );
 
-  async function startRun() {
+  async function startRun(input: {
+    mode: UserSelectableKafkaMode;
+    remoteKafkaConfig?: RemoteKafkaConfig;
+  }) {
     await runAction(async () => {
       const snapshot = await api<RunSnapshot>("/api/v1/runs", {
         method: "POST",
-        body: JSON.stringify({ scenarioId }),
+        body: JSON.stringify({
+          scenarioId,
+          mode: input.mode,
+          remoteKafkaConfig: input.remoteKafkaConfig,
+        }),
       });
       dispatch({ type: "snapshot", snapshot });
       selectLowerPanelTab("controls");
+    });
+  }
+
+  async function testRemoteConnection(remoteKafkaConfig: RemoteKafkaConfig) {
+    return api<ConnectionStatus>("/api/v1/connection/test", {
+      method: "POST",
+      body: JSON.stringify({
+        mode: "remote",
+        remoteKafkaConfig,
+      }),
     });
   }
 
@@ -534,6 +552,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
               connection={connection}
               disabled={isActionPending}
               onStartRun={startRun}
+              onTestRemoteConnection={testRemoteConnection}
               scenario={selectedScenario}
             />
           ) : (

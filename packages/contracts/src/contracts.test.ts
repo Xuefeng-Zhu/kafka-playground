@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  connectionTestRequestSchema,
   consumerSnapshotSchema,
+  createRunRequestSchema,
+  remoteKafkaConfigSchema,
   runtimeEventTypes,
   runtimeEventSchema,
   settingsRequestSchema,
@@ -52,6 +55,63 @@ describe("contracts", () => {
 
   it("rejects excessive producer rates", () => {
     expect(() => settingsRequestSchema.parse({ productionRate: 11 })).toThrow();
+  });
+
+  it("defaults run creation to demo mode", () => {
+    expect(
+      createRunRequestSchema.parse({ scenarioId: "partitioning" }),
+    ).toEqual({
+      scenarioId: "partitioning",
+      mode: "demo",
+    });
+  });
+
+  it("validates remote Kafka run requests", () => {
+    const remoteKafkaConfig = remoteKafkaConfigSchema.parse({
+      brokers: "broker.example.com:9092",
+      username: "service-user",
+      password: "service-password",
+      saslMechanism: "SCRAM-SHA-512",
+      useTls: false,
+    });
+
+    expect(
+      createRunRequestSchema.parse({
+        scenarioId: "partitioning",
+        mode: "remote",
+        remoteKafkaConfig,
+      }),
+    ).toEqual({
+      scenarioId: "partitioning",
+      mode: "remote",
+      remoteKafkaConfig,
+    });
+    expect(() =>
+      createRunRequestSchema.parse({
+        scenarioId: "partitioning",
+        mode: "remote",
+      }),
+    ).toThrow();
+    expect(() => createRunRequestSchema.parse({ mode: "aiven" })).toThrow();
+  });
+
+  it("validates remote Kafka connection test requests", () => {
+    expect(
+      connectionTestRequestSchema.parse({
+        mode: "remote",
+        remoteKafkaConfig: {
+          brokers: "broker.example.com:9092",
+          username: "service-user",
+          password: "service-password",
+        },
+      }),
+    ).toMatchObject({
+      mode: "remote",
+      remoteKafkaConfig: {
+        saslMechanism: "SCRAM-SHA-256",
+        useTls: true,
+      },
+    });
   });
 
   it("exports every runtime event type for client listeners", () => {

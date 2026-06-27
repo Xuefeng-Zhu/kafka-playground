@@ -1,7 +1,29 @@
 import { z } from "zod";
 
-export const kafkaModeSchema = z.enum(["demo", "aiven"]);
+export const kafkaModeSchema = z.enum(["demo", "aiven", "remote"]);
 export type KafkaMode = z.infer<typeof kafkaModeSchema>;
+
+export const userSelectableKafkaModeSchema = z.enum(["demo", "remote"]);
+export type UserSelectableKafkaMode = z.infer<
+  typeof userSelectableKafkaModeSchema
+>;
+
+export const saslMechanismSchema = z.enum([
+  "PLAIN",
+  "SCRAM-SHA-256",
+  "SCRAM-SHA-512",
+]);
+export type SaslMechanism = z.infer<typeof saslMechanismSchema>;
+
+export const remoteKafkaConfigSchema = z.object({
+  brokers: z.string().trim().max(2000).default(""),
+  username: z.string().trim().max(300).default(""),
+  password: z.string().max(1000).default(""),
+  saslMechanism: saslMechanismSchema.default("SCRAM-SHA-256"),
+  useTls: z.boolean().default(true),
+  caCertificate: z.string().max(20000).default(""),
+});
+export type RemoteKafkaConfig = z.infer<typeof remoteKafkaConfigSchema>;
 
 export const runStatusSchema = z.enum([
   "idle",
@@ -291,6 +313,22 @@ export const connectionStatusSchema = z.object({
 });
 export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;
 
+export const connectionTestRequestSchema = z
+  .object({
+    mode: userSelectableKafkaModeSchema.default("demo"),
+    remoteKafkaConfig: remoteKafkaConfigSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.mode === "remote" && !value.remoteKafkaConfig) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["remoteKafkaConfig"],
+        message: "Remote Kafka configuration is required.",
+      });
+    }
+  });
+export type ConnectionTestRequest = z.infer<typeof connectionTestRequestSchema>;
+
 export const problemDetailsSchema = z.object({
   code: z.string(),
   message: z.string(),
@@ -298,9 +336,21 @@ export const problemDetailsSchema = z.object({
 });
 export type ProblemDetails = z.infer<typeof problemDetailsSchema>;
 
-export const createRunRequestSchema = z.object({
-  scenarioId: z.string().default("partitioning"),
-});
+export const createRunRequestSchema = z
+  .object({
+    scenarioId: z.string().default("partitioning"),
+    mode: userSelectableKafkaModeSchema.default("demo"),
+    remoteKafkaConfig: remoteKafkaConfigSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.mode === "remote" && !value.remoteKafkaConfig) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["remoteKafkaConfig"],
+        message: "Remote Kafka configuration is required.",
+      });
+    }
+  });
 export const settingsRequestSchema = z.object({
   productionRate: z.number().int().min(1).max(10).optional(),
   keyStrategy: keyStrategySchema.optional(),

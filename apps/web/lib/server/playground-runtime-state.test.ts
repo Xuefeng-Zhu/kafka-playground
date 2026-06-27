@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioDefinition } from "@kplay/contracts";
+import { DemoKafkaRuntimeAdapter } from "@kplay/kafka-runtime";
 import {
   createInternalRun,
   createRunSnapshot,
@@ -9,6 +10,7 @@ describe("playground runtime state", () => {
   it("creates scenario-specific run defaults", () => {
     const run = createInternalRun({
       runId: "run-1",
+      adapter: new DemoKafkaRuntimeAdapter(),
       mode: "demo",
       scenario: scenario({
         id: "consumer-lag-backpressure",
@@ -36,6 +38,7 @@ describe("playground runtime state", () => {
   it("projects bounded snapshots without exposing internal timers or handles", () => {
     const run = createInternalRun({
       runId: "run-1",
+      adapter: new DemoKafkaRuntimeAdapter(),
       mode: "demo",
       scenario: scenario({ id: "partitioning" }),
       names: {

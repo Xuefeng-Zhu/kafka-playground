@@ -14,8 +14,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return safe(request, async () => {
     const body = await parseJson(request, createRunRequestSchema);
-    return json(await playgroundRuntime.createRun(body.scenarioId), {
-      status: 201,
-    });
+    return json(
+      await playgroundRuntime.createRun(body.scenarioId, {
+        mode: body.mode,
+        remoteKafkaConfig: body.remoteKafkaConfig,
+      }),
+      {
+        status: 201,
+      },
+    );
   });
 }

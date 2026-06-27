@@ -127,6 +127,79 @@ describe("PlaygroundRuntime demo integration", () => {
     }
   });
 
+  it("starts remote runs with a user-configured adapter", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { UserConfiguredKafkaRuntimeAdapter } =
+      await import("@kplay/kafka-runtime");
+    const createRun = vi
+      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "createRun")
+      .mockResolvedValue(undefined);
+    const produce = vi
+      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "produce")
+      .mockResolvedValue({
+        topic: "topic",
+        partition: 0,
+        offset: "1",
+        timestamp: new Date(0).toISOString(),
+      });
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "deleteRunResources",
+    ).mockResolvedValue({
+      status: "requested",
+      steps: [],
+    });
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("partitioning", {
+      mode: "remote",
+      remoteKafkaConfig: {
+        brokers: "broker.example.com:9092",
+        username: "service-user",
+        password: "service-password",
+        saslMechanism: "SCRAM-SHA-256",
+        useTls: true,
+        caCertificate: "",
+      },
+    });
+
+    expect(snapshot.mode).toBe("remote");
+    expect(createRun).toHaveBeenCalledTimes(1);
+
+    snapshot = await runtime.produceOne(snapshot.runId);
+
+    expect(produce).toHaveBeenCalledTimes(1);
+    expect(snapshot.recentMessages.at(-1)).toMatchObject({
+      partition: 0,
+      offset: "1",
+    });
+
+    await runtime.reset(snapshot.runId);
+  });
+
+  it("reports missing user-configured remote fields as sanitized status", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+
+    await expect(
+      runtime.testConnection({
+        mode: "remote",
+        remoteKafkaConfig: {
+          brokers: "",
+          username: "",
+          password: "",
+          saslMechanism: "SCRAM-SHA-256",
+          useTls: true,
+          caCertificate: "secret certificate",
+        },
+      }),
+    ).resolves.toMatchObject({
+      status: "configuration_missing",
+      mode: "remote",
+      missingVariables: ["brokers", "username", "password"],
+      error: null,
+    });
+  });
+
   it("emits scenario-specific processing failures", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();

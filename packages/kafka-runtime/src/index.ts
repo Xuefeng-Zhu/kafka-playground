@@ -3,6 +3,7 @@ import type {
   ConnectionStatus,
   KeyStrategy,
   KafkaMode,
+  RemoteKafkaConfig,
 } from "@kplay/contracts";
 import type { Admin, SASLOptions } from "kafkajs";
 import { z } from "zod";
@@ -101,6 +102,30 @@ export class KafkaConfigurationError extends Error {
   }
 }
 
+export class RemoteKafkaConfigurationError extends Error {
+  readonly code = "REMOTE_KAFKA_CONFIGURATION_MISSING";
+  readonly status = 503;
+
+  constructor(readonly missingVariables: string[]) {
+    super(
+      `Remote Kafka configuration is missing: ${missingVariables.join(", ")}`,
+    );
+    this.name = "RemoteKafkaConfigurationError";
+  }
+}
+
+export class RemoteKafkaBrokerPolicyError extends Error {
+  readonly code = "REMOTE_KAFKA_BROKER_NOT_ALLOWED";
+  readonly status = 400;
+
+  constructor(readonly broker: string) {
+    super(
+      `Remote Kafka broker ${broker} is not allowed. Use a public broker hostname or IP address.`,
+    );
+    this.name = "RemoteKafkaBrokerPolicyError";
+  }
+}
+
 export const serverEnvSchema = z.object({
   KAFKA_MODE: z.enum(["demo", "aiven"]).default("demo"),
   AIVEN_KAFKA_BROKERS: z.string().optional().default(""),
@@ -151,14 +176,18 @@ export function maskBrokerHost(value: string | undefined) {
   return `${pieces[0]?.slice(0, 2)}***.${pieces.slice(-2).join(".")}`;
 }
 
-export function sanitizeKafkaError(error: unknown) {
+export function sanitizeKafkaError(error: unknown, secrets: string[] = []) {
   if (error instanceof Error) {
+    let message = error.message.replace(
+      /(password|username|sasl|secret|caCertificate)=\S+/gi,
+      "$1=REDACTED",
+    );
+    for (const secret of secrets) {
+      if (secret.length > 1) message = message.split(secret).join("REDACTED");
+    }
     return {
       code: error.name || "KAFKA_ERROR",
-      message: error.message.replace(
-        /(password|username|sasl|secret)=\S+/gi,
-        "$1=REDACTED",
-      ),
+      message,
     };
   }
   return { code: "KAFKA_ERROR", message: "Kafka operation failed." };
@@ -284,7 +313,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       try {
         topicCount = (await admin.listTopics()).length;
       } catch (error) {
-        topicListError = sanitizeKafkaError(error);
+        topicListError = sanitizeKafkaError(error, aivenSecrets(this.env));
       }
       return {
         status: "connected",
@@ -304,7 +333,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         brokerCount: parseBrokerList(this.env.AIVEN_KAFKA_BROKERS).length,
         topicCount: null,
         missingVariables: [],
-        error: sanitizeKafkaError(error),
+        error: sanitizeKafkaError(error, aivenSecrets(this.env)),
         checkedAt: new Date().toISOString(),
       };
     } finally {
@@ -479,6 +508,248 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
   }
 }
 
+export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
+  readonly mode = "remote" as const;
+
+  constructor(
+    private readonly config: RemoteKafkaConfig,
+    private readonly diagnostics: KafkaRuntimeDiagnostics = {},
+  ) {}
+
+  async testConnection(): Promise<ConnectionStatus> {
+    const missingVariables = getMissingRemoteKafkaVariables(this.config);
+    if (missingVariables.length > 0) {
+      return {
+        status: "configuration_missing",
+        mode: "remote",
+        maskedBrokerHost: maskBrokerHost(this.config.brokers),
+        brokerCount: parseBrokerList(this.config.brokers).length,
+        topicCount: null,
+        missingVariables,
+        error: null,
+        checkedAt: new Date().toISOString(),
+      };
+    }
+
+    let admin: Admin | null = null;
+    try {
+      await assertRemoteKafkaBrokersAllowed(this.config);
+      const kafka = await createRemoteKafkaClient(this.config);
+      admin = kafka.admin();
+      await admin.connect();
+      let topicCount: number | null = null;
+      let topicListError: ConnectionStatus["error"] = null;
+      try {
+        topicCount = (await admin.listTopics()).length;
+      } catch (error) {
+        topicListError = sanitizeKafkaError(
+          error,
+          remoteKafkaSecrets(this.config),
+        );
+      }
+      return {
+        status: "connected",
+        mode: "remote",
+        maskedBrokerHost: maskBrokerHost(this.config.brokers),
+        brokerCount: parseBrokerList(this.config.brokers).length,
+        topicCount,
+        missingVariables: [],
+        error: topicListError,
+        checkedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      return {
+        status: "connection_failed",
+        mode: "remote",
+        maskedBrokerHost: maskBrokerHost(this.config.brokers),
+        brokerCount: parseBrokerList(this.config.brokers).length,
+        topicCount: null,
+        missingVariables: [],
+        error: sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
+        checkedAt: new Date().toISOString(),
+      };
+    } finally {
+      await this.disconnectSafely("connection.admin.disconnect", admin);
+    }
+  }
+
+  async createRun(input: CreateRunInput) {
+    assertRemoteKafkaConfigured(this.config);
+    await assertRemoteKafkaBrokersAllowed(this.config);
+    const kafka = await createRemoteKafkaClient(this.config);
+    const admin = kafka.admin();
+    try {
+      await admin.connect();
+      await admin.createTopics({
+        waitForLeaders: true,
+        topics: [
+          { topic: input.topicName, numPartitions: input.partitionCount },
+        ],
+      });
+    } finally {
+      await this.disconnectSafely("run.admin.disconnect", admin);
+    }
+  }
+
+  async produce(input: ProduceInput): Promise<ProduceResult> {
+    assertRemoteKafkaConfigured(this.config);
+    await assertRemoteKafkaBrokersAllowed(this.config);
+    const kafka = await createRemoteKafkaClient(this.config);
+    const producer = kafka.producer();
+    try {
+      await producer.connect();
+      const result = await producer.send({
+        topic: input.topicName,
+        messages: [
+          {
+            key: input.key ?? undefined,
+            value: JSON.stringify(input.value),
+            headers: input.headers,
+          },
+        ],
+      });
+      const report = Array.isArray(result) ? result[0] : result;
+      const partition = report?.partition;
+      const offset = report?.offset ?? report?.baseOffset;
+      if (partition === undefined || offset === undefined) {
+        throw new Error(
+          "Kafka delivery report did not include a partition and offset.",
+        );
+      }
+      return {
+        topic: report.topicName ?? input.topicName,
+        partition: Number(partition),
+        offset: String(offset),
+        timestamp: report.timestamp
+          ? String(report.timestamp)
+          : new Date().toISOString(),
+      };
+    } finally {
+      await this.disconnectSafely("produce.producer.disconnect", producer);
+    }
+  }
+
+  async createConsumer(
+    run: CreateRunInput,
+    consumerId: string,
+    callbacks: PlaygroundConsumerCallbacks,
+  ): Promise<PlaygroundConsumerHandle> {
+    assertRemoteKafkaConfigured(this.config);
+    await assertRemoteKafkaBrokersAllowed(this.config);
+    const kafka = await createRemoteKafkaClient(this.config, consumerId);
+    const consumer = kafka.consumer({
+      groupId: run.consumerGroupId,
+      allowAutoTopicCreation: false,
+    });
+    consumer.on(consumer.events.GROUP_JOIN, (event) => {
+      const partitions = event.payload.memberAssignment[run.topicName] ?? [];
+      void callbacks.onAssigned(
+        partitions.map((partition: number) => ({
+          topic: run.topicName,
+          partition,
+        })),
+      );
+    });
+    consumer.on(consumer.events.REBALANCING, () => {
+      void callbacks.onRevoked([]);
+    });
+    consumer.on(consumer.events.CRASH, (event) => {
+      void callbacks.onError({
+        code: "CONSUMER_CRASH",
+        message: sanitizeKafkaError(
+          event.payload.error,
+          remoteKafkaSecrets(this.config),
+        ).message,
+      });
+    });
+    await consumer.connect();
+    await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
+    void consumer
+      .run({
+        autoCommit: false,
+        eachMessage: async ({ topic, partition, message }) => {
+          await callbacks.onMessage({
+            topic,
+            partition,
+            offset: String(message.offset),
+            key: bufferToString(message.key),
+            value: parseJsonValue(message.value),
+            headers: normalizeHeaders(message.headers),
+            timestamp: message.timestamp ? String(message.timestamp) : null,
+          });
+        },
+      })
+      .catch((error: unknown) => {
+        void callbacks.onError(
+          sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
+        );
+      });
+    return {
+      consumerId,
+      async commit(input) {
+        await consumer.commitOffsets([
+          {
+            topic: input.topic,
+            partition: input.partition,
+            offset: input.offset,
+          },
+        ]);
+      },
+      async disconnect() {
+        await consumer.disconnect();
+      },
+    };
+  }
+
+  async deleteRunResources(input: CreateRunInput): Promise<CleanupResult> {
+    assertRemoteKafkaConfigured(this.config);
+    await assertRemoteKafkaBrokersAllowed(this.config);
+    const kafka = await createRemoteKafkaClient(this.config);
+    const admin = kafka.admin();
+    const steps: CleanupResult["steps"] = [];
+    try {
+      await admin.connect();
+      await admin.deleteTopics({ topics: [input.topicName] });
+      steps.push({
+        name: "topic.delete",
+        status: "requested",
+        resourceName: input.topicName,
+      });
+      return { status: "requested", steps };
+    } catch (error) {
+      steps.push({
+        name: "topic.delete",
+        status: "failed",
+        resourceName: input.topicName,
+        message: sanitizeKafkaError(error, remoteKafkaSecrets(this.config))
+          .message,
+      });
+      return { status: "failed", steps };
+    } finally {
+      await this.disconnectSafely("cleanup.admin.disconnect", admin);
+    }
+  }
+
+  async shutdown() {
+    return;
+  }
+
+  private async disconnectSafely(
+    operation: string,
+    handle: { disconnect(): Promise<void> } | null,
+  ) {
+    if (!handle) return;
+    try {
+      await handle.disconnect();
+    } catch (error) {
+      this.diagnostics.onDisconnectError?.({
+        operation,
+        error: sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
+      });
+    }
+  }
+}
+
 export function createKafkaRuntimeAdapter(
   env: ServerEnv,
   diagnostics?: KafkaRuntimeDiagnostics,
@@ -486,6 +757,13 @@ export function createKafkaRuntimeAdapter(
   return env.KAFKA_MODE === "aiven"
     ? new AivenKafkaRuntimeAdapter(env, diagnostics)
     : new DemoKafkaRuntimeAdapter();
+}
+
+export function createUserConfiguredKafkaRuntimeAdapter(
+  config: RemoteKafkaConfig,
+  diagnostics?: KafkaRuntimeDiagnostics,
+): KafkaRuntimeAdapter {
+  return new UserConfiguredKafkaRuntimeAdapter(config, diagnostics);
 }
 
 function getMissingAivenVariables(env: ServerEnv) {
@@ -503,17 +781,157 @@ function assertAivenConfigured(env: ServerEnv) {
   }
 }
 
+function getMissingRemoteKafkaVariables(config: RemoteKafkaConfig) {
+  const missing = [];
+  if (parseBrokerList(config.brokers).length === 0) missing.push("brokers");
+  if (!config.username) missing.push("username");
+  if (!config.password) missing.push("password");
+  return missing;
+}
+
+function assertRemoteKafkaConfigured(config: RemoteKafkaConfig) {
+  const missing = getMissingRemoteKafkaVariables(config);
+  if (missing.length > 0) {
+    throw new RemoteKafkaConfigurationError(missing);
+  }
+}
+
+async function assertRemoteKafkaBrokersAllowed(config: RemoteKafkaConfig) {
+  for (const broker of parseBrokerList(config.brokers)) {
+    const host = brokerHost(broker);
+    if (!host || isDisallowedBrokerHost(host)) {
+      throw new RemoteKafkaBrokerPolicyError(broker);
+    }
+    for (const address of await resolveBrokerAddresses(host)) {
+      if (isDisallowedIpAddress(address)) {
+        throw new RemoteKafkaBrokerPolicyError(broker);
+      }
+    }
+  }
+}
+
+function brokerHost(broker: string) {
+  const trimmed = broker.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("[")) {
+    return trimmed.slice(1, trimmed.indexOf("]"));
+  }
+  return trimmed.split(":")[0] ?? "";
+}
+
+function isDisallowedBrokerHost(host: string) {
+  const normalized = host.toLowerCase().replace(/\.$/, "");
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    isDisallowedIpAddress(normalized)
+  );
+}
+
+async function resolveBrokerAddresses(host: string) {
+  if (isIpAddress(host)) return [host];
+  const { lookup } = await import("node:dns/promises");
+  return (await lookup(host, { all: true, verbatim: true })).map(
+    (item) => item.address,
+  );
+}
+
+function isIpAddress(value: string) {
+  return Boolean(ipv4ToNumber(value)) || value.includes(":");
+}
+
+function isDisallowedIpAddress(value: string) {
+  const ipv4 = ipv4ToNumber(value);
+  if (ipv4 !== null) {
+    return (
+      inIpv4Range(ipv4, "0.0.0.0", 8) ||
+      inIpv4Range(ipv4, "10.0.0.0", 8) ||
+      inIpv4Range(ipv4, "100.64.0.0", 10) ||
+      inIpv4Range(ipv4, "127.0.0.0", 8) ||
+      inIpv4Range(ipv4, "169.254.0.0", 16) ||
+      inIpv4Range(ipv4, "172.16.0.0", 12) ||
+      inIpv4Range(ipv4, "192.0.0.0", 24) ||
+      inIpv4Range(ipv4, "192.0.2.0", 24) ||
+      inIpv4Range(ipv4, "192.168.0.0", 16) ||
+      inIpv4Range(ipv4, "198.18.0.0", 15) ||
+      inIpv4Range(ipv4, "198.51.100.0", 24) ||
+      inIpv4Range(ipv4, "203.0.113.0", 24) ||
+      inIpv4Range(ipv4, "224.0.0.0", 4) ||
+      inIpv4Range(ipv4, "240.0.0.0", 4)
+    );
+  }
+  const normalized = value.toLowerCase();
+  return (
+    normalized === "::1" ||
+    normalized === "::" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe80:")
+  );
+}
+
+function ipv4ToNumber(value: string) {
+  const parts = value.split(".");
+  if (parts.length !== 4) return null;
+  let result = 0;
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) return null;
+    const number = Number(part);
+    if (number < 0 || number > 255) return null;
+    result = result * 256 + number;
+  }
+  return result >>> 0;
+}
+
+function inIpv4Range(value: number, baseAddress: string, bits: number) {
+  const base = ipv4ToNumber(baseAddress);
+  if (base === null) return false;
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  return (value & mask) === (base & mask);
+}
+
+function aivenSecrets(env: ServerEnv) {
+  return [
+    env.AIVEN_KAFKA_USERNAME,
+    env.AIVEN_KAFKA_PASSWORD,
+    env.AIVEN_KAFKA_CA_PATH,
+  ].filter(Boolean);
+}
+
+function remoteKafkaSecrets(config: RemoteKafkaConfig) {
+  return [config.username, config.password, config.caCertificate].filter(
+    Boolean,
+  );
+}
+
 async function createAivenKafkaClient(
   env: ServerEnv,
   clientId = "kafka-visual-playground",
 ) {
-  const [{ Kafka, logLevel }] = await Promise.all([import("kafkajs")]);
   const ca = await readCaCertificate(env.AIVEN_KAFKA_CA_PATH);
+  return createRemoteKafkaClient(
+    {
+      brokers: env.AIVEN_KAFKA_BROKERS,
+      username: env.AIVEN_KAFKA_USERNAME,
+      password: env.AIVEN_KAFKA_PASSWORD,
+      saslMechanism: env.AIVEN_KAFKA_SASL_MECHANISM,
+      useTls: true,
+      caCertificate: ca,
+    },
+    clientId,
+  );
+}
+
+async function createRemoteKafkaClient(
+  config: RemoteKafkaConfig,
+  clientId = "kafka-visual-playground",
+) {
+  const [{ Kafka, logLevel }] = await Promise.all([import("kafkajs")]);
   return new Kafka({
     clientId,
-    brokers: parseBrokerList(env.AIVEN_KAFKA_BROKERS),
-    ssl: { ca: [ca] },
-    sasl: createSaslOptions(env),
+    brokers: parseBrokerList(config.brokers),
+    ssl: createSslOptions(config),
+    sasl: createSaslOptions(config),
     logLevel: logLevel.NOTHING,
   });
 }
@@ -540,15 +958,21 @@ async function readCaCertificate(caPath: string) {
   throw lastError;
 }
 
-function createSaslOptions(env: ServerEnv): SASLOptions {
+function createSslOptions(config: RemoteKafkaConfig) {
+  if (!config.useTls) return false;
+  const ca = config.caCertificate.trim();
+  return ca ? { ca: [ca] } : true;
+}
+
+function createSaslOptions(config: RemoteKafkaConfig): SASLOptions {
   const credentials = {
-    username: env.AIVEN_KAFKA_USERNAME,
-    password: env.AIVEN_KAFKA_PASSWORD,
+    username: config.username,
+    password: config.password,
   };
-  if (env.AIVEN_KAFKA_SASL_MECHANISM === "PLAIN") {
+  if (config.saslMechanism === "PLAIN") {
     return { mechanism: "plain", ...credentials };
   }
-  if (env.AIVEN_KAFKA_SASL_MECHANISM === "SCRAM-SHA-512") {
+  if (config.saslMechanism === "SCRAM-SHA-512") {
     return { mechanism: "scram-sha-512", ...credentials };
   }
   return { mechanism: "scram-sha-256", ...credentials };

@@ -32,10 +32,10 @@ export function WorkspaceHeader({
         <div className="hidden min-w-44 border-r-2 border-teal-700 pr-5 md:block">
           <div className="flex items-center gap-2 font-extrabold text-[#123047]">
             <span className="size-2.5 rounded-full bg-emerald-500" />
-            {connectionLabel(connection)}
+            {connectionLabel(run, connection)}
           </div>
           <div className="mt-0.5 truncate text-xs text-[#466778]">
-            {connectionHostLabel(connection)}
+            {connectionHostLabel(run, connection)}
           </div>
         </div>
         <div className="hidden items-center gap-3 border-r-2 border-teal-700 pr-5 sm:flex">
@@ -143,7 +143,12 @@ function StatusPill({
   );
 }
 
-function connectionLabel(connection: ConnectionStatus | null) {
+function connectionLabel(
+  run: RunSnapshot | null,
+  connection: ConnectionStatus | null,
+) {
+  if (run?.mode === "remote" || run?.mode === "aiven") return "Remote Kafka";
+  if (run?.mode === "demo") return "Demo mode";
   if (!connection) return "Checking";
   if (connection.status === "demo_mode") return "Demo mode";
   if (connection.status === "connected") return "Connected";
@@ -153,8 +158,22 @@ function connectionLabel(connection: ConnectionStatus | null) {
   return "Disconnected";
 }
 
-function connectionHostLabel(connection: ConnectionStatus | null) {
+function connectionHostLabel(
+  run: RunSnapshot | null,
+  connection: ConnectionStatus | null,
+) {
+  if (run?.mode === "remote") {
+    if (connection?.mode === "remote" && connection.maskedBrokerHost) {
+      return connection.maskedBrokerHost;
+    }
+    return "User-configured Kafka";
+  }
+  if (run?.mode === "aiven") {
+    if (connection?.maskedBrokerHost) return connection.maskedBrokerHost;
+    return "Server-configured Kafka";
+  }
   if (connection?.maskedBrokerHost) return connection.maskedBrokerHost;
   if (connection?.mode === "aiven") return "No broker configured";
+  if (connection?.mode === "remote") return "User-configured Kafka";
   return "Local demo runtime";
 }

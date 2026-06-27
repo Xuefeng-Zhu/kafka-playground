@@ -2,12 +2,17 @@ import "server-only";
 import type {
   KeyStrategy,
   PlaygroundMessage,
+  RemoteKafkaConfig,
+  UserSelectableKafkaMode,
   RuntimeEvent,
 } from "@kplay/contracts";
 import {
+  DemoKafkaRuntimeAdapter,
   createKafkaRuntimeAdapter,
+  createUserConfiguredKafkaRuntimeAdapter,
   type ConsumedMessage,
   type KafkaRuntimeAdapter,
+  type KafkaRuntimeDiagnostics,
 } from "@kplay/kafka-runtime";
 import {
   SCENARIOS,
@@ -35,19 +40,21 @@ import {
 
 export class PlaygroundRuntime {
   private readonly env = getServerEnv();
-  private readonly adapter: KafkaRuntimeAdapter = createKafkaRuntimeAdapter(
-    this.env,
-    {
-      onDisconnectError: (event) => {
-        logger.warn(
-          {
-            operation: event.operation,
-            error: event.error,
-          },
-          "Kafka disconnect cleanup failed",
-        );
-      },
+  private readonly diagnostics: KafkaRuntimeDiagnostics = {
+    onDisconnectError: (event) => {
+      logger.warn(
+        {
+          operation: event.operation,
+          error: event.error,
+        },
+        "Kafka disconnect cleanup failed",
+      );
     },
+  };
+  private readonly adapter: KafkaRuntimeAdapter = new DemoKafkaRuntimeAdapter();
+  private readonly envAdapter: KafkaRuntimeAdapter = createKafkaRuntimeAdapter(
+    this.env,
+    this.diagnostics,
   );
   private activeRun: InternalRun | null = null;
   private shutdownStarted = false;
@@ -57,10 +64,29 @@ export class PlaygroundRuntime {
   }
 
   connection() {
+    return this.envAdapter.testConnection();
+  }
+
+  testConnection(input: {
+    mode: UserSelectableKafkaMode;
+    remoteKafkaConfig?: RemoteKafkaConfig;
+  }) {
+    if (input.mode === "remote" && input.remoteKafkaConfig) {
+      return createUserConfiguredKafkaRuntimeAdapter(
+        input.remoteKafkaConfig,
+        this.diagnostics,
+      ).testConnection();
+    }
     return this.adapter.testConnection();
   }
 
-  async createRun(scenarioId: string) {
+  async createRun(
+    scenarioId: string,
+    options: {
+      mode?: UserSelectableKafkaMode;
+      remoteKafkaConfig?: RemoteKafkaConfig;
+    } = {},
+  ) {
     if (this.activeRun && this.activeRun.status !== "stopped") {
       throw new ApiError(
         "RUN_ALREADY_ACTIVE",
@@ -76,6 +102,7 @@ export class PlaygroundRuntime {
         404,
       );
     }
+    const adapter = this.createAdapterForRun(options);
     const runId = createRunId();
     const names = createResourceNames({
       prefix: this.env.KAFKA_TOPIC_PREFIX,
@@ -83,14 +110,15 @@ export class PlaygroundRuntime {
     });
     const run = createInternalRun({
       runId,
-      mode: this.adapter.mode,
+      adapter,
+      mode: adapter.mode,
       scenario,
       names,
     });
     this.activeRun = run;
     this.emit("topic.creating", { message: `Creating topic ${run.topicName}` });
     try {
-      await this.adapter.createRun(run);
+      await run.adapter.createRun(run);
       run.status = "running";
       this.emit("topic.created", {
         message: `Topic created with ${scenario.topic.partitions} partitions.`,
@@ -243,7 +271,7 @@ export class PlaygroundRuntime {
     this.emit("message.producing", { messageId: eventId, actor: "producer" });
     let delivery;
     try {
-      delivery = await this.adapter.produce({
+      delivery = await run.adapter.produce({
         runId,
         topicName: run.topicName,
         key: messageKey,
@@ -303,8 +331,8 @@ export class PlaygroundRuntime {
       processedCount: 0,
       committedCount: 0,
     });
-    if (run.mode === "aiven") {
-      const handle = await this.adapter.createConsumer(run, consumerId, {
+    if (run.mode !== "demo") {
+      const handle = await run.adapter.createConsumer(run, consumerId, {
         onAssigned: (assignments) =>
           this.applyConsumerAssignment(run.runId, consumerId, assignments),
         onRevoked: (assignments) =>
@@ -478,6 +506,7 @@ export class PlaygroundRuntime {
       );
     }
     await this.adapter.shutdown();
+    await this.envAdapter.shutdown();
   }
 
   private requireRun(runId: string) {
@@ -532,6 +561,19 @@ export class PlaygroundRuntime {
 
   private activeConsumers(run: InternalRun) {
     return run.consumers.filter((consumer) => consumer.status !== "crashed");
+  }
+
+  private createAdapterForRun(options: {
+    mode?: UserSelectableKafkaMode;
+    remoteKafkaConfig?: RemoteKafkaConfig;
+  }) {
+    if (options.mode === "remote" && options.remoteKafkaConfig) {
+      return createUserConfiguredKafkaRuntimeAdapter(
+        options.remoteKafkaConfig,
+        this.diagnostics,
+      );
+    }
+    return this.adapter;
   }
 
   private rebalance(run: InternalRun) {
@@ -807,18 +849,16 @@ export class PlaygroundRuntime {
     this.emit("resource.cleanup_started", {
       message: "Runtime cleanup started.",
     });
-    const result = await this.adapter
-      .deleteRunResources(run)
-      .catch((error) => ({
-        status: "failed" as const,
-        steps: [
-          {
-            name: "adapter.cleanup",
-            status: "failed" as const,
-            message: String(error),
-          },
-        ],
-      }));
+    const result = await run.adapter.deleteRunResources(run).catch((error) => ({
+      status: "failed" as const,
+      steps: [
+        {
+          name: "adapter.cleanup",
+          status: "failed" as const,
+          message: String(error),
+        },
+      ],
+    }));
     run.cleanupStatus = result.status;
     run.consumers = [];
     run.status = "stopped";
@@ -890,6 +930,9 @@ function isConfigurationError(error: unknown) {
   return (
     error instanceof Error &&
     "code" in error &&
-    error.code === "AIVEN_CONFIGURATION_MISSING"
+    [
+      "AIVEN_CONFIGURATION_MISSING",
+      "REMOTE_KAFKA_CONFIGURATION_MISSING",
+    ].includes(String(error.code))
   );
 }
