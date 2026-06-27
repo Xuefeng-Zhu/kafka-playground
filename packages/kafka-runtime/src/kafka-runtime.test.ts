@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DemoKafkaRuntimeAdapter,
+  KafkaConfigurationError,
   loadServerEnv,
   maskBrokerHost,
   parseBrokerList,
@@ -34,6 +35,30 @@ describe("kafka runtime", () => {
         "AIVEN_KAFKA_PASSWORD",
       ],
     });
+  });
+
+  it("rejects Aiven run creation with a typed configuration error", async () => {
+    const adapter = new (await import("./index")).AivenKafkaRuntimeAdapter(
+      loadServerEnv({ KAFKA_MODE: "aiven" }),
+    );
+
+    await expect(
+      adapter.createRun({
+        runId: "run",
+        scenarioId: "partitioning",
+        topicName: "topic",
+        consumerGroupId: "group",
+        partitionCount: 2,
+      }),
+    ).rejects.toMatchObject({
+      code: "AIVEN_CONFIGURATION_MISSING",
+      status: 503,
+      missingVariables: [
+        "AIVEN_KAFKA_BROKERS",
+        "AIVEN_KAFKA_USERNAME",
+        "AIVEN_KAFKA_PASSWORD",
+      ],
+    } satisfies Partial<KafkaConfigurationError>);
   });
 
   it("returns deterministic partitions for fixed keys", () => {

@@ -83,6 +83,19 @@ select {
   display: none;
 }
 
+.kplay-topology-flow .react-flow__pane {
+  z-index: 0;
+}
+
+.kplay-topology-flow .react-flow__renderer,
+.kplay-topology-flow .react-flow__viewport {
+  z-index: 1;
+}
+
+.kplay-topology-flow .react-flow__node {
+  pointer-events: all;
+}
+
 .kplay-shell {
   background: var(--kplay-panel);
   color: var(--kplay-text);
@@ -141,7 +154,8 @@ select {
     100% 100%;
 }
 
-.kplay-flow-line {
+.kplay-flow-line,
+.kplay-flow-line .react-flow__edge-path {
   stroke-dasharray: 8 10;
   animation: kplay-flow-dash 1.8s linear infinite;
 }

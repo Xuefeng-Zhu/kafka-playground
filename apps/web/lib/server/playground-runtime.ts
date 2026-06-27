@@ -98,6 +98,14 @@ export class PlaygroundRuntime {
       this.emit("run.started", { message: `${scenario.title} started.` });
       return this.snapshot(run.runId);
     } catch (error) {
+      if (isConfigurationError(error)) {
+        logger.warn(
+          { err: error, runId: run.runId },
+          "Scenario run blocked by incomplete Kafka configuration",
+        );
+        this.activeRun = null;
+        throw error;
+      }
       logger.error(
         { err: error, runId: run.runId },
         "Failed to start scenario run",
@@ -876,4 +884,12 @@ export class PlaygroundRuntime {
       actor: consumerId,
     });
   }
+}
+
+function isConfigurationError(error: unknown) {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "AIVEN_CONFIGURATION_MISSING"
+  );
 }

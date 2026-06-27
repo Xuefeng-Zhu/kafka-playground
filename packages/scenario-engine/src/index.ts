@@ -26,9 +26,9 @@ export const SCENARIOS: ScenarioDefinition[] = [
   },
   {
     id: "fan-out-load-balancing",
-    title: "Fan-out versus load balancing",
+    title: "Consumer-group load balancing",
     description:
-      "Compare independent consumer groups with members that divide partitions inside one group.",
+      "Produce unkeyed messages and add consumers to see how one group divides partition ownership.",
     disabled: false,
     learningObjectives: [
       "One consumer group shares partitions across its active members.",

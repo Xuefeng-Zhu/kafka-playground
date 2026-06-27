@@ -43,7 +43,7 @@ export function ProducerCard({
       type="button"
       onClick={onSelect}
       aria-label="Inspect producer"
-      className={`rounded-2xl border-[3px] bg-[#fffdf5]/95 p-5 text-center shadow-[7px_7px_0_rgba(15,118,110,0.14)] focus:outline-none focus:ring-4 focus:ring-sky-200 ${
+      className={`w-full rounded-2xl border-[3px] bg-[#fffdf5]/95 p-5 text-center shadow-[7px_7px_0_rgba(15,118,110,0.14)] focus:outline-none focus:ring-4 focus:ring-sky-200 ${
         selected
           ? "border-teal-700 ring-4 ring-sky-200"
           : "border-teal-700 hover:bg-teal-50"
@@ -249,8 +249,8 @@ export function partitionAssignments(consumers: ConsumerSnapshot[]) {
 }
 
 export function connectorPathForPartition(partition: number) {
-  const y = partition === 0 ? 47 : partition === 1 ? 61 : 68;
-  const endY = partition === 0 ? 44 : partition === 1 ? 56 : 68;
+  const y = partition === 0 ? 66 : partition === 1 ? 80 : 87;
+  const endY = partition === 0 ? 63 : partition === 1 ? 75 : 87;
   return `M64 ${y} C72 ${y}, 76 ${endY}, 84 ${endY}`;
 }
 

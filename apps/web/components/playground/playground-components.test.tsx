@@ -4,6 +4,7 @@ import type {
   ConnectionStatus,
   RunSnapshot,
   RuntimeEvent,
+  ScenarioDefinition,
 } from "@kplay/contracts";
 import { InspectorDrawer } from "./inspector-drawer";
 import { StartRunPanel } from "./start-run-panel";
@@ -14,7 +15,6 @@ describe("playground shell components", () => {
     const onReset = vi.fn();
     render(
       <WorkspaceHeader
-        scenarioTitle="Partitioning"
         run={null}
         connection={connectionStatus({ status: "demo_mode" })}
         disabled={false}
@@ -29,26 +29,62 @@ describe("playground shell components", () => {
     expect(screen.getAllByText("Demo mode").length).toBeGreaterThan(0);
   });
 
-  it("surfaces missing Aiven configuration before starting a run", () => {
+  it("surfaces missing Aiven configuration and blocks starting a run", () => {
     const onStartRun = vi.fn();
     render(
       <StartRunPanel
         connection={connectionStatus({
           status: "configuration_missing",
+          mode: "aiven",
           missingVariables: ["AIVEN_KAFKA_BROKERS"],
         })}
         disabled={false}
         onStartRun={onStartRun}
+        scenario={scenarioFixture}
       />,
     );
 
     expect(screen.queryByText("Configuration missing")).not.toBeNull();
     expect(screen.queryByText(/AIVEN_KAFKA_BROKERS/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Start scenario run" }));
-    expect(onStartRun).toHaveBeenCalledTimes(1);
+    expect(onStartRun).not.toHaveBeenCalled();
   });
 
-  it("closes the inspector from the overlay and panel button", () => {
+  it("shows selected scenario details before starting a run", () => {
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={vi.fn()}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    expect(screen.queryByText("Partitioning scenario")).not.toBeNull();
+    expect(screen.queryByText("2 partitions")).not.toBeNull();
+    expect(screen.queryByText("Understand partition ownership")).not.toBeNull();
+  });
+
+  it("labels Aiven mode before a run exists", () => {
+    render(
+      <WorkspaceHeader
+        run={null}
+        connection={connectionStatus({
+          status: "configuration_missing",
+          mode: "aiven",
+          topicCount: null,
+        })}
+        disabled={false}
+        onReset={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("Aiven")).not.toBeNull();
+    expect(screen.queryByText("No broker configured")).not.toBeNull();
+    expect(screen.queryByText("demo.aivencloud.com:9092")).toBeNull();
+  });
+
+  it("renders the inspector as a named dialog and closes from expected paths", () => {
     const onClose = vi.fn();
     render(
       <InspectorDrawer
@@ -62,10 +98,14 @@ describe("playground shell components", () => {
       />,
     );
 
+    expect(document.activeElement).toBe(
+      screen.getByRole("dialog", { name: "Message inspector" }),
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByLabelText("Close message inspector"));
     fireEvent.click(document.querySelector("[aria-hidden='true']") as Element);
 
-    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -110,6 +150,24 @@ const eventFixture = {
   type: "message.processing_completed",
   messageId: "message-1",
 } satisfies RuntimeEvent;
+
+const scenarioFixture: ScenarioDefinition = {
+  id: "partitioning",
+  title: "Partitioning scenario",
+  description: "Watch records move through a partitioned topic.",
+  disabled: false,
+  learningObjectives: [
+    "Understand partition ownership",
+    "Connect offsets to committed processing",
+  ],
+  topic: { partitions: 2 },
+  limits: {
+    maxConsumers: 3,
+    maxProduceRate: 10,
+    minProcessingLatencyMs: 0,
+    maxProcessingLatencyMs: 3000,
+  },
+};
 
 const snapshotFixture = {
   runId: "run-1",
