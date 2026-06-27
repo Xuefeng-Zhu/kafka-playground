@@ -12,7 +12,7 @@
     "build": "npm run build --workspaces --if-present",
     "start": "npm --workspace @kplay/web run start",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "kafka:cleanup": "tsx scripts/kafka-cleanup.ts",

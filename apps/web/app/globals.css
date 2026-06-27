@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@xyflow/react/dist/style.css";
 
 :root {
   color-scheme: light;
@@ -73,14 +72,6 @@ button,
 input,
 select {
   font: inherit;
-}
-
-.react-flow {
-  background: transparent;
-}
-
-.react-flow__attribution {
-  display: none;
 }
 
 .kplay-shell {
