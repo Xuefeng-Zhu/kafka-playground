@@ -74,8 +74,12 @@ For a local production preview, build first and then run the standalone server e
 
 ```bash
 npm run build
+mkdir -p apps/web/.next/standalone/apps/web/.next/static
+cp -R apps/web/.next/static/. apps/web/.next/standalone/apps/web/.next/static/
 PORT=3000 node apps/web/.next/standalone/apps/web/server.js
 ```
+
+If the app adds an `apps/web/public` directory later, copy it to `apps/web/.next/standalone/apps/web/public` before starting the standalone server.
 
 ## Aiven Mode
 
