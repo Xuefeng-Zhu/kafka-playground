@@ -37,8 +37,6 @@ export function StartRunPanel({
             <div className="mt-4 rounded-2xl border-[3px] border-teal-700 bg-teal-50 p-4">
               <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-teal-800">
                 <span>{scenario.topic.partitions} partitions</span>
-                <span aria-hidden>|</span>
-                <span>Demo or Aiven-backed run</span>
               </div>
               <ul className="mt-3 space-y-2 text-sm leading-5 text-[#31566a]">
                 {scenario.learningObjectives.map((objective) => (
@@ -58,10 +56,6 @@ export function StartRunPanel({
             Loading scenario details.
           </p>
         )}
-        <p className="mt-4 text-center text-xs leading-5 text-[#60798d]">
-          Demo mode uses simulated Kafka behavior. Aiven mode creates real
-          resources and displays observed delivery reports and assignments.
-        </p>
         <ConnectionNotice connection={connection} />
         <Button
           className="mx-auto mt-6 flex"

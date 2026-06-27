@@ -65,7 +65,7 @@ describe("playground shell components", () => {
     expect(screen.queryByText("Understand partition ownership")).not.toBeNull();
   });
 
-  it("labels Aiven mode before a run exists", () => {
+  it("shows Aiven configuration state before a run exists", () => {
     render(
       <WorkspaceHeader
         run={null}
@@ -79,7 +79,8 @@ describe("playground shell components", () => {
       />,
     );
 
-    expect(screen.queryByText("Aiven")).not.toBeNull();
+    expect(screen.queryByText("Aiven")).toBeNull();
+    expect(screen.queryByText("Configuration missing")).not.toBeNull();
     expect(screen.queryByText("No broker configured")).not.toBeNull();
     expect(screen.queryByText("demo.aivencloud.com:9092")).toBeNull();
   });

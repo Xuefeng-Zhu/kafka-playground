@@ -1,7 +1,7 @@
 "use client";
 
 import type { ConnectionStatus, RunSnapshot } from "@kplay/contracts";
-import { Cloud, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function WorkspaceHeader({
@@ -15,8 +15,6 @@ export function WorkspaceHeader({
   disabled: boolean;
   onReset: () => void;
 }) {
-  const mode = run?.mode ?? connection?.mode ?? "demo";
-
   return (
     <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b-[3px] border-teal-700 bg-[#fff7ed] px-3 py-3 shadow-[0_6px_0_rgba(15,118,110,0.12)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
       <div className="flex min-w-0 items-center gap-3 sm:gap-4">
@@ -28,15 +26,6 @@ export function WorkspaceHeader({
           <h1 className="max-w-44 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">
             Kafka Visual Playground
           </h1>
-        </div>
-        <StatusPill
-          label={mode === "aiven" ? "Aiven" : "Demo mode"}
-          tone="sky"
-        />
-        <div className="hidden h-8 w-px bg-teal-700 lg:block" />
-        <div className="hidden items-center gap-2 text-sm font-extrabold text-orange-700 sm:flex">
-          <Cloud size={16} strokeWidth={2.5} aria-hidden />
-          Aiven-compatible
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-2 text-sm sm:gap-4">
