@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyRuntimeEvent,
   initializeFromSnapshot,
+  mergeSnapshot,
 } from "./visualization-reducer";
 import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
 
@@ -51,5 +52,19 @@ describe("visualization reducer", () => {
     state = applyRuntimeEvent(state, event(1));
     state = applyRuntimeEvent(state, event(3));
     expect(state.hasSequenceGap).toBe(true);
+  });
+
+  it("ignores stale snapshots after newer live events", () => {
+    let state = initializeFromSnapshot({ ...snapshot, sequence: 3 });
+    state = applyRuntimeEvent(state, event(4));
+
+    const merged = mergeSnapshot(state, {
+      ...snapshot,
+      sequence: 3,
+      messageCounts: { produced: 99 },
+    });
+
+    expect(merged).toBe(state);
+    expect(merged.snapshot?.messageCounts.produced).toBe(0);
   });
 });

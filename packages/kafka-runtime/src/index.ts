@@ -390,9 +390,10 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       void callbacks.onRevoked([]);
     });
     consumer.on(consumer.events.CRASH, (event) => {
+      const error = sanitizeKafkaError(event.payload.error);
       void callbacks.onError({
         code: "CONSUMER_CRASH",
-        message: event.payload.error.message,
+        message: error.message,
       });
     });
     await consumer.connect();

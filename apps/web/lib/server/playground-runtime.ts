@@ -6,6 +6,7 @@ import type {
 } from "@kplay/contracts";
 import {
   createKafkaRuntimeAdapter,
+  sanitizeKafkaError,
   type ConsumedMessage,
   type KafkaRuntimeAdapter,
 } from "@kplay/kafka-runtime";
@@ -807,18 +808,19 @@ export class PlaygroundRuntime {
     this.emit("resource.cleanup_started", {
       message: "Runtime cleanup started.",
     });
-    const result = await this.adapter
-      .deleteRunResources(run)
-      .catch((error) => ({
+    const result = await this.adapter.deleteRunResources(run).catch((error) => {
+      const sanitized = sanitizeKafkaError(error);
+      return {
         status: "failed" as const,
         steps: [
           {
             name: "adapter.cleanup",
             status: "failed" as const,
-            message: String(error),
+            message: sanitized.message,
           },
         ],
-      }));
+      };
+    });
     run.cleanupStatus = result.status;
     run.consumers = [];
     run.status = "stopped";

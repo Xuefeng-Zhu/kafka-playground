@@ -70,6 +70,7 @@ export function mergeSnapshot(
   state: VisualizationState,
   snapshot: RunSnapshot,
 ): VisualizationState {
+  if (snapshot.sequence < state.lastSequence) return state;
   const deduped = new Map<number, RuntimeEvent>();
   for (const event of [...state.events, ...snapshot.recentEvents])
     deduped.set(event.sequence, event);

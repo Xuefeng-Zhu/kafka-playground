@@ -134,7 +134,7 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: /Fan-out versus load balancing/ }),
+    page.getByRole("link", { name: /Consumer-group load balancing/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
@@ -152,7 +152,7 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
     page.getByRole("link", { name: /ACLs, users, and least privilege/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Fan-out versus load balancing/ }),
+    page.getByRole("link", { name: /Consumer-group load balancing/ }),
   ).toHaveCount(0);
   await scenarioSearch.fill("duplicate");
   await expect(
@@ -175,7 +175,7 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
     "page",
   );
   await expect(
-    page.getByRole("link", { name: /Fan-out versus load balancing/ }),
+    page.getByRole("link", { name: /Consumer-group load balancing/ }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Start scenario run" }).click();
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
@@ -536,15 +536,15 @@ test("sidebar scenario navigation retires the active run", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
   await page.getByLabel("Search scenarios").fill("load balancing");
   await expect(
-    page.getByRole("link", { name: /Fan-out versus load balancing/ }),
+    page.getByRole("link", { name: /Consumer-group load balancing/ }),
   ).toBeVisible();
 
   await page
-    .getByRole("link", { name: /Fan-out versus load balancing/ })
+    .getByRole("link", { name: /Consumer-group load balancing/ })
     .click();
   await expect(page).toHaveURL(/\/scenarios\/fan-out-load-balancing$/);
   await expect(page.getByTestId("current-scenario-card")).toContainText(
-    "Fan-out versus load balancing",
+    "Consumer-group load balancing",
   );
   await expect(
     page.getByRole("button", { name: "Start scenario run" }),
