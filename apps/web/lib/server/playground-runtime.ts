@@ -10,6 +10,7 @@ import {
   DemoKafkaRuntimeAdapter,
   createKafkaRuntimeAdapter,
   createUserConfiguredKafkaRuntimeAdapter,
+  sanitizeKafkaError,
   type ConsumedMessage,
   type KafkaRuntimeAdapter,
   type KafkaRuntimeDiagnostics,
@@ -849,16 +850,19 @@ export class PlaygroundRuntime {
     this.emit("resource.cleanup_started", {
       message: "Runtime cleanup started.",
     });
-    const result = await run.adapter.deleteRunResources(run).catch((error) => ({
-      status: "failed" as const,
-      steps: [
-        {
-          name: "adapter.cleanup",
-          status: "failed" as const,
-          message: String(error),
-        },
-      ],
-    }));
+    const result = await run.adapter.deleteRunResources(run).catch((error) => {
+      const sanitized = sanitizeKafkaError(error);
+      return {
+        status: "failed" as const,
+        steps: [
+          {
+            name: "adapter.cleanup",
+            status: "failed" as const,
+            message: sanitized.message,
+          },
+        ],
+      };
+    });
     run.cleanupStatus = result.status;
     run.consumers = [];
     run.status = "stopped";
