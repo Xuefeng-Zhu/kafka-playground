@@ -70,6 +70,13 @@ Open `http://localhost:3000` for the catalog or `http://localhost:3000/scenarios
 
 To customize local settings, copy `.env.example` to `.env.local` and edit the copy. Demo mode works without external Kafka credentials.
 
+For a local production preview, build first and then run the standalone server entrypoint emitted by Next.js:
+
+```bash
+npm run build
+PORT=3000 node apps/web/.next/standalone/apps/web/server.js
+```
+
 ## Aiven Mode
 
 Create an Aiven for Apache Kafka service, create a service user, copy the SASL/TLS broker URL, and download the CA certificate to `certs/ca.pem`.
@@ -133,6 +140,27 @@ The UI uses the versioned `/api/v1` routes directly:
 | `POST`   | `/api/v1/runs/:runId/consumers/:consumerId/crash` | Simulates a consumer crash.                                                                                  |
 | `POST`   | `/api/v1/runs/:runId/reset`                       | Stops producers, disconnects consumers, closes SSE subscribers, and requests resource cleanup.               |
 
+Routes that accept JSON bodies use these shapes:
+
+```text
+POST /api/v1/runs
+{ "scenarioId": "partitioning" }
+
+PATCH /api/v1/runs/:runId/settings
+{
+  "productionRate": 5,
+  "keyStrategy": { "type": "fixed", "value": "user-1" },
+  "processingLatencyMs": 500
+}
+
+POST /api/v1/runs/:runId/messages
+{
+  "keyStrategy": { "type": "round_robin_users" }
+}
+```
+
+`scenarioId` defaults to `partitioning`. The `settings` and `messages` fields are optional; omitted settings keep their current values.
+
 ## Resource Naming
 
 Run resources use:
@@ -169,12 +197,13 @@ set -a; source .env.local; set +a; npm run kafka:cleanup -- --dry-run
 npm run dev
 npm run dev:demo
 npm run build
-npm run start
 npm run lint
 npm run typecheck
 npm test
 npm run test:e2e
 ```
+
+`npm run start` delegates to `next start` and may print a warning when `output: "standalone"` is enabled. Prefer the standalone server command from the setup section after `npm run build`.
 
 To run the optional live Aiven smoke test after configuring `.env.local` and `certs/ca.pem`:
 
