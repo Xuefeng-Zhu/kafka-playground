@@ -163,7 +163,9 @@ describe("AivenKafkaRuntimeAdapter diagnostics", () => {
       "consumer-1",
       {
         onAssigned: async () => {
-          throw new Error("assignment failed password=super-secret");
+          throw new Error(
+            "assignment failed for service-user service-password ./certs/ca.pem",
+          );
         },
         onRevoked: () => undefined,
         onMessage: async () => undefined,
@@ -180,7 +182,7 @@ describe("AivenKafkaRuntimeAdapter diagnostics", () => {
         operation: "consumer.assigned",
         error: {
           code: "Error",
-          message: "assignment failed password=REDACTED",
+          message: "assignment failed for REDACTED REDACTED REDACTED",
         },
       });
     });

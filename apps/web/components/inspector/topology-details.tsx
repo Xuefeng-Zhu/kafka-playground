@@ -229,8 +229,8 @@ function DetailSection({
     <section className="p-5">
       <h3 className="mb-3 kplay-section-title">{title}</h3>
       <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
-        {rows.map(([label, value]) => (
-          <div key={label} className="contents">
+        {rows.map(([label, value], index) => (
+          <div key={`${label}-${index}`} className="contents">
             <dt className="text-[#466778]">{label}</dt>
             <dd className="min-w-0 break-words font-semibold text-[#123047]">
               {value}

@@ -5,6 +5,7 @@ import {
   loadActiveRunSnapshot,
   loadConnectionStatus,
   loadScenarioDefinitions,
+  retireRun,
 } from "./playground-api";
 
 describe("playground api client", () => {
@@ -78,6 +79,15 @@ describe("playground api client", () => {
       ok: false,
       message: "Unable to refresh run snapshot. (503: Runtime unavailable)",
     });
+  });
+
+  it("treats missing runs as already retired during reset", async () => {
+    mockFetch(
+      { ok: false, status: 404, statusText: "Not Found" },
+      { message: "The scenario run does not exist." },
+    );
+
+    await expect(retireRun("missing")).resolves.toBeUndefined();
   });
 });
 

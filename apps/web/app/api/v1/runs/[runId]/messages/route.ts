@@ -10,7 +10,9 @@ type Context = { params: Promise<{ runId: string }> };
 export async function POST(request: Request, context: Context) {
   return safe(request, async () => {
     const { runId } = await context.params;
-    const body = await parseJson(request, produceMessageRequestSchema);
+    const body = await parseJson(request, produceMessageRequestSchema, {
+      code: "INVALID_MESSAGE_REQUEST",
+    });
     return json(await playgroundRuntime.produceOne(runId, body.keyStrategy));
   });
 }

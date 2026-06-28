@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useReducer,
@@ -52,6 +53,7 @@ import {
   loadConnectionStatus,
   loadScenarioDefinitions,
   produceMessage,
+  retireRun,
 } from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
 import type { ScenarioAction } from "@/lib/client/scenario-actions";
@@ -132,6 +134,12 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     () => scenarios.find((scenario) => scenario.id === scenarioId) ?? null,
     [scenarioId, scenarios],
   );
+  const clearRunSelection = useCallback(() => {
+    resetSelection();
+    setSelectedTopologyNode(null);
+    setInspectorOpen(false);
+    dispatch({ type: "clear" });
+  }, [resetSelection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,9 +167,11 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   }, []);
 
   useEffect(() => {
-    dispatch({ type: "clear" });
-
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) clearRunSelection();
+    });
+
     void (async () => {
       try {
         const result = await loadActiveRunSnapshot();
@@ -170,9 +180,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
           setActionError(result.message);
           return;
         }
-        resetSelection();
-        setSelectedTopologyNode(null);
-        setInspectorOpen(false);
         const snapshot = result.data;
         if (!snapshot) return;
         if (snapshot.scenarioId === scenarioId) {
@@ -187,7 +194,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [router, scenarioId, resetSelection]);
+  }, [router, scenarioId, clearRunSelection]);
 
   useEffect(() => {
     if (!run?.runId) return;
@@ -303,15 +310,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
   async function resetRun() {
     if (!run) return;
-    await runAction(async () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-      await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
-      resetSelection();
-      setSelectedTopologyNode(null);
-      setInspectorOpen(false);
-      dispatch({ type: "clear" });
-    });
+    await runAction(() => retireActiveRun(run.runId));
   }
 
   async function navigateToScenario(nextScenarioId: string) {
@@ -321,15 +320,16 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       return;
     }
     await runAction(async () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-      await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
-      resetSelection();
-      setSelectedTopologyNode(null);
-      setInspectorOpen(false);
-      dispatch({ type: "clear" });
+      await retireActiveRun(run.runId);
       router.push(`/scenarios/${nextScenarioId}`);
     });
+  }
+
+  async function retireActiveRun(runId: string) {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    await retireRun(runId);
+    clearRunSelection();
   }
 
   async function mutate(path: string, init?: RequestInit) {

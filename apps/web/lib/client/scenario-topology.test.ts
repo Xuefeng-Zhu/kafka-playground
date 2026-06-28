@@ -1,4 +1,4 @@
-import type { RunSnapshot } from "@kplay/contracts";
+import type { PlaygroundMessage, RunSnapshot } from "@kplay/contracts";
 import { SCENARIOS } from "@kplay/scenario-engine";
 import { describe, expect, it } from "vitest";
 import { deriveScenarioTopology } from "./scenario-topology";
@@ -56,13 +56,94 @@ describe("deriveScenarioTopology", () => {
       }
     }
   });
+
+  it("derives retry and DLQ labels from failed message payloads", () => {
+    const topology = deriveScenarioTopology(
+      snapshotFor("retry-dead-letter-queues", {
+        messageCounts: {
+          produced: 3,
+          received: 2,
+          processed: 1,
+          committed: 1,
+          failed: 1,
+        },
+        recentMessages: [
+          message("retry-1", {
+            retryTopic: "orders.retry.5m",
+            deadLetterTopic: "orders.dead",
+          }),
+        ],
+      }),
+    );
+
+    expect(
+      topology.nodes.find((node) => node.id === "retry-topic"),
+    ).toMatchObject({
+      metricValue: "1",
+      details: expect.arrayContaining([["Retry topic", "orders.retry.5m"]]),
+    });
+    expect(
+      topology.nodes.find((node) => node.id === "dead-letter-topic"),
+    ).toMatchObject({
+      metricValue: "active",
+      details: expect.arrayContaining([["DLQ", "orders.dead"]]),
+    });
+  });
+
+  it("surfaces hot partition counts from per-partition message totals", () => {
+    const topology = deriveScenarioTopology(
+      snapshotFor("hot-partitions-key-skew", {
+        messageCounts: {
+          produced: 7,
+          received: 0,
+          processed: 0,
+          committed: 0,
+          failed: 0,
+          "0": 1,
+          "1": 5,
+          "2": 1,
+        },
+      }),
+    );
+
+    expect(
+      topology.nodes.find((node) => node.id === "hottest-partition"),
+    ).toMatchObject({
+      metricLabel: "P1",
+      metricValue: "5",
+      tone: "rose",
+    });
+  });
+
+  it("counts denied ACL records from payload authorization flags", () => {
+    const topology = deriveScenarioTopology(
+      snapshotFor("acl-least-privilege", {
+        recentMessages: [
+          message("acl-1", { authorized: false, principal: "svc-a" }),
+          message("acl-2", { authorized: true, principal: "svc-a" }),
+          message("acl-3", { authorized: false, principal: "svc-b" }),
+        ],
+      }),
+    );
+
+    expect(
+      topology.nodes.find((node) => node.id === "authorization-gate"),
+    ).toMatchObject({
+      metricValue: "2",
+      tone: "rose",
+      details: expect.arrayContaining([["Denied", "2"]]),
+    });
+  });
 });
 
 function hasEndpoint(id: string, scenarioNodeIds: Set<string>) {
   return coreNodeIds.has(id) || scenarioNodeIds.has(id);
 }
 
-function snapshotFor(scenarioId: string): RunSnapshot {
+function snapshotFor(
+  scenarioId: string,
+  overrides: Partial<RunSnapshot> = {},
+): RunSnapshot {
   return {
     runId: `run-${scenarioId}`,
     scenarioId,
@@ -98,5 +179,28 @@ function snapshotFor(scenarioId: string): RunSnapshot {
     recentEvents: [],
     cleanupStatus: "not_requested",
     sequence: 0,
+    ...overrides,
+  };
+}
+
+function message(
+  messageId: string,
+  payload: Record<string, unknown>,
+): PlaygroundMessage {
+  return {
+    messageId,
+    runId: "run",
+    topic: "topic",
+    partition: 0,
+    offset: "0",
+    key: "user-1",
+    value: { payload },
+    headers: {},
+    timestamp: "2026-06-26T00:00:00.000Z",
+    state: "committed",
+    assignedConsumerId: "consumer-1",
+    committedOffset: "1",
+    createdAt: "2026-06-26T00:00:00.000Z",
+    updatedAt: "2026-06-26T00:00:00.000Z",
   };
 }

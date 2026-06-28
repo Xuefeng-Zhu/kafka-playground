@@ -117,6 +117,24 @@ export async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
   });
 }
 
+export async function retireRun(runId: string) {
+  const response = await fetch(`/api/v1/runs/${runId}/reset`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const error = await readErrorBody(response);
+    if (response.status === 404) return;
+    throw new ApiRequestError(
+      error.message ?? response.statusText,
+      response.status,
+    );
+  }
+  await response.json().catch(() => null);
+}
+
 export async function fetchRunSnapshot(
   runId: string,
 ): Promise<ClientLoadResult<RunSnapshot | null>> {
