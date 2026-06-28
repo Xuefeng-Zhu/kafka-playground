@@ -11,7 +11,10 @@ export function EducationPanel({
 }) {
   const text = explain(scenarioId, snapshot, selectedMessage);
   return (
-    <section className="mt-4 rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-4 shadow-[7px_7px_0_rgba(15,118,110,0.14)]">
+    <section
+      id="how-it-works"
+      className="mt-4 scroll-mt-4 rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-4 shadow-[7px_7px_0_rgba(15,118,110,0.14)]"
+    >
       <h2 className="kplay-section-title">What you are seeing</h2>
       <p className="mt-3 text-sm leading-6 text-[#31566a]">{text}</p>
     </section>

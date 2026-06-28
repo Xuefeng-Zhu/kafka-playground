@@ -109,7 +109,6 @@ type TopologyNode =
   | Node<ScenarioNodeData, "scenarioNode">;
 type TopologyEdge = Edge<Record<string, never>, "smoothstep">;
 type LayoutMetrics = {
-  groupWidth: number;
   producer: { x: number; y: number };
   producerWidth: number;
   topic: { x: number; y: number };
@@ -372,22 +371,24 @@ function KafkaTopologyFlow({
       },
     ];
 
-    const overlayNodes: TopologyNode[] = scenarioTopology.nodes.map((model) => ({
-      id: scenarioFlowNodeId(model.id),
-      type: "scenarioNode",
-      position: isCompact ? model.compactPosition : model.position,
-      draggable: false,
-      selectable: false,
-      data: {
-        model,
-        selected:
-          selectedNode?.type === "scenarioNode" &&
-          selectedNode.nodeId === model.id,
-        onSelectMessage,
-        onSelectNode,
-      },
-      style: { width: isCompact ? 180 : 190 },
-    }));
+    const overlayNodes: TopologyNode[] = scenarioTopology.nodes.map(
+      (model) => ({
+        id: scenarioFlowNodeId(model.id),
+        type: "scenarioNode",
+        position: isCompact ? model.compactPosition : model.position,
+        draggable: false,
+        selectable: false,
+        data: {
+          model,
+          selected:
+            selectedNode?.type === "scenarioNode" &&
+            selectedNode.nodeId === model.id,
+          onSelectMessage,
+          onSelectNode,
+        },
+        style: { width: isCompact ? 180 : 190 },
+      }),
+    );
 
     return [...coreNodes, ...overlayNodes];
   }, [
@@ -763,9 +764,7 @@ function ConsumerGroupFlowNode({
   );
 }
 
-function ScenarioOverlayFlowNode({
-  data,
-}: NodeProps<Node<ScenarioNodeData>>) {
+function ScenarioOverlayFlowNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
   const { model } = data;
   const Icon = scenarioIconMap[model.icon];
   const tone = scenarioToneClass[model.tone];
@@ -981,7 +980,6 @@ function topologyMetrics(
 ): LayoutMetrics {
   if (compact) {
     return {
-      groupWidth: 360,
       producer: { x: 26, y: 116 },
       producerWidth: 170,
       topic: { x: 26, y: 320 },
@@ -993,7 +991,6 @@ function topologyMetrics(
 
   return layout === "auto"
     ? {
-        groupWidth: 1140,
         producer: { x: 28, y: 214 },
         producerWidth: 170,
         topic: { x: 312, y: 124 },
@@ -1002,7 +999,6 @@ function topologyMetrics(
         consumerGroupWidth: 280,
       }
     : {
-        groupWidth: 1260,
         producer: { x: 24, y: 236 },
         producerWidth: 190,
         topic: { x: 344, y: 112 },

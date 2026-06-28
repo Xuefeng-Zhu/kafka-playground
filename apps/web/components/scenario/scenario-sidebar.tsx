@@ -1,16 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type MouseEvent, useMemo, useState } from "react";
 import type { ScenarioDefinition } from "@kplay/contracts";
 import { BookOpen, Network, Search, X } from "lucide-react";
 
 export function ScenarioSidebar({
+  disabled = false,
   scenarios,
   scenarioId,
+  onNavigateScenario,
 }: {
+  disabled?: boolean;
   scenarios: ScenarioDefinition[];
   scenarioId: string;
+  onNavigateScenario?: (scenarioId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -91,7 +95,22 @@ export function ScenarioSidebar({
               <Link
                 key={scenario.id}
                 href={`/scenarios/${scenario.id}`}
-                className="block rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+                aria-disabled={disabled || undefined}
+                onClick={(event) => {
+                  if (disabled) {
+                    event.preventDefault();
+                    return;
+                  }
+                  if (!onNavigateScenario) return;
+                  if (shouldUseNativeLinkBehavior(event)) return;
+                  event.preventDefault();
+                  onNavigateScenario(scenario.id);
+                }}
+                className={`block rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 text-xs text-[#466778] shadow-[7px_7px_0_rgba(15,118,110,0.1)] transition focus:outline-none focus:ring-4 focus:ring-sky-200 ${
+                  disabled
+                    ? "cursor-not-allowed opacity-55"
+                    : "hover:bg-teal-50"
+                }`}
               >
                 <ScenarioCardContent scenario={scenario} />
               </Link>
@@ -116,6 +135,16 @@ export function ScenarioSidebar({
         <span aria-hidden>{"\u2197"}</span>
       </a>
     </div>
+  );
+}
+
+function shouldUseNativeLinkBehavior(event: MouseEvent<HTMLAnchorElement>) {
+  return (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
   );
 }
 

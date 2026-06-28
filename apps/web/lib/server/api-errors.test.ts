@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { settingsRequestSchema } from "@kplay/contracts";
 import { ApiError, problem } from "./api-errors";
 
 describe("api error responses", () => {
@@ -44,5 +45,19 @@ describe("api error responses", () => {
       requestId: "request-3",
     });
     expect(response.status).toBe(404);
+  });
+
+  it("maps settings validation to product-facing copy", async () => {
+    const error = settingsRequestSchema.safeParse({ productionRate: 99 });
+    expect(error.success).toBe(false);
+    if (error.success) return;
+
+    const response = problem(error.error, "request-4");
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_SETTINGS",
+      message: "Production rate must be between 1 and 10 messages per second.",
+      requestId: "request-4",
+    });
+    expect(response.status).toBe(400);
   });
 });

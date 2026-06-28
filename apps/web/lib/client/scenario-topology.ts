@@ -4,6 +4,7 @@ import {
   countPayload,
   latestPayloadString,
 } from "./scenario-metrics";
+import { keyStrategyLabel } from "./key-strategy-label";
 
 export type ScenarioTopologyTone =
   | "amber"
@@ -213,10 +214,16 @@ export function deriveScenarioTopology(
           targetHandle: "left-in",
           active: duplicateRisks > 0,
         }),
-        edge("handler-to-commit", "idempotent-handler", "commit-gate", "amber", {
-          sourceHandle: "bottom-out",
-          targetHandle: "top-in",
-        }),
+        edge(
+          "handler-to-commit",
+          "idempotent-handler",
+          "commit-gate",
+          "amber",
+          {
+            sourceHandle: "bottom-out",
+            targetHandle: "top-in",
+          },
+        ),
         edge("commit-to-group", "commit-gate", "consumerGroup", "emerald", {
           sourceHandle: "right-out",
           targetHandle: "empty-in",
@@ -246,7 +253,11 @@ export function deriveScenarioTopology(
           position: { x: 600, y: 32 },
           compactIndex: 0,
           details: [
-            ["Retry topic", latestPayloadString(latestMessage, "retryTopic") ?? "orders.retry.30s"],
+            [
+              "Retry topic",
+              latestPayloadString(latestMessage, "retryTopic") ??
+                "orders.retry.30s",
+            ],
             ["Failed records", String(failed)],
             ["Trigger cadence", "every third record"],
           ],
@@ -263,7 +274,11 @@ export function deriveScenarioTopology(
           position: { x: 884, y: 404 },
           compactIndex: 1,
           details: [
-            ["DLQ", latestPayloadString(latestMessage, "deadLetterTopic") ?? "orders.dlq"],
+            [
+              "DLQ",
+              latestPayloadString(latestMessage, "deadLetterTopic") ??
+                "orders.dlq",
+            ],
             ["Failed", String(failed)],
             ["Latest state", latestMessage?.state ?? "ready"],
           ],
@@ -295,15 +310,26 @@ export function deriveScenarioTopology(
           eyebrow: "Karapace",
           description: "Subject versions define the consumer contract.",
           metricLabel: "Version",
-          metricValue: latestPayloadString(latestMessage, "schemaVersion") ?? "2",
+          metricValue:
+            latestPayloadString(latestMessage, "schemaVersion") ?? "2",
           tone: "violet",
           icon: "schema",
           position: { x: 236, y: 32 },
           compactIndex: 0,
           details: [
-            ["Subject", latestPayloadString(latestMessage, "schemaSubject") ?? "profile-value"],
-            ["Version", latestPayloadString(latestMessage, "schemaVersion") ?? "2"],
-            ["Field change", latestPayloadString(latestMessage, "fieldChange") ?? "ready"],
+            [
+              "Subject",
+              latestPayloadString(latestMessage, "schemaSubject") ??
+                "profile-value",
+            ],
+            [
+              "Version",
+              latestPayloadString(latestMessage, "schemaVersion") ?? "2",
+            ],
+            [
+              "Field change",
+              latestPayloadString(latestMessage, "fieldChange") ?? "ready",
+            ],
           ],
         }),
         node({
@@ -329,15 +355,27 @@ export function deriveScenarioTopology(
           sourceHandle: "producer-out",
           targetHandle: "left-in",
         }),
-        edge("registry-to-gate", "schema-registry", "compatibility-gate", "violet", {
-          sourceHandle: "right-out",
-          targetHandle: "left-in",
-        }),
-        edge("gate-to-topic", "compatibility-gate", "topic", rejected > 0 ? "rose" : "emerald", {
-          sourceHandle: "right-out",
-          targetHandle: "topic-in",
-          active: rejected > 0,
-        }),
+        edge(
+          "registry-to-gate",
+          "schema-registry",
+          "compatibility-gate",
+          "violet",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "left-in",
+          },
+        ),
+        edge(
+          "gate-to-topic",
+          "compatibility-gate",
+          "topic",
+          rejected > 0 ? "rose" : "emerald",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "topic-in",
+            active: rejected > 0,
+          },
+        ),
       ],
     );
   }
@@ -351,15 +389,25 @@ export function deriveScenarioTopology(
           eyebrow: "Exactly once",
           description: "Producer epochs and sequence numbers guard writes.",
           metricLabel: "Txn",
-          metricValue: latestPayloadString(latestMessage, "transactionId") ?? "ready",
+          metricValue:
+            latestPayloadString(latestMessage, "transactionId") ?? "ready",
           tone: "sky",
           icon: "transaction",
           position: { x: 236, y: 32 },
           compactIndex: 0,
           details: [
-            ["Transaction", latestPayloadString(latestMessage, "transactionId") ?? "none"],
-            ["Producer epoch", latestPayloadString(latestMessage, "producerEpoch") ?? "1"],
-            ["Sequence", latestPayloadString(latestMessage, "sequenceNumber") ?? "0"],
+            [
+              "Transaction",
+              latestPayloadString(latestMessage, "transactionId") ?? "none",
+            ],
+            [
+              "Producer epoch",
+              latestPayloadString(latestMessage, "producerEpoch") ?? "1",
+            ],
+            [
+              "Sequence",
+              latestPayloadString(latestMessage, "sequenceNumber") ?? "0",
+            ],
           ],
         }),
         node({
@@ -368,7 +416,8 @@ export function deriveScenarioTopology(
           eyebrow: "Visibility",
           description: "Consumers expose only committed transactional output.",
           metricLabel: "Boundary",
-          metricValue: latestPayloadString(latestMessage, "commitBoundary") ?? "open",
+          metricValue:
+            latestPayloadString(latestMessage, "commitBoundary") ?? "open",
           tone:
             latestPayloadString(latestMessage, "commitBoundary") === "commit"
               ? "emerald"
@@ -377,21 +426,36 @@ export function deriveScenarioTopology(
           position: { x: 642, y: 408 },
           compactIndex: 1,
           details: [
-            ["Boundary", latestPayloadString(latestMessage, "commitBoundary") ?? "open"],
+            [
+              "Boundary",
+              latestPayloadString(latestMessage, "commitBoundary") ?? "open",
+            ],
             ["Committed offsets", String(committed)],
             ["Isolation", "read_committed"],
           ],
         }),
       ],
       [
-        edge("producer-to-transaction", "producer", "transaction-coordinator", "sky", {
-          sourceHandle: "producer-out",
-          targetHandle: "left-in",
-        }),
-        edge("transaction-to-topic", "transaction-coordinator", "topic", "sky", {
-          sourceHandle: "right-out",
-          targetHandle: "topic-in",
-        }),
+        edge(
+          "producer-to-transaction",
+          "producer",
+          "transaction-coordinator",
+          "sky",
+          {
+            sourceHandle: "producer-out",
+            targetHandle: "left-in",
+          },
+        ),
+        edge(
+          "transaction-to-topic",
+          "transaction-coordinator",
+          "topic",
+          "sky",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "topic-in",
+          },
+        ),
         edge("topic-to-boundary", "topic", "commit-boundary", "amber", {
           sourceHandle: "topic-empty-out",
           targetHandle: "top-in",
@@ -409,15 +473,25 @@ export function deriveScenarioTopology(
           eyebrow: "Derived state",
           description: "Replay rebuilds views from immutable events.",
           metricLabel: "Aggregate",
-          metricValue: latestPayloadString(latestMessage, "aggregateId") ?? "ready",
+          metricValue:
+            latestPayloadString(latestMessage, "aggregateId") ?? "ready",
           tone: "emerald",
           icon: "projection",
           position: { x: 880, y: 404 },
           compactIndex: 0,
           details: [
-            ["Aggregate", latestPayloadString(latestMessage, "aggregateId") ?? "none"],
-            ["Event", latestPayloadString(latestMessage, "eventName") ?? "none"],
-            ["Cursor", latestPayloadString(latestMessage, "replayCursor") ?? "0"],
+            [
+              "Aggregate",
+              latestPayloadString(latestMessage, "aggregateId") ?? "none",
+            ],
+            [
+              "Event",
+              latestPayloadString(latestMessage, "eventName") ?? "none",
+            ],
+            [
+              "Cursor",
+              latestPayloadString(latestMessage, "replayCursor") ?? "0",
+            ],
           ],
         }),
         node({
@@ -426,13 +500,17 @@ export function deriveScenarioTopology(
           eyebrow: "Offset reset",
           description: "Historical offsets drive rebuild progress.",
           metricLabel: "Cursor",
-          metricValue: latestPayloadString(latestMessage, "replayCursor") ?? "0",
+          metricValue:
+            latestPayloadString(latestMessage, "replayCursor") ?? "0",
           tone: "violet",
           icon: "retry",
           position: { x: 222, y: 408 },
           compactIndex: 1,
           details: [
-            ["Cursor", latestPayloadString(latestMessage, "replayCursor") ?? "0"],
+            [
+              "Cursor",
+              latestPayloadString(latestMessage, "replayCursor") ?? "0",
+            ],
             ["Produced", String(produced)],
             ["Committed", String(committed)],
           ],
@@ -497,12 +575,18 @@ export function deriveScenarioTopology(
           targetHandle: "left-in",
           active: lag > 0,
         }),
-        edge("backlog-to-pressure", "backlog-buffer", "pressure-meter", "amber", {
-          sourceHandle: "right-out",
-          targetHandle: "left-in",
-          dashed: true,
-          active: lag > 2,
-        }),
+        edge(
+          "backlog-to-pressure",
+          "backlog-buffer",
+          "pressure-meter",
+          "amber",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "left-in",
+            dashed: true,
+            active: lag > 2,
+          },
+        ),
       ],
     );
   }
@@ -527,7 +611,12 @@ export function deriveScenarioTopology(
           compactIndex: 0,
           details: [
             ["Key strategy", snapshot.keyStrategy.type],
-            ["Hot key", snapshot.keyStrategy.type === "fixed" ? snapshot.keyStrategy.value : "mixed"],
+            [
+              "Hot key",
+              snapshot.keyStrategy.type === "fixed"
+                ? snapshot.keyStrategy.value
+                : "mixed",
+            ],
             ["Partitions", String(snapshot.partitionCount)],
           ],
         }),
@@ -580,15 +669,25 @@ export function deriveScenarioTopology(
           eyebrow: "Latest value",
           description: "Compaction retains the newest value per key.",
           metricLabel: "Key",
-          metricValue: latestPayloadString(latestMessage, "compactedKey") ?? "ready",
+          metricValue:
+            latestPayloadString(latestMessage, "compactedKey") ?? "ready",
           tone: "emerald",
           icon: "compact",
           position: { x: 884, y: 404 },
           compactIndex: 0,
           details: [
-            ["Compacted key", latestPayloadString(latestMessage, "compactedKey") ?? "none"],
-            ["Latest op", latestPayloadString(latestMessage, "operation") ?? "none"],
-            ["Retained value", latestPayloadString(latestMessage, "retainedValue") ?? "none"],
+            [
+              "Compacted key",
+              latestPayloadString(latestMessage, "compactedKey") ?? "none",
+            ],
+            [
+              "Latest op",
+              latestPayloadString(latestMessage, "operation") ?? "none",
+            ],
+            [
+              "Retained value",
+              latestPayloadString(latestMessage, "retainedValue") ?? "none",
+            ],
           ],
         }),
         node({
@@ -604,17 +703,26 @@ export function deriveScenarioTopology(
           compactIndex: 1,
           details: [
             ["Tombstones", String(tombstones)],
-            ["Latest op", latestPayloadString(latestMessage, "operation") ?? "none"],
+            [
+              "Latest op",
+              latestPayloadString(latestMessage, "operation") ?? "none",
+            ],
             ["Topic type", "compacted"],
           ],
         }),
       ],
       [
-        edge("topic-to-state-store", "topic", "compacted-state-store", "emerald", {
-          sourceHandle: "topic-empty-out",
-          targetHandle: "left-in",
-          active: produced > 0,
-        }),
+        edge(
+          "topic-to-state-store",
+          "topic",
+          "compacted-state-store",
+          "emerald",
+          {
+            sourceHandle: "topic-empty-out",
+            targetHandle: "left-in",
+            active: produced > 0,
+          },
+        ),
         edge("topic-to-tombstone", "topic", "tombstone-marker", "rose", {
           sourceHandle: "topic-empty-out",
           targetHandle: "left-in",
@@ -646,7 +754,11 @@ export function deriveScenarioTopology(
           compactIndex: 0,
           details: [
             ["Expiring records", String(expiring)],
-            ["Replayable from", latestPayloadString(latestMessage, "replayableUntilOffset") ?? "0"],
+            [
+              "Replayable from",
+              latestPayloadString(latestMessage, "replayableUntilOffset") ??
+                "0",
+            ],
             ["Committed", String(committed)],
           ],
         }),
@@ -656,14 +768,22 @@ export function deriveScenarioTopology(
           eyebrow: "Data loss risk",
           description: "Offsets can point behind retained data.",
           metricLabel: "From",
-          metricValue: latestPayloadString(latestMessage, "replayableUntilOffset") ?? "0",
+          metricValue:
+            latestPayloadString(latestMessage, "replayableUntilOffset") ?? "0",
           tone: expiring > 0 ? "rose" : "sky",
           icon: "retention",
           position: { x: 222, y: 408 },
           compactIndex: 1,
           details: [
-            ["Replayable from", latestPayloadString(latestMessage, "replayableUntilOffset") ?? "0"],
-            ["Recovery note", latestPayloadString(latestMessage, "recoveryNote") ?? "ready"],
+            [
+              "Replayable from",
+              latestPayloadString(latestMessage, "replayableUntilOffset") ??
+                "0",
+            ],
+            [
+              "Recovery note",
+              latestPayloadString(latestMessage, "recoveryNote") ?? "ready",
+            ],
             ["Produced", String(produced)],
           ],
         }),
@@ -674,12 +794,18 @@ export function deriveScenarioTopology(
           targetHandle: "left-in",
           active: expiring > 0,
         }),
-        edge("retention-to-expired", "retention-window", "expired-boundary", "rose", {
-          sourceHandle: "left-out",
-          targetHandle: "right-in",
-          dashed: true,
-          active: expiring > 0,
-        }),
+        edge(
+          "retention-to-expired",
+          "retention-window",
+          "expired-boundary",
+          "rose",
+          {
+            sourceHandle: "left-out",
+            targetHandle: "right-in",
+            dashed: true,
+            active: expiring > 0,
+          },
+        ),
       ],
     );
   }
@@ -734,17 +860,29 @@ export function deriveScenarioTopology(
           sourceHandle: "topic-empty-out",
           targetHandle: "left-in",
         }),
-        edge("rebalance-to-group", "rebalance-coordinator", "consumerGroup", "violet", {
-          sourceHandle: "right-out",
-          targetHandle: "empty-in",
-          active: snapshot.consumers.length > 0,
-        }),
-        edge("rebalance-to-movement", "rebalance-coordinator", "incremental-movement", "amber", {
-          sourceHandle: "bottom-out",
-          targetHandle: "top-in",
-          dashed: true,
-          active: revocations > 0,
-        }),
+        edge(
+          "rebalance-to-group",
+          "rebalance-coordinator",
+          "consumerGroup",
+          "violet",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "empty-in",
+            active: snapshot.consumers.length > 0,
+          },
+        ),
+        edge(
+          "rebalance-to-movement",
+          "rebalance-coordinator",
+          "incremental-movement",
+          "amber",
+          {
+            sourceHandle: "bottom-out",
+            targetHandle: "top-in",
+            dashed: true,
+            active: revocations > 0,
+          },
+        ),
       ],
     );
   }
@@ -759,15 +897,22 @@ export function deriveScenarioTopology(
           eyebrow: "Input A",
           description: "One side of the windowed join.",
           metricLabel: "Latest",
-          metricValue: latestPayloadString(latestMessage, "streamName") ?? "orders",
+          metricValue:
+            latestPayloadString(latestMessage, "streamName") ?? "orders",
           tone: "sky",
           icon: "stream",
           position: { x: 222, y: 32 },
           compactIndex: 0,
           details: [
             ["Stream", "orders"],
-            ["Join key", latestPayloadString(latestMessage, "joinKey") ?? "none"],
-            ["Window start", latestPayloadString(latestMessage, "windowStartSecond") ?? "0"],
+            [
+              "Join key",
+              latestPayloadString(latestMessage, "joinKey") ?? "none",
+            ],
+            [
+              "Window start",
+              latestPayloadString(latestMessage, "windowStartSecond") ?? "0",
+            ],
           ],
         }),
         node({
@@ -799,8 +944,14 @@ export function deriveScenarioTopology(
           position: { x: 884, y: 404 },
           compactIndex: 2,
           details: [
-            ["Join key", latestPayloadString(latestMessage, "joinKey") ?? "none"],
-            ["Window end", latestPayloadString(latestMessage, "windowEndSecond") ?? "60"],
+            [
+              "Join key",
+              latestPayloadString(latestMessage, "joinKey") ?? "none",
+            ],
+            [
+              "Window end",
+              latestPayloadString(latestMessage, "windowEndSecond") ?? "60",
+            ],
             ["Late arrivals", String(late)],
           ],
         }),
@@ -810,14 +961,26 @@ export function deriveScenarioTopology(
           sourceHandle: "right-out",
           targetHandle: "left-in",
         }),
-        edge("payments-to-state", "payments-stream", "window-state-store", "violet", {
-          sourceHandle: "right-out",
-          targetHandle: "left-in",
-        }),
-        edge("state-to-group", "window-state-store", "consumerGroup", "emerald", {
-          sourceHandle: "right-out",
-          targetHandle: "empty-in",
-        }),
+        edge(
+          "payments-to-state",
+          "payments-stream",
+          "window-state-store",
+          "violet",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "left-in",
+          },
+        ),
+        edge(
+          "state-to-group",
+          "window-state-store",
+          "consumerGroup",
+          "emerald",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "empty-in",
+          },
+        ),
       ],
     );
   }
@@ -838,8 +1001,14 @@ export function deriveScenarioTopology(
           compactIndex: 0,
           details: [
             ["Table", latestPayloadString(latestMessage, "table") ?? "orders"],
-            ["Operation", latestPayloadString(latestMessage, "operation") ?? "none"],
-            ["Outbox id", latestPayloadString(latestMessage, "outboxId") ?? "none"],
+            [
+              "Operation",
+              latestPayloadString(latestMessage, "operation") ?? "none",
+            ],
+            [
+              "Outbox id",
+              latestPayloadString(latestMessage, "outboxId") ?? "none",
+            ],
           ],
         }),
         node({
@@ -855,7 +1024,10 @@ export function deriveScenarioTopology(
           compactIndex: 1,
           details: [
             ["LSN", latestPayloadString(latestMessage, "lsn") ?? "none"],
-            ["Outbox id", latestPayloadString(latestMessage, "outboxId") ?? "none"],
+            [
+              "Outbox id",
+              latestPayloadString(latestMessage, "outboxId") ?? "none",
+            ],
             ["Produced", String(produced)],
           ],
         }),
@@ -872,7 +1044,10 @@ export function deriveScenarioTopology(
           compactIndex: 2,
           details: [
             ["LSN", latestPayloadString(latestMessage, "lsn") ?? "none"],
-            ["Operation", latestPayloadString(latestMessage, "operation") ?? "none"],
+            [
+              "Operation",
+              latestPayloadString(latestMessage, "operation") ?? "none",
+            ],
             ["Connector retries", "idempotent"],
           ],
         }),
@@ -905,15 +1080,26 @@ export function deriveScenarioTopology(
           eyebrow: "Credential",
           description: "Kafka evaluates the authenticated principal.",
           metricLabel: "Principal",
-          metricValue: latestPayloadString(latestMessage, "principal") ?? "ready",
+          metricValue:
+            latestPayloadString(latestMessage, "principal") ?? "ready",
           tone: "sky",
           icon: "acl",
           position: { x: 222, y: 32 },
           compactIndex: 0,
           details: [
-            ["Principal", latestPayloadString(latestMessage, "principal") ?? "none"],
-            ["Operation", latestPayloadString(latestMessage, "operation") ?? "none"],
-            ["Resource", latestPayloadString(latestMessage, "resource") ?? "secured.orders"],
+            [
+              "Principal",
+              latestPayloadString(latestMessage, "principal") ?? "none",
+            ],
+            [
+              "Operation",
+              latestPayloadString(latestMessage, "operation") ?? "none",
+            ],
+            [
+              "Resource",
+              latestPayloadString(latestMessage, "resource") ??
+                "secured.orders",
+            ],
           ],
         }),
         node({
@@ -929,25 +1115,50 @@ export function deriveScenarioTopology(
           compactIndex: 1,
           details: [
             ["Denied", String(denied)],
-            ["Authorized", latestPayloadString(latestMessage, "authorized") ?? "ready"],
-            ["Resource", latestPayloadString(latestMessage, "resource") ?? "secured.orders"],
+            [
+              "Authorized",
+              latestPayloadString(latestMessage, "authorized") ?? "ready",
+            ],
+            [
+              "Resource",
+              latestPayloadString(latestMessage, "resource") ??
+                "secured.orders",
+            ],
           ],
         }),
       ],
       [
-        edge("principal-to-gate", "principal-identity", "authorization-gate", "sky", {
-          sourceHandle: "right-out",
-          targetHandle: "left-in",
-        }),
-        edge("producer-to-auth", "producer", "authorization-gate", denied > 0 ? "rose" : "emerald", {
-          sourceHandle: "producer-out",
-          targetHandle: "left-in",
-          active: denied > 0,
-        }),
-        edge("auth-to-topic", "authorization-gate", "topic", denied > 0 ? "rose" : "emerald", {
-          sourceHandle: "right-out",
-          targetHandle: "topic-in",
-        }),
+        edge(
+          "principal-to-gate",
+          "principal-identity",
+          "authorization-gate",
+          "sky",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "left-in",
+          },
+        ),
+        edge(
+          "producer-to-auth",
+          "producer",
+          "authorization-gate",
+          denied > 0 ? "rose" : "emerald",
+          {
+            sourceHandle: "producer-out",
+            targetHandle: "left-in",
+            active: denied > 0,
+          },
+        ),
+        edge(
+          "auth-to-topic",
+          "authorization-gate",
+          "topic",
+          denied > 0 ? "rose" : "emerald",
+          {
+            sourceHandle: "right-out",
+            targetHandle: "topic-in",
+          },
+        ),
       ],
     );
   }
@@ -960,13 +1171,13 @@ export function deriveScenarioTopology(
         eyebrow: "Partition choice",
         description: "Message keys choose the partition lane.",
         metricLabel: "Strategy",
-        metricValue: keyStrategyLabel(snapshot),
+        metricValue: keyStrategyLabel(snapshot.keyStrategy),
         tone: "sky",
         icon: "route",
         position: { x: 222, y: 32 },
         compactIndex: 0,
         details: [
-          ["Key strategy", keyStrategyLabel(snapshot)],
+          ["Key strategy", keyStrategyLabel(snapshot.keyStrategy)],
           ["Latest key", latestMessage?.key ?? "none"],
           ["Partitions", String(snapshot.partitionCount)],
         ],
@@ -1034,11 +1245,4 @@ function edge(
   options: Omit<ScenarioTopologyEdge, "id" | "source" | "target" | "tone"> = {},
 ): ScenarioTopologyEdge {
   return { id, source, target, tone, ...options };
-}
-
-function keyStrategyLabel(snapshot: RunSnapshot) {
-  if (snapshot.keyStrategy.type === "fixed") return snapshot.keyStrategy.value;
-  if (snapshot.keyStrategy.type === "round_robin_users") return "three IDs";
-  if (snapshot.keyStrategy.type === "random_user") return "random ID";
-  return "no key";
 }

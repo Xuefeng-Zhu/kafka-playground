@@ -30,6 +30,7 @@ export function InspectorPanel({
   onNextMessage: () => void;
   onClose: () => void;
 }) {
+  const inspectorKind = selectedNode ? "topology" : event ? "event" : "message";
   const messageIndex =
     snapshot && message
       ? snapshot.recentMessages.findIndex(
@@ -46,16 +47,22 @@ export function InspectorPanel({
     <div className="flex h-full flex-col text-[#123047]">
       <header className="flex items-center justify-between border-b-[3px] border-teal-700 bg-[#fff7ed] px-5 py-4">
         <h2 className="kplay-section-title">
-          {selectedNode ? "Topology Inspector" : "Message Inspector"}
+          {inspectorKind === "topology"
+            ? "Topology Inspector"
+            : inspectorKind === "event"
+              ? "Event Inspector"
+              : "Message Inspector"}
         </h2>
         <button
           type="button"
           onClick={onClose}
           className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
           aria-label={
-            selectedNode
+            inspectorKind === "topology"
               ? "Close topology inspector"
-              : "Close message inspector"
+              : inspectorKind === "event"
+                ? "Close event inspector"
+                : "Close message inspector"
           }
         >
           <X size={16} aria-hidden />
@@ -76,34 +83,38 @@ export function InspectorPanel({
         <>
           <section className="border-b-[3px] border-teal-700 p-5">
             <div className="text-sm font-semibold text-[#466778]">
-              Selected message
+              {event ? "Selected event" : "Selected message"}
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="rounded-2xl border-[3px] border-sky-500 bg-sky-50 px-3 py-2 text-sm font-extrabold text-[#123047] shadow-[7px_7px_0_rgba(15,118,110,0.14)]">
-                {message
-                  ? `Partition ${message.partition ?? "?"} / Offset ${message.offset ?? "pending"}`
-                  : "No message selected"}
+                {event
+                  ? `${event.type} / #${event.sequence}`
+                  : message
+                    ? `Partition ${message.partition ?? "?"} / Offset ${message.offset ?? "pending"}`
+                    : "No message selected"}
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={onPreviousMessage}
-                  disabled={!hasPreviousMessage}
-                  className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45"
-                  aria-label="Previous message"
-                >
-                  <ChevronLeft size={16} aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  onClick={onNextMessage}
-                  disabled={!hasNextMessage}
-                  className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45"
-                  aria-label="Next message"
-                >
-                  <ChevronRight size={16} aria-hidden />
-                </button>
-              </div>
+              {!event && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={onPreviousMessage}
+                    disabled={!hasPreviousMessage}
+                    className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45"
+                    aria-label="Previous message"
+                  >
+                    <ChevronLeft size={16} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onNextMessage}
+                    disabled={!hasNextMessage}
+                    className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45"
+                    aria-label="Next message"
+                  >
+                    <ChevronRight size={16} aria-hidden />
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 

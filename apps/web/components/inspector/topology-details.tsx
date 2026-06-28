@@ -1,6 +1,7 @@
 import type { RunSnapshot } from "@kplay/contracts";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
+import { keyStrategyLabel } from "@/lib/client/key-strategy-label";
 
 export function TopologyDetails({
   snapshot,
@@ -23,7 +24,7 @@ export function TopologyDetails({
             ["Status", snapshot.producerStatus],
             ["Run status", snapshot.status],
             ["Rate", `${snapshot.productionRate} messages/sec`],
-            ["Key strategy", keyStrategyLabel(snapshot)],
+            ["Key strategy", keyStrategyLabel(snapshot.keyStrategy, "detail")],
             ["Recent messages", String(snapshot.recentMessages.length)],
           ]}
         />
@@ -239,15 +240,6 @@ function DetailSection({
       </dl>
     </section>
   );
-}
-
-function keyStrategyLabel(snapshot: RunSnapshot) {
-  if (snapshot.keyStrategy.type === "fixed")
-    return `Fixed key: ${snapshot.keyStrategy.value}`;
-  if (snapshot.keyStrategy.type === "round_robin_users")
-    return "Three user IDs";
-  if (snapshot.keyStrategy.type === "random_user") return "Random user ID";
-  return "No key";
 }
 
 function partitionRecord(

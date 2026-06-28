@@ -88,6 +88,10 @@ export type KafkaRuntimeDiagnostics = {
     operation: string;
     error: ReturnType<typeof sanitizeKafkaError>;
   }) => void;
+  onConsumerCallbackError?: (event: {
+    operation: string;
+    error: ReturnType<typeof sanitizeKafkaError>;
+  }) => void;
 };
 
 export class KafkaConfigurationError extends Error {
@@ -408,22 +412,28 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     });
     consumer.on(consumer.events.GROUP_JOIN, (event) => {
       const partitions = event.payload.memberAssignment[run.topicName] ?? [];
-      void callbacks.onAssigned(
-        partitions.map((partition: number) => ({
-          topic: run.topicName,
-          partition,
-        })),
+      notifyConsumerCallback("consumer.assigned", this.diagnostics, () =>
+        callbacks.onAssigned(
+          partitions.map((partition: number) => ({
+            topic: run.topicName,
+            partition,
+          })),
+        ),
       );
     });
     consumer.on(consumer.events.REBALANCING, () => {
-      void callbacks.onRevoked([]);
+      notifyConsumerCallback("consumer.revoked", this.diagnostics, () =>
+        callbacks.onRevoked([]),
+      );
     });
     consumer.on(consumer.events.CRASH, (event) => {
       const error = sanitizeKafkaError(event.payload.error);
-      void callbacks.onError({
-        code: "CONSUMER_CRASH",
-        message: error.message,
-      });
+      notifyConsumerCallback("consumer.crash", this.diagnostics, () =>
+        callbacks.onError({
+          code: "CONSUMER_CRASH",
+          message: error.message,
+        }),
+      );
     });
     await consumer.connect();
     await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
@@ -443,7 +453,9 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         },
       })
       .catch((error: unknown) => {
-        void callbacks.onError(sanitizeKafkaError(error));
+        notifyConsumerCallback("consumer.run", this.diagnostics, () =>
+          callbacks.onError(sanitizeKafkaError(error)),
+        );
       });
     return {
       consumerId,
@@ -644,24 +656,41 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     });
     consumer.on(consumer.events.GROUP_JOIN, (event) => {
       const partitions = event.payload.memberAssignment[run.topicName] ?? [];
-      void callbacks.onAssigned(
-        partitions.map((partition: number) => ({
-          topic: run.topicName,
-          partition,
-        })),
+      notifyConsumerCallback(
+        "consumer.assigned",
+        this.diagnostics,
+        () =>
+          callbacks.onAssigned(
+            partitions.map((partition: number) => ({
+              topic: run.topicName,
+              partition,
+            })),
+          ),
+        remoteKafkaSecrets(this.config),
       );
     });
     consumer.on(consumer.events.REBALANCING, () => {
-      void callbacks.onRevoked([]);
+      notifyConsumerCallback(
+        "consumer.revoked",
+        this.diagnostics,
+        () => callbacks.onRevoked([]),
+        remoteKafkaSecrets(this.config),
+      );
     });
     consumer.on(consumer.events.CRASH, (event) => {
-      void callbacks.onError({
-        code: "CONSUMER_CRASH",
-        message: sanitizeKafkaError(
-          event.payload.error,
-          remoteKafkaSecrets(this.config),
-        ).message,
-      });
+      notifyConsumerCallback(
+        "consumer.crash",
+        this.diagnostics,
+        () =>
+          callbacks.onError({
+            code: "CONSUMER_CRASH",
+            message: sanitizeKafkaError(
+              event.payload.error,
+              remoteKafkaSecrets(this.config),
+            ).message,
+          }),
+        remoteKafkaSecrets(this.config),
+      );
     });
     await consumer.connect();
     await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
@@ -681,8 +710,14 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
         },
       })
       .catch((error: unknown) => {
-        void callbacks.onError(
-          sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
+        notifyConsumerCallback(
+          "consumer.run",
+          this.diagnostics,
+          () =>
+            callbacks.onError(
+              sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
+            ),
+          remoteKafkaSecrets(this.config),
         );
       });
     return {
@@ -903,6 +938,22 @@ function remoteKafkaSecrets(config: RemoteKafkaConfig) {
   return [config.username, config.password, config.caCertificate].filter(
     Boolean,
   );
+}
+
+function notifyConsumerCallback(
+  operation: string,
+  diagnostics: KafkaRuntimeDiagnostics,
+  callback: () => void | Promise<void>,
+  secrets: string[] = [],
+) {
+  void Promise.resolve()
+    .then(callback)
+    .catch((error: unknown) => {
+      diagnostics.onConsumerCallbackError?.({
+        operation,
+        error: sanitizeKafkaError(error, secrets),
+      });
+    });
 }
 
 async function createAivenKafkaClient(

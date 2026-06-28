@@ -1,6 +1,6 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 
 export class ApiError extends Error {
   constructor(
@@ -23,7 +23,7 @@ export function problem(error: unknown, requestId: string) {
     return NextResponse.json(
       {
         code: "INVALID_SETTINGS",
-        message: error.issues.map((issue) => issue.message).join("; "),
+        message: error.issues.map(describeZodIssue).join("; "),
         requestId,
       },
       { status: 400, headers: { "x-request-id": requestId } },
@@ -39,6 +39,26 @@ export function problem(error: unknown, requestId: string) {
     { code: "INTERNAL_ERROR", message, requestId },
     { status: 500, headers: { "x-request-id": requestId } },
   );
+}
+
+function describeZodIssue(issue: ZodIssue) {
+  const path = issue.path.join(".");
+  if (path === "productionRate") {
+    return "Production rate must be between 1 and 10 messages per second.";
+  }
+  if (path === "processingLatencyMs") {
+    return "Processing latency must be between 0 and 3000 ms.";
+  }
+  if (path === "keyStrategy.value") {
+    return "Fixed keys must be between 1 and 80 characters.";
+  }
+  if (path === "scenarioId") {
+    return "Select an available scenario before starting a run.";
+  }
+  if (path.startsWith("remoteKafkaConfig")) {
+    return "Remote Kafka configuration is invalid.";
+  }
+  return issue.message;
 }
 
 function isApiError(error: unknown): error is ApiError {

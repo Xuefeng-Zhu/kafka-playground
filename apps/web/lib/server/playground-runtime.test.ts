@@ -200,6 +200,56 @@ describe("PlaygroundRuntime demo integration", () => {
     });
   });
 
+  it("rolls back remote consumers when consumer startup fails", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { UserConfiguredKafkaRuntimeAdapter } =
+      await import("@kplay/kafka-runtime");
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "createRun",
+    ).mockResolvedValue(undefined);
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "createConsumer",
+    ).mockRejectedValue(new Error("consumer unavailable"));
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "deleteRunResources",
+    ).mockResolvedValue({
+      status: "requested",
+      steps: [],
+    });
+    const runtime = new PlaygroundRuntime();
+    const snapshot = await runtime.createRun("partitioning", {
+      mode: "remote",
+      remoteKafkaConfig: {
+        brokers: "broker.example.com:9092",
+        username: "service-user",
+        password: "service-password",
+        saslMechanism: "SCRAM-SHA-256",
+        useTls: true,
+        caCertificate: "",
+      },
+    });
+
+    await expect(runtime.addConsumer(snapshot.runId)).rejects.toThrow(
+      "consumer unavailable",
+    );
+    const failedSnapshot = runtime.snapshot(snapshot.runId);
+
+    expect(failedSnapshot.consumers).toHaveLength(0);
+    expect(
+      failedSnapshot.recentEvents.some(
+        (event) =>
+          event.type === "run.error" &&
+          event.actor === "consumer-1" &&
+          event.message === "Consumer failed to start.",
+      ),
+    ).toBe(true);
+
+    await runtime.reset(snapshot.runId);
+  });
+
   it("emits scenario-specific processing failures", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();

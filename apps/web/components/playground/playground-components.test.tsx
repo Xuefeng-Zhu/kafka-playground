@@ -6,6 +6,8 @@ import type {
   RuntimeEvent,
   ScenarioDefinition,
 } from "@kplay/contracts";
+import { EducationPanel } from "@/components/education/education-panel";
+import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
 import { InspectorDrawer } from "./inspector-drawer";
 import { StartRunPanel } from "./start-run-panel";
 import { WorkspaceHeader } from "./workspace-header";
@@ -171,7 +173,7 @@ describe("playground shell components", () => {
     render(
       <InspectorDrawer
         message={messageFixture}
-        event={eventFixture}
+        event={null}
         snapshot={snapshotFixture}
         selectedNode={null}
         onPreviousMessage={vi.fn()}
@@ -188,6 +190,98 @@ describe("playground shell components", () => {
     fireEvent.click(document.querySelector("[aria-hidden='true']") as Element);
 
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses event inspector labels when a timeline event is selected", () => {
+    render(
+      <InspectorDrawer
+        message={null}
+        event={eventFixture}
+        snapshot={snapshotFixture}
+        selectedNode={null}
+        onPreviousMessage={vi.fn()}
+        onNextMessage={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("dialog", { name: "Event inspector" }),
+    );
+    expect(screen.queryByText("Event Inspector")).not.toBeNull();
+    expect(screen.queryByText("Selected event")).not.toBeNull();
+    expect(
+      screen.queryByText("message.processing_completed / #1"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Previous message")).toBeNull();
+  });
+
+  it("exposes the How it works anchor target", () => {
+    render(
+      <EducationPanel
+        scenarioId="partitioning"
+        snapshot={snapshotFixture}
+        selectedMessage={null}
+      />,
+    );
+
+    expect(document.querySelector("#how-it-works")).not.toBeNull();
+  });
+
+  it("intercepts normal scenario links for active-run navigation", () => {
+    const onNavigateScenario = vi.fn();
+    render(
+      <ScenarioSidebar
+        scenarios={[scenarioFixture, loadBalancingScenarioFixture]}
+        scenarioId="partitioning"
+        onNavigateScenario={onNavigateScenario}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("link", { name: /Consumer-group load balancing/ }),
+    );
+
+    expect(onNavigateScenario).toHaveBeenCalledWith("fan-out-load-balancing");
+  });
+
+  it("preserves native behavior for modified scenario link clicks", () => {
+    const onNavigateScenario = vi.fn();
+    render(
+      <ScenarioSidebar
+        scenarios={[scenarioFixture, loadBalancingScenarioFixture]}
+        scenarioId="partitioning"
+        onNavigateScenario={onNavigateScenario}
+      />,
+    );
+
+    const link = screen.getByRole("link", {
+      name: /Consumer-group load balancing/,
+    });
+    link.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(link, { metaKey: true });
+
+    expect(onNavigateScenario).not.toHaveBeenCalled();
+  });
+
+  it("disables intercepted scenario navigation while actions are pending", () => {
+    const onNavigateScenario = vi.fn();
+    render(
+      <ScenarioSidebar
+        disabled
+        scenarios={[scenarioFixture, loadBalancingScenarioFixture]}
+        scenarioId="partitioning"
+        onNavigateScenario={onNavigateScenario}
+      />,
+    );
+
+    const link = screen.getByRole("link", {
+      name: /Consumer-group load balancing/,
+    });
+    expect(link.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(link);
+
+    expect(onNavigateScenario).not.toHaveBeenCalled();
   });
 });
 
@@ -249,6 +343,14 @@ const scenarioFixture: ScenarioDefinition = {
     minProcessingLatencyMs: 0,
     maxProcessingLatencyMs: 3000,
   },
+};
+
+const loadBalancingScenarioFixture: ScenarioDefinition = {
+  ...scenarioFixture,
+  id: "fan-out-load-balancing",
+  title: "Consumer-group load balancing",
+  description: "Produce unkeyed messages and divide ownership.",
+  topic: { partitions: 3 },
 };
 
 const snapshotFixture = {
