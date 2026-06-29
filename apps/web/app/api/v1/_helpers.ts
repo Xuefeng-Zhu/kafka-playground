@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError, type ZodIssue } from "zod";
 import { ApiError, problem, requestId } from "@/lib/server/api-errors";
 
 const mutationBuckets = new Map<string, { count: number; resetAt: number }>();
 const MUTATION_WINDOW_MS = 10_000;
 const MUTATION_LIMIT = 80;
+
+type ParseJsonOptions = {
+  code?: string;
+  describeIssue?: (issue: ZodIssue) => string;
+};
 
 export function json<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
@@ -56,16 +61,38 @@ function enforceMutationRateLimit(request: Request) {
 export async function parseJson<T extends z.ZodType>(
   request: Request,
   schema: T,
+  options: ParseJsonOptions = {},
 ): Promise<z.infer<T>> {
   let body: unknown;
   const rawBody = await request.text();
   if (rawBody.trim() === "") {
-    return schema.parse({});
+    return parseBody(schema, {}, options);
   }
   try {
     body = JSON.parse(rawBody);
   } catch {
     throw new ApiError("INVALID_JSON", "Request body must be valid JSON.", 400);
   }
-  return schema.parse(body);
+  return parseBody(schema, body, options);
+}
+
+function parseBody<T extends z.ZodType>(
+  schema: T,
+  body: unknown,
+  options: ParseJsonOptions,
+): z.infer<T> {
+  try {
+    return schema.parse(body);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new ApiError(
+        options.code ?? "INVALID_REQUEST",
+        error.issues
+          .map((issue) => options.describeIssue?.(issue) ?? issue.message)
+          .join("; "),
+        400,
+      );
+    }
+    throw error;
+  }
 }

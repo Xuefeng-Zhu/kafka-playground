@@ -7,6 +7,12 @@ import type {
 } from "@kplay/contracts";
 import type { Admin, SASLOptions } from "kafkajs";
 import { z } from "zod";
+import {
+  bindConsumerLifecycleHandlers,
+  startConsumerRun,
+  type ConsumerLifecycleSource,
+  type ConsumerRunSource,
+} from "./consumer-handlers";
 
 export type RuntimeEventSink = (event: {
   type: string;
@@ -85,6 +91,10 @@ export type KafkaRuntimeAdapter = {
 
 export type KafkaRuntimeDiagnostics = {
   onDisconnectError?: (event: {
+    operation: string;
+    error: ReturnType<typeof sanitizeKafkaError>;
+  }) => void;
+  onConsumerCallbackError?: (event: {
     operation: string;
     error: ReturnType<typeof sanitizeKafkaError>;
   }) => void;
@@ -374,22 +384,7 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
           },
         ],
       });
-      const report = Array.isArray(result) ? result[0] : result;
-      const partition = report?.partition;
-      const offset = report?.offset ?? report?.baseOffset;
-      if (partition === undefined || offset === undefined) {
-        throw new Error(
-          "Kafka delivery report did not include a partition and offset.",
-        );
-      }
-      return {
-        topic: report.topicName ?? input.topicName,
-        partition: Number(partition),
-        offset: String(offset),
-        timestamp: report.timestamp
-          ? String(report.timestamp)
-          : new Date().toISOString(),
-      };
+      return normalizeDeliveryReport(result, input.topicName);
     } finally {
       await this.disconnectSafely("produce.producer.disconnect", producer);
     }
@@ -406,45 +401,24 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       groupId: run.consumerGroupId,
       allowAutoTopicCreation: false,
     });
-    consumer.on(consumer.events.GROUP_JOIN, (event) => {
-      const partitions = event.payload.memberAssignment[run.topicName] ?? [];
-      void callbacks.onAssigned(
-        partitions.map((partition: number) => ({
-          topic: run.topicName,
-          partition,
-        })),
-      );
-    });
-    consumer.on(consumer.events.REBALANCING, () => {
-      void callbacks.onRevoked([]);
-    });
-    consumer.on(consumer.events.CRASH, (event) => {
-      const error = sanitizeKafkaError(event.payload.error);
-      void callbacks.onError({
-        code: "CONSUMER_CRASH",
-        message: error.message,
-      });
-    });
+    const secrets = aivenSecrets(this.env);
+    const sanitizeAivenKafkaError = (error: unknown) =>
+      sanitizeKafkaError(error, secrets);
+    bindConsumerLifecycleHandlers(
+      consumer as ConsumerLifecycleSource,
+      run,
+      callbacks,
+      this.diagnostics,
+      sanitizeAivenKafkaError,
+    );
     await consumer.connect();
     await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
-    void consumer
-      .run({
-        autoCommit: false,
-        eachMessage: async ({ topic, partition, message }) => {
-          await callbacks.onMessage({
-            topic,
-            partition,
-            offset: String(message.offset),
-            key: bufferToString(message.key),
-            value: parseJsonValue(message.value),
-            headers: normalizeHeaders(message.headers),
-            timestamp: message.timestamp ? String(message.timestamp) : null,
-          });
-        },
-      })
-      .catch((error: unknown) => {
-        void callbacks.onError(sanitizeKafkaError(error));
-      });
+    startConsumerRun(
+      consumer as ConsumerRunSource,
+      callbacks,
+      this.diagnostics,
+      sanitizeAivenKafkaError,
+    );
     return {
       consumerId,
       async commit(input) {
@@ -466,24 +440,15 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     assertAivenConfigured(this.env);
     const kafka = await createAivenKafkaClient(this.env);
     const admin = kafka.admin();
-    const steps: CleanupResult["steps"] = [];
     try {
       await admin.connect();
-      await admin.deleteTopics({ topics: [input.topicName] });
-      steps.push({
-        name: "topic.delete",
-        status: "requested",
-        resourceName: input.topicName,
-      });
-      return { status: "requested", steps };
+      return await deleteTopicResource(
+        admin,
+        input.topicName,
+        aivenSecrets(this.env),
+      );
     } catch (error) {
-      steps.push({
-        name: "topic.delete",
-        status: "failed",
-        resourceName: input.topicName,
-        message: sanitizeKafkaError(error).message,
-      });
-      return { status: "failed", steps };
+      return failedTopicDelete(input.topicName, error, aivenSecrets(this.env));
     } finally {
       await this.disconnectSafely("cleanup.admin.disconnect", admin);
     }
@@ -609,22 +574,7 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
           },
         ],
       });
-      const report = Array.isArray(result) ? result[0] : result;
-      const partition = report?.partition;
-      const offset = report?.offset ?? report?.baseOffset;
-      if (partition === undefined || offset === undefined) {
-        throw new Error(
-          "Kafka delivery report did not include a partition and offset.",
-        );
-      }
-      return {
-        topic: report.topicName ?? input.topicName,
-        partition: Number(partition),
-        offset: String(offset),
-        timestamp: report.timestamp
-          ? String(report.timestamp)
-          : new Date().toISOString(),
-      };
+      return normalizeDeliveryReport(result, input.topicName);
     } finally {
       await this.disconnectSafely("produce.producer.disconnect", producer);
     }
@@ -642,49 +592,24 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       groupId: run.consumerGroupId,
       allowAutoTopicCreation: false,
     });
-    consumer.on(consumer.events.GROUP_JOIN, (event) => {
-      const partitions = event.payload.memberAssignment[run.topicName] ?? [];
-      void callbacks.onAssigned(
-        partitions.map((partition: number) => ({
-          topic: run.topicName,
-          partition,
-        })),
-      );
-    });
-    consumer.on(consumer.events.REBALANCING, () => {
-      void callbacks.onRevoked([]);
-    });
-    consumer.on(consumer.events.CRASH, (event) => {
-      void callbacks.onError({
-        code: "CONSUMER_CRASH",
-        message: sanitizeKafkaError(
-          event.payload.error,
-          remoteKafkaSecrets(this.config),
-        ).message,
-      });
-    });
+    const secrets = remoteKafkaSecrets(this.config);
+    const sanitizeRemoteKafkaError = (error: unknown) =>
+      sanitizeKafkaError(error, secrets);
+    bindConsumerLifecycleHandlers(
+      consumer as ConsumerLifecycleSource,
+      run,
+      callbacks,
+      this.diagnostics,
+      sanitizeRemoteKafkaError,
+    );
     await consumer.connect();
     await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
-    void consumer
-      .run({
-        autoCommit: false,
-        eachMessage: async ({ topic, partition, message }) => {
-          await callbacks.onMessage({
-            topic,
-            partition,
-            offset: String(message.offset),
-            key: bufferToString(message.key),
-            value: parseJsonValue(message.value),
-            headers: normalizeHeaders(message.headers),
-            timestamp: message.timestamp ? String(message.timestamp) : null,
-          });
-        },
-      })
-      .catch((error: unknown) => {
-        void callbacks.onError(
-          sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
-        );
-      });
+    startConsumerRun(
+      consumer as ConsumerRunSource,
+      callbacks,
+      this.diagnostics,
+      sanitizeRemoteKafkaError,
+    );
     return {
       consumerId,
       async commit(input) {
@@ -707,25 +632,19 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     await assertRemoteKafkaBrokersAllowed(this.config);
     const kafka = await createRemoteKafkaClient(this.config);
     const admin = kafka.admin();
-    const steps: CleanupResult["steps"] = [];
     try {
       await admin.connect();
-      await admin.deleteTopics({ topics: [input.topicName] });
-      steps.push({
-        name: "topic.delete",
-        status: "requested",
-        resourceName: input.topicName,
-      });
-      return { status: "requested", steps };
+      return await deleteTopicResource(
+        admin,
+        input.topicName,
+        remoteKafkaSecrets(this.config),
+      );
     } catch (error) {
-      steps.push({
-        name: "topic.delete",
-        status: "failed",
-        resourceName: input.topicName,
-        message: sanitizeKafkaError(error, remoteKafkaSecrets(this.config))
-          .message,
-      });
-      return { status: "failed", steps };
+      return failedTopicDelete(
+        input.topicName,
+        error,
+        remoteKafkaSecrets(this.config),
+      );
     } finally {
       await this.disconnectSafely("cleanup.admin.disconnect", admin);
     }
@@ -905,6 +824,82 @@ function remoteKafkaSecrets(config: RemoteKafkaConfig) {
   );
 }
 
+function normalizeDeliveryReport(
+  result:
+    | {
+        topicName?: string;
+        partition?: number;
+        offset?: string;
+        baseOffset?: string;
+        timestamp?: string;
+      }
+    | Array<{
+        topicName?: string;
+        partition?: number;
+        offset?: string;
+        baseOffset?: string;
+        timestamp?: string;
+      }>,
+  fallbackTopic: string,
+): ProduceResult {
+  const report = Array.isArray(result) ? result[0] : result;
+  const partition = report?.partition;
+  const offset = report?.offset ?? report?.baseOffset;
+  if (partition === undefined || offset === undefined) {
+    throw new Error(
+      "Kafka delivery report did not include a partition and offset.",
+    );
+  }
+  return {
+    topic: report.topicName ?? fallbackTopic,
+    partition: Number(partition),
+    offset: String(offset),
+    timestamp: report.timestamp
+      ? String(report.timestamp)
+      : new Date().toISOString(),
+  };
+}
+
+async function deleteTopicResource(
+  admin: Admin,
+  topicName: string,
+  secrets: string[] = [],
+): Promise<CleanupResult> {
+  try {
+    await admin.deleteTopics({ topics: [topicName] });
+    return {
+      status: "requested",
+      steps: [
+        {
+          name: "topic.delete",
+          status: "requested",
+          resourceName: topicName,
+        },
+      ],
+    };
+  } catch (error) {
+    return failedTopicDelete(topicName, error, secrets);
+  }
+}
+
+function failedTopicDelete(
+  topicName: string,
+  error: unknown,
+  secrets: string[] = [],
+): CleanupResult {
+  return {
+    status: "failed",
+    steps: [
+      {
+        name: "topic.delete",
+        status: "failed",
+        resourceName: topicName,
+        message: sanitizeKafkaError(error, secrets).message,
+      },
+    ],
+  };
+}
+
 async function createAivenKafkaClient(
   env: ServerEnv,
   clientId = "kafka-visual-playground",
@@ -985,32 +980,4 @@ export function stablePartition(key: string, partitionCount: number) {
     hash = (hash * 31 + key.charCodeAt(index)) | 0;
   }
   return Math.abs(hash) % partitionCount;
-}
-
-function normalizeHeaders(
-  headers:
-    | Record<string, Buffer | string | Array<Buffer | string> | undefined>
-    | undefined,
-) {
-  const normalized: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers ?? {})) {
-    const first = Array.isArray(value) ? value[0] : value;
-    normalized[key] = bufferToString(first) ?? "";
-  }
-  return normalized;
-}
-
-function bufferToString(value: Buffer | string | null | undefined) {
-  if (value === null || value === undefined) return null;
-  return Buffer.isBuffer(value) ? value.toString("utf8") : String(value);
-}
-
-function parseJsonValue(value: Buffer | string | null | undefined) {
-  const text = bufferToString(value);
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }

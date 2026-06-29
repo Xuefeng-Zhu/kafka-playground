@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   api,
+  fetchRunSnapshot,
   loadActiveRunSnapshot,
   loadConnectionStatus,
   loadScenarioDefinitions,
+  retireRun,
 } from "./playground-api";
 
 describe("playground api client", () => {
@@ -55,6 +57,37 @@ describe("playground api client", () => {
       ok: true,
       data: null,
     });
+  });
+
+  it("distinguishes missing run snapshots from refresh failures", async () => {
+    mockFetch(
+      { ok: false, status: 404, statusText: "Not Found" },
+      { message: "The scenario run does not exist." },
+    );
+
+    await expect(fetchRunSnapshot("missing")).resolves.toEqual({
+      ok: true,
+      data: null,
+    });
+
+    mockFetch(
+      { ok: false, status: 503, statusText: "Unavailable" },
+      { message: "Runtime unavailable" },
+    );
+
+    await expect(fetchRunSnapshot("run-1")).resolves.toEqual({
+      ok: false,
+      message: "Unable to refresh run snapshot. (503: Runtime unavailable)",
+    });
+  });
+
+  it("treats missing runs as already retired during reset", async () => {
+    mockFetch(
+      { ok: false, status: 404, statusText: "Not Found" },
+      { message: "The scenario run does not exist." },
+    );
+
+    await expect(retireRun("missing")).resolves.toBeUndefined();
   });
 });
 

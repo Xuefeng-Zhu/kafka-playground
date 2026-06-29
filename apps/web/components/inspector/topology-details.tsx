@@ -1,6 +1,7 @@
 import type { RunSnapshot } from "@kplay/contracts";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
+import { keyStrategyLabel } from "@/lib/client/key-strategy-label";
 
 export function TopologyDetails({
   snapshot,
@@ -23,7 +24,7 @@ export function TopologyDetails({
             ["Status", snapshot.producerStatus],
             ["Run status", snapshot.status],
             ["Rate", `${snapshot.productionRate} messages/sec`],
-            ["Key strategy", keyStrategyLabel(snapshot)],
+            ["Key strategy", keyStrategyLabel(snapshot.keyStrategy, "detail")],
             ["Recent messages", String(snapshot.recentMessages.length)],
           ]}
         />
@@ -228,8 +229,8 @@ function DetailSection({
     <section className="p-5">
       <h3 className="mb-3 kplay-section-title">{title}</h3>
       <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
-        {rows.map(([label, value]) => (
-          <div key={label} className="contents">
+        {rows.map(([label, value], index) => (
+          <div key={`${label}-${index}`} className="contents">
             <dt className="text-[#466778]">{label}</dt>
             <dd className="min-w-0 break-words font-semibold text-[#123047]">
               {value}
@@ -239,15 +240,6 @@ function DetailSection({
       </dl>
     </section>
   );
-}
-
-function keyStrategyLabel(snapshot: RunSnapshot) {
-  if (snapshot.keyStrategy.type === "fixed")
-    return `Fixed key: ${snapshot.keyStrategy.value}`;
-  if (snapshot.keyStrategy.type === "round_robin_users")
-    return "Three user IDs";
-  if (snapshot.keyStrategy.type === "random_user") return "Random user ID";
-  return "No key";
 }
 
 function partitionRecord(

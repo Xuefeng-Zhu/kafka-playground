@@ -117,10 +117,47 @@ export async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
   });
 }
 
-export async function fetchRunSnapshot(runId: string) {
-  const response = await fetch(`/api/v1/runs/${runId}`);
-  if (!response.ok) return null;
-  return runSnapshotSchema.parse(await response.json());
+export async function retireRun(runId: string) {
+  const response = await fetch(`/api/v1/runs/${runId}/reset`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const error = await readErrorBody(response);
+    if (response.status === 404) return;
+    throw new ApiRequestError(
+      error.message ?? response.statusText,
+      response.status,
+    );
+  }
+  await response.json().catch(() => null);
+}
+
+export async function fetchRunSnapshot(
+  runId: string,
+): Promise<ClientLoadResult<RunSnapshot | null>> {
+  try {
+    const response = await fetch(`/api/v1/runs/${runId}`);
+    if (!response.ok) {
+      const error = await readErrorBody(response);
+      if (response.status === 404) return { ok: true, data: null };
+      throw new ApiRequestError(
+        error.message ?? response.statusText,
+        response.status,
+      );
+    }
+    return { ok: true, data: runSnapshotSchema.parse(await response.json()) };
+  } catch (error) {
+    return {
+      ok: false,
+      message: describeClientLoadError(
+        error,
+        "Unable to refresh run snapshot.",
+      ),
+    };
+  }
 }
 
 async function readErrorBody(response: Response) {

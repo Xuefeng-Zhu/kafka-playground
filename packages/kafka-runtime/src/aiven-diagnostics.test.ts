@@ -131,9 +131,60 @@ describe("AivenKafkaRuntimeAdapter diagnostics", () => {
       payload: { error: new Error("crash password=super-secret") },
     });
 
-    expect(onError).toHaveBeenCalledWith({
-      code: "CONSUMER_CRASH",
-      message: "crash password=REDACTED",
+    await vi.waitFor(() => {
+      expect(onError).toHaveBeenCalledWith({
+        code: "CONSUMER_CRASH",
+        message: "crash password=REDACTED",
+      });
+    });
+  });
+
+  it("reports async consumer callback rejections through diagnostics", async () => {
+    const onConsumerCallbackError = vi.fn();
+    const adapter = new AivenKafkaRuntimeAdapter(
+      loadServerEnv({
+        KAFKA_MODE: "aiven",
+        AIVEN_KAFKA_BROKERS: "broker.example.com:9092",
+        AIVEN_KAFKA_USERNAME: "service-user",
+        AIVEN_KAFKA_PASSWORD: "service-password",
+        AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
+      }),
+      { onConsumerCallbackError },
+    );
+
+    await adapter.createConsumer(
+      {
+        runId: "run-1",
+        scenarioId: "partitioning",
+        topicName: "topic",
+        consumerGroupId: "group",
+        partitionCount: 2,
+      },
+      "consumer-1",
+      {
+        onAssigned: async () => {
+          throw new Error(
+            "assignment failed for service-user service-password ./certs/ca.pem",
+          );
+        },
+        onRevoked: () => undefined,
+        onMessage: async () => undefined,
+        onError: () => undefined,
+      },
+    );
+
+    kafkaMocks.consumerHandlers.get("GROUP_JOIN")?.({
+      payload: { memberAssignment: { topic: [0] } },
+    });
+
+    await vi.waitFor(() => {
+      expect(onConsumerCallbackError).toHaveBeenCalledWith({
+        operation: "consumer.assigned",
+        error: {
+          code: "Error",
+          message: "assignment failed for REDACTED REDACTED REDACTED",
+        },
+      });
     });
   });
 });

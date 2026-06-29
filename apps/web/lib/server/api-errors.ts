@@ -22,7 +22,7 @@ export function problem(error: unknown, requestId: string) {
   if (error instanceof ZodError) {
     return NextResponse.json(
       {
-        code: "INVALID_SETTINGS",
+        code: "INVALID_REQUEST",
         message: error.issues.map((issue) => issue.message).join("; "),
         requestId,
       },

@@ -42,6 +42,15 @@ import {
 export class PlaygroundRuntime {
   private readonly env = getServerEnv();
   private readonly diagnostics: KafkaRuntimeDiagnostics = {
+    onConsumerCallbackError: (event) => {
+      logger.warn(
+        {
+          operation: event.operation,
+          error: event.error,
+        },
+        "Kafka consumer callback failed",
+      );
+    },
     onDisconnectError: (event) => {
       logger.warn(
         {
@@ -333,22 +342,36 @@ export class PlaygroundRuntime {
       committedCount: 0,
     });
     if (run.mode !== "demo") {
-      const handle = await run.adapter.createConsumer(run, consumerId, {
-        onAssigned: (assignments) =>
-          this.applyConsumerAssignment(run.runId, consumerId, assignments),
-        onRevoked: (assignments) =>
-          this.applyConsumerRevocation(run.runId, consumerId, assignments),
-        onMessage: (message) =>
-          this.handleConsumedMessage(run.runId, consumerId, message),
-        onError: (error) => {
-          logger.error(
-            { runId: run.runId, consumerId, error },
-            "Kafka consumer error",
-          );
-          this.emit("run.error", { message: error.message, actor: consumerId });
-        },
-      });
-      run.consumerHandles.set(consumerId, handle);
+      try {
+        const handle = await run.adapter.createConsumer(run, consumerId, {
+          onAssigned: (assignments) =>
+            this.applyConsumerAssignment(run.runId, consumerId, assignments),
+          onRevoked: (assignments) =>
+            this.applyConsumerRevocation(run.runId, consumerId, assignments),
+          onMessage: (message) =>
+            this.handleConsumedMessage(run.runId, consumerId, message),
+          onError: (error) => {
+            logger.error(
+              { runId: run.runId, consumerId, error },
+              "Kafka consumer error",
+            );
+            this.emit("run.error", {
+              message: error.message,
+              actor: consumerId,
+            });
+          },
+        });
+        run.consumerHandles.set(consumerId, handle);
+      } catch (error) {
+        run.consumers = run.consumers.filter(
+          (consumer) => consumer.consumerId !== consumerId,
+        );
+        this.emit("run.error", {
+          actor: consumerId,
+          message: "Consumer failed to start.",
+        });
+        throw error;
+      }
     }
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,

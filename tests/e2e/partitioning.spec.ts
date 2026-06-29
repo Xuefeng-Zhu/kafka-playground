@@ -221,8 +221,11 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
     .filter({ hasText: "run.started" })
     .first()
     .click();
-  await expect(page.getByText("Selected Event")).toBeVisible();
-  await page.getByRole("button", { name: "Close message inspector" }).click();
+  await expect(page.getByText("Event Inspector")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Selected Event" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close event inspector" }).click();
   await page.reload();
   await expect(page.getByTestId("lower-panel-tab-timeline")).toHaveAttribute(
     "aria-selected",
@@ -546,10 +549,12 @@ test("sidebar scenario navigation retires the active run", async ({ page }) => {
   await expect(page.getByTestId("current-scenario-card")).toContainText(
     "Consumer-group load balancing",
   );
-  await expect(
-    page.getByRole("button", { name: "Start scenario run" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Start scenario run" }).click();
+  const startScenarioRun = page.getByRole("button", {
+    name: "Start scenario run",
+  });
+  await expect(startScenarioRun).toBeVisible();
+  await page.waitForTimeout(50);
+  await startScenarioRun.click();
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
 
   await page.getByRole("button", { name: "Reset run" }).click();

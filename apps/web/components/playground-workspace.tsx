@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useReducer,
@@ -52,6 +53,7 @@ import {
   loadConnectionStatus,
   loadScenarioDefinitions,
   produceMessage,
+  retireRun,
 } from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
 import type { ScenarioAction } from "@/lib/client/scenario-actions";
@@ -132,6 +134,12 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     () => scenarios.find((scenario) => scenario.id === scenarioId) ?? null,
     [scenarioId, scenarios],
   );
+  const clearRunSelection = useCallback(() => {
+    resetSelection();
+    setSelectedTopologyNode(null);
+    setInspectorOpen(false);
+    dispatch({ type: "clear" });
+  }, [resetSelection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,9 +167,11 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   }, []);
 
   useEffect(() => {
-    dispatch({ type: "clear" });
-
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) clearRunSelection();
+    });
+
     void (async () => {
       try {
         const result = await loadActiveRunSnapshot();
@@ -170,9 +180,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
           setActionError(result.message);
           return;
         }
-        resetSelection();
-        setSelectedTopologyNode(null);
-        setInspectorOpen(false);
         const snapshot = result.data;
         if (!snapshot) return;
         if (snapshot.scenarioId === scenarioId) {
@@ -187,7 +194,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [router, scenarioId, resetSelection]);
+  }, [router, scenarioId, clearRunSelection]);
 
   useEffect(() => {
     if (!run?.runId) return;
@@ -216,14 +223,20 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
           setActionError("Live event payload could not be parsed.");
           return;
         }
-        void refreshSnapshot(run.runId, dispatch).catch(() => {
-          setActionError("Unable to refresh the latest run snapshot.");
+        void refreshSnapshot(run.runId, dispatch).catch((error) => {
+          setActionError(
+            error instanceof Error
+              ? error.message
+              : "Unable to refresh the latest run snapshot.",
+          );
         });
       });
     });
     source.onerror = () => {
-      void refreshSnapshot(run.runId, dispatch).catch(() => {
-        setActionError("Live updates disconnected.");
+      void refreshSnapshot(run.runId, dispatch).catch((error) => {
+        setActionError(
+          error instanceof Error ? error.message : "Live updates disconnected.",
+        );
       });
     };
     return () => {
@@ -232,24 +245,40 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     };
   }, [run?.runId]);
 
-  const selectedMessage = useMemo(
-    () =>
-      run?.recentMessages?.find(
-        (message) => message.messageId === selectedMessageId,
-      ) ??
-      run?.recentMessages?.at(-1) ??
-      null,
-    [run?.recentMessages, selectedMessageId],
-  );
-  const selectedEvent = useMemo(
-    () =>
+  const selectedEvent = useMemo(() => {
+    if (selectedEventSequence === null) return null;
+    return (
       (state.events ?? []).find(
         (event) => event.sequence === selectedEventSequence,
-      ) ??
-      (state.events ?? []).at(-1) ??
-      null,
-    [state.events, selectedEventSequence],
-  );
+      ) ?? null
+    );
+  }, [state.events, selectedEventSequence]);
+  const selectedMessage = useMemo(() => {
+    const messages = run?.recentMessages ?? [];
+    if (selectedMessageId) {
+      return (
+        messages.find((message) => message.messageId === selectedMessageId) ??
+        null
+      );
+    }
+    const eventMessageId =
+      selectedEvent && "messageId" in selectedEvent
+        ? selectedEvent.messageId
+        : null;
+    if (eventMessageId) {
+      return (
+        messages.find((message) => message.messageId === eventMessageId) ?? null
+      );
+    }
+    if (selectedEventSequence !== null || selectedTopologyNode) return null;
+    return messages.at(-1) ?? null;
+  }, [
+    run?.recentMessages,
+    selectedEvent,
+    selectedEventSequence,
+    selectedMessageId,
+    selectedTopologyNode,
+  ]);
 
   async function startRun(input: {
     mode: UserSelectableKafkaMode;
@@ -281,15 +310,26 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
   async function resetRun() {
     if (!run) return;
+    await runAction(() => retireActiveRun(run.runId));
+  }
+
+  async function navigateToScenario(nextScenarioId: string) {
+    if (nextScenarioId === scenarioId) return;
+    if (!run) {
+      router.push(`/scenarios/${nextScenarioId}`);
+      return;
+    }
     await runAction(async () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-      await api(`/api/v1/runs/${run.runId}/reset`, { method: "POST" });
-      resetSelection();
-      setSelectedTopologyNode(null);
-      setInspectorOpen(false);
-      dispatch({ type: "clear" });
+      await retireActiveRun(run.runId);
+      router.push(`/scenarios/${nextScenarioId}`);
     });
+  }
+
+  async function retireActiveRun(runId: string) {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    await retireRun(runId);
+    clearRunSelection();
   }
 
   async function mutate(path: string, init?: RequestInit) {
@@ -538,7 +578,14 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
             run ? "lg:row-span-2" : ""
           }`}
         >
-          <ScenarioSidebar scenarios={scenarios} scenarioId={scenarioId} />
+          <ScenarioSidebar
+            disabled={isActionPending}
+            scenarios={scenarios}
+            scenarioId={scenarioId}
+            onNavigateScenario={(nextScenarioId) => {
+              void navigateToScenario(nextScenarioId);
+            }}
+          />
           <EducationPanel
             scenarioId={scenarioId}
             snapshot={run}
@@ -721,8 +768,9 @@ async function refreshSnapshot(
   runId: string,
   dispatch: React.Dispatch<Action>,
 ) {
-  const snapshot = await fetchRunSnapshot(runId);
-  if (snapshot) dispatch({ type: "snapshot", snapshot });
+  const result = await fetchRunSnapshot(runId);
+  if (!result.ok) throw new Error(result.message);
+  if (result.data) dispatch({ type: "snapshot", snapshot: result.data });
 }
 
 function isLowerPanelTab(value: string | null): value is LowerPanelTab {

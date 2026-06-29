@@ -29,4 +29,24 @@ describe("parseJson", () => {
       status: 400,
     });
   });
+
+  it("wraps schema validation with route-specific problem details", async () => {
+    await expect(
+      parseJson(
+        new Request("http://test.local", {
+          method: "POST",
+          body: JSON.stringify({ rate: 99 }),
+        }),
+        z.object({ rate: z.number().max(10) }),
+        {
+          code: "INVALID_RATE",
+          describeIssue: () => "Rate is too high.",
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "INVALID_RATE",
+      message: "Rate is too high.",
+      status: 400,
+    });
+  });
 });

@@ -27,6 +27,11 @@ export function InspectorDrawer({
   onClose: () => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
+  const inspectorLabel = selectedNode
+    ? "Topology inspector"
+    : event
+      ? "Event inspector"
+      : "Message inspector";
 
   useEffect(() => {
     const previouslyFocused =
@@ -84,7 +89,7 @@ export function InspectorDrawer({
         id="message-inspector-drawer"
         role="dialog"
         aria-modal="true"
-        aria-label="Message inspector"
+        aria-label={inspectorLabel}
         tabIndex={-1}
         className="fixed bottom-0 right-0 top-0 z-50 w-[min(100vw,390px)] overflow-y-auto border-l-[3px] border-teal-700 bg-[#fff7ed] shadow-[-14px_0_0_rgba(15,118,110,0.16)]"
       >

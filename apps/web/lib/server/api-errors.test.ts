@@ -11,7 +11,7 @@ describe("api error responses", () => {
     if (error.success) return;
     const response = problem(error.error, "request-1");
     await expect(response.json()).resolves.toMatchObject({
-      code: "INVALID_SETTINGS",
+      code: "INVALID_REQUEST",
       requestId: "request-1",
     });
     expect(response.status).toBe(400);
