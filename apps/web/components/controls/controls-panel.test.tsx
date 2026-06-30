@@ -37,6 +37,23 @@ describe("ControlsPanel", () => {
     });
   });
 
+  it("ignores blank, invalid, and out-of-range numeric edits", () => {
+    const onUpdateSettings = vi.fn();
+    renderControls({ onUpdateSettings });
+
+    fireEvent.change(screen.getByLabelText("Messages per second"), {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("Consumer processing latency"), {
+      target: { value: "not-a-number" },
+    });
+    fireEvent.change(screen.getByLabelText("Messages per second"), {
+      target: { value: "0" },
+    });
+
+    expect(onUpdateSettings).not.toHaveBeenCalled();
+  });
+
   it("wires per-consumer stop and crash actions", () => {
     const onStopConsumer = vi.fn();
     const onCrashConsumer = vi.fn();

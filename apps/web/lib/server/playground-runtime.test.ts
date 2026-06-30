@@ -24,6 +24,7 @@ describe("PlaygroundRuntime demo integration", () => {
   });
 
   it("starts a run, produces, assigns two consumers, marks a third idle, and resets idempotently", async () => {
+    vi.useFakeTimers();
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
     let snapshot = await runtime.createRun("partitioning");
@@ -44,7 +45,7 @@ describe("PlaygroundRuntime demo integration", () => {
     expect(snapshot.recentMessages.at(-1)?.partition).not.toBeNull();
     expect(snapshot.recentMessages.at(-1)?.offset).not.toBeNull();
 
-    await new Promise((resolve) => setTimeout(resolve, 550));
+    await vi.advanceTimersByTimeAsync(550);
     snapshot = runtime.snapshot(snapshot.runId);
     expect(snapshot.messageCounts.committed).toBeGreaterThanOrEqual(1);
 
@@ -443,6 +444,117 @@ describe("PlaygroundRuntime demo integration", () => {
     await runtime.reset(snapshot.runId);
   });
 
+  it("does not reschedule automatic producer ticks after reset during an in-flight send", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("partitioning");
+    snapshot = await runtime.updateSettings(snapshot.runId, {
+      productionRate: 10,
+    });
+    let resolveProduce: (() => void) | null = null;
+    (
+      runtime as unknown as {
+        adapter: {
+          produce: () => Promise<{
+            topic: string;
+            partition: number;
+            offset: string;
+            timestamp: string;
+          }>;
+        };
+      }
+    ).adapter.produce = () =>
+      new Promise((resolve) => {
+        resolveProduce = () =>
+          resolve({
+            topic: snapshot.topicName,
+            partition: 0,
+            offset: "0",
+            timestamp: new Date(0).toISOString(),
+          });
+      });
+
+    await runtime.startProducer(snapshot.runId);
+    await vi.advanceTimersByTimeAsync(100);
+    await runtime.reset(snapshot.runId);
+    await actResolvedProduce(resolveProduce);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("logs scheduled demo processing failures instead of leaving unhandled rejections", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { logger } = await import("./logger");
+    const runtime = new PlaygroundRuntime();
+    const error = new Error("scheduled failure");
+    const logError = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    const internal = runtime as unknown as {
+      processMessage: () => Promise<void>;
+    };
+    internal.processMessage = vi.fn().mockRejectedValue(error);
+    let snapshot = await runtime.createRun("partitioning");
+    snapshot = await runtime.updateSettings(snapshot.runId, {
+      processingLatencyMs: 25,
+    });
+    snapshot = await runtime.addConsumer(snapshot.runId);
+    snapshot = await runtime.produceOne(snapshot.runId);
+    const messageId = snapshot.recentMessages.at(-1)?.messageId;
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: error,
+        runId: snapshot.runId,
+        messageId,
+        consumerId: "consumer-1",
+      }),
+      "Scheduled message processing failed",
+    );
+
+    await runtime.reset(snapshot.runId);
+  });
+
+  it("clears pending processing timers when old messages are pruned", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("partitioning");
+    snapshot = await runtime.updateSettings(snapshot.runId, {
+      processingLatencyMs: 3000,
+    });
+    snapshot = await runtime.addConsumer(snapshot.runId);
+
+    for (let index = 0; index < 501; index += 1) {
+      snapshot = await runtime.produceOne(snapshot.runId);
+    }
+
+    const internal = runtime as unknown as {
+      activeRun: {
+        messages: Array<{ messageId: string }>;
+        processingTimers: Map<string, NodeJS.Timeout>;
+      };
+    };
+    const retainedMessageIds = new Set(
+      internal.activeRun.messages.map((message) => message.messageId),
+    );
+
+    expect(internal.activeRun.messages).toHaveLength(500);
+    expect(internal.activeRun.processingTimers.size).toBe(500);
+    expect(
+      [...internal.activeRun.processingTimers.keys()].every((messageId) =>
+        retainedMessageIds.has(messageId),
+      ),
+    ).toBe(true);
+
+    await runtime.reset(snapshot.runId);
+  });
+
   it("requeues demo messages assigned to a stopped consumer before processing completes", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
@@ -520,6 +632,7 @@ describe("PlaygroundRuntime demo integration", () => {
   });
 
   it("does not process a redelivered message twice after a crash", async () => {
+    vi.useFakeTimers();
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
     let snapshot = await runtime.createRun("partitioning");
@@ -541,7 +654,7 @@ describe("PlaygroundRuntime demo integration", () => {
       assignedConsumerId: "consumer-2",
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await vi.advanceTimersByTimeAsync(80);
     snapshot = runtime.snapshot(snapshot.runId);
     expect(snapshot.messageCounts.processed).toBe(1);
     expect(snapshot.messageCounts.committed).toBe(1);
@@ -617,3 +730,9 @@ describe("PlaygroundRuntime demo integration", () => {
     await runtime.reset(snapshot.runId);
   });
 });
+
+async function actResolvedProduce(resolveProduce: (() => void) | null) {
+  expect(resolveProduce).not.toBeNull();
+  resolveProduce?.();
+  await Promise.resolve();
+}

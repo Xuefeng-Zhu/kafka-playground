@@ -13,9 +13,6 @@ import {
   type PointerEvent,
 } from "react";
 import {
-  runSnapshotSchema,
-  runtimeEventSchema,
-  runtimeEventTypes,
   type ConnectionStatus,
   type KeyStrategy,
   type RemoteKafkaConfig,
@@ -44,11 +41,11 @@ import { EducationPanel } from "@/components/education/education-panel";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
 import { StartRunPanel } from "@/components/playground/start-run-panel";
 import { WorkspaceHeader } from "@/components/playground/workspace-header";
+import { useRunLiveUpdates } from "@/components/playground/use-run-live-updates";
 import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
 import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
 import {
   api,
-  fetchRunSnapshot,
   loadActiveRunSnapshot,
   loadConnectionStatus,
   loadScenarioDefinitions,
@@ -56,6 +53,7 @@ import {
   retireRun,
 } from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
+import { getStoredValue, setStoredValue } from "@/lib/client/safe-storage";
 import type { ScenarioAction } from "@/lib/client/scenario-actions";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 
@@ -105,7 +103,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   const [isInspectorOpen, setInspectorOpen] = useState(false);
   const [selectedTopologyNode, setSelectedTopologyNode] =
     useState<TopologySelection | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
   const actionInFlightRef = useRef(false);
   const workspaceGridRef = useRef<HTMLDivElement | null>(null);
   const timelineResizeRef = useRef<TimelineResizeState | null>(null);
@@ -115,13 +112,8 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   const [timelineHeight, setTimelineHeight] = useState(
     COLLAPSED_TIMELINE_HEIGHT,
   );
-  const [activeLowerPanelTab, setActiveLowerPanelTab] = useState<LowerPanelTab>(
-    () => {
-      if (typeof window === "undefined") return "controls";
-      const savedTab = window.localStorage.getItem(LOWER_PANEL_TAB_STORAGE_KEY);
-      return isLowerPanelTab(savedTab) ? savedTab : "controls";
-    },
-  );
+  const [activeLowerPanelTab, setActiveLowerPanelTab] =
+    useState<LowerPanelTab>("controls");
   const {
     selectedMessageId,
     selectedEventSequence,
@@ -130,6 +122,11 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     resetSelection,
   } = usePlaygroundUiStore();
   const run = state.snapshot;
+  const closeLiveUpdates = useRunLiveUpdates({
+    dispatch,
+    runId: run?.runId ?? null,
+    setActionError,
+  });
   const selectedScenario = useMemo(
     () => scenarios.find((scenario) => scenario.id === scenarioId) ?? null,
     [scenarioId, scenarios],
@@ -169,6 +166,18 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
+      if (cancelled) return;
+      const savedTab = getStoredValue(LOWER_PANEL_TAB_STORAGE_KEY);
+      if (isLowerPanelTab(savedTab)) setActiveLowerPanelTab(savedTab);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
       if (!cancelled) clearRunSelection();
     });
 
@@ -195,55 +204,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       cancelled = true;
     };
   }, [router, scenarioId, clearRunSelection]);
-
-  useEffect(() => {
-    if (!run?.runId) return;
-    const source = new EventSource(`/api/v1/runs/${run.runId}/events`);
-    eventSourceRef.current = source;
-    source.addEventListener("snapshot", (message) => {
-      try {
-        const payload = JSON.parse(message.data) as { snapshot: unknown };
-        dispatch({
-          type: "snapshot",
-          snapshot: runSnapshotSchema.parse(payload.snapshot),
-        });
-      } catch {
-        setActionError("Live snapshot payload could not be parsed.");
-      }
-    });
-    source.onmessage = () => undefined;
-    runtimeEventTypes.forEach((type) => {
-      source.addEventListener(type, (message) => {
-        try {
-          dispatch({
-            type: "event",
-            event: runtimeEventSchema.parse(JSON.parse(message.data)),
-          });
-        } catch {
-          setActionError("Live event payload could not be parsed.");
-          return;
-        }
-        void refreshSnapshot(run.runId, dispatch).catch((error) => {
-          setActionError(
-            error instanceof Error
-              ? error.message
-              : "Unable to refresh the latest run snapshot.",
-          );
-        });
-      });
-    });
-    source.onerror = () => {
-      void refreshSnapshot(run.runId, dispatch).catch((error) => {
-        setActionError(
-          error instanceof Error ? error.message : "Live updates disconnected.",
-        );
-      });
-    };
-    return () => {
-      source.close();
-      if (eventSourceRef.current === source) eventSourceRef.current = null;
-    };
-  }, [run?.runId]);
 
   const selectedEvent = useMemo(() => {
     if (selectedEventSequence === null) return null;
@@ -326,8 +286,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   }
 
   async function retireActiveRun(runId: string) {
-    eventSourceRef.current?.close();
-    eventSourceRef.current = null;
+    closeLiveUpdates();
     await retireRun(runId);
     clearRunSelection();
   }
@@ -483,7 +442,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
   function selectLowerPanelTab(tab: LowerPanelTab) {
     setActiveLowerPanelTab(tab);
-    window.localStorage.setItem(LOWER_PANEL_TAB_STORAGE_KEY, tab);
+    setStoredValue(LOWER_PANEL_TAB_STORAGE_KEY, tab);
   }
 
   function navigateLowerPanelTabs(
@@ -762,15 +721,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       )}
     </main>
   );
-}
-
-async function refreshSnapshot(
-  runId: string,
-  dispatch: React.Dispatch<Action>,
-) {
-  const result = await fetchRunSnapshot(runId);
-  if (!result.ok) throw new Error(result.message);
-  if (result.data) dispatch({ type: "snapshot", snapshot: result.data });
 }
 
 function isLowerPanelTab(value: string | null): value is LowerPanelTab {

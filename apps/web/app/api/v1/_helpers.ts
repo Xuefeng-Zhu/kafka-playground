@@ -5,6 +5,9 @@ import { ApiError, problem, requestId } from "@/lib/server/api-errors";
 const mutationBuckets = new Map<string, { count: number; resetAt: number }>();
 const MUTATION_WINDOW_MS = 10_000;
 const MUTATION_LIMIT = 80;
+const MUTATION_BUCKET_PRUNE_INTERVAL_MS = MUTATION_WINDOW_MS;
+const MUTATION_BUCKET_MAX_SIZE = 1_000;
+let lastMutationBucketPrune = 0;
 
 type ParseJsonOptions = {
   code?: string;
@@ -38,6 +41,7 @@ function enforceMutationRateLimit(request: Request) {
   )
     return;
   const now = Date.now();
+  pruneMutationBuckets(now);
   const forwardedFor = request.headers
     .get("x-forwarded-for")
     ?.split(",")[0]
@@ -46,6 +50,7 @@ function enforceMutationRateLimit(request: Request) {
   const bucket = mutationBuckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
     mutationBuckets.set(key, { count: 1, resetAt: now + MUTATION_WINDOW_MS });
+    trimMutationBuckets();
     return;
   }
   bucket.count += 1;
@@ -55,6 +60,27 @@ function enforceMutationRateLimit(request: Request) {
       "Too many mutation requests. Please slow down.",
       429,
     );
+  }
+}
+
+function pruneMutationBuckets(now: number) {
+  if (
+    mutationBuckets.size < MUTATION_BUCKET_MAX_SIZE &&
+    now - lastMutationBucketPrune < MUTATION_BUCKET_PRUNE_INTERVAL_MS
+  ) {
+    return;
+  }
+  lastMutationBucketPrune = now;
+  for (const [key, bucket] of mutationBuckets) {
+    if (bucket.resetAt <= now) mutationBuckets.delete(key);
+  }
+}
+
+function trimMutationBuckets() {
+  while (mutationBuckets.size > MUTATION_BUCKET_MAX_SIZE) {
+    const oldestKey = mutationBuckets.keys().next().value;
+    if (oldestKey === undefined) return;
+    mutationBuckets.delete(oldestKey);
   }
 }
 

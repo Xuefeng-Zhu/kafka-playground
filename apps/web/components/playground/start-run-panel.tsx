@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import type {
-  ConnectionStatus,
-  RemoteKafkaConfig,
-  ScenarioDefinition,
-  UserSelectableKafkaMode,
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  remoteKafkaConfigSchema,
+  type ConnectionStatus,
+  type RemoteKafkaConfig,
+  type ScenarioDefinition,
+  type UserSelectableKafkaMode,
 } from "@kplay/contracts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/client/cn";
+import { connectionStatusLabel } from "@/lib/client/connection-labels";
+import {
+  getStoredValue,
+  removeStoredValue,
+  setStoredValue,
+} from "@/lib/client/safe-storage";
 
 const REMOTE_CONFIG_STORAGE_KEY = "kplay.remoteKafka.config";
 
@@ -46,10 +53,20 @@ export function StartRunPanel({
     useState<ConnectionStatus | null>(null);
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [isTestingRemote, setTestingRemote] = useState(false);
+  const remoteTestRequestRef = useRef(0);
+  const isMountedRef = useRef(false);
   const missingRemoteFields = requiredRemoteFields(remoteConfig);
   const isRemoteMode = mode === "remote";
   const isStartDisabled =
     disabled || !scenario || (isRemoteMode && missingRemoteFields.length > 0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      remoteTestRequestRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -64,21 +81,26 @@ export function StartRunPanel({
   }
 
   function updateRemoteConfig(nextConfig: RemoteKafkaConfig) {
+    remoteTestRequestRef.current += 1;
     setRemoteConfig(nextConfig);
     setRemoteConnection(null);
     setRemoteError(null);
-    window.localStorage.setItem(
-      REMOTE_CONFIG_STORAGE_KEY,
-      JSON.stringify(nextConfig),
-    );
+    setTestingRemote(false);
+    setStoredValue(REMOTE_CONFIG_STORAGE_KEY, JSON.stringify(nextConfig));
   }
 
   async function testRemoteConnection() {
+    if (missingRemoteFields.length > 0 || isTestingRemote) return;
+    const requestId = remoteTestRequestRef.current + 1;
+    remoteTestRequestRef.current = requestId;
     setTestingRemote(true);
     setRemoteError(null);
     try {
-      setRemoteConnection(await onTestRemoteConnection(remoteConfig));
+      const connection = await onTestRemoteConnection(remoteConfig);
+      if (!isCurrentRemoteTest(requestId)) return;
+      setRemoteConnection(connection);
     } catch (error) {
+      if (!isCurrentRemoteTest(requestId)) return;
       setRemoteConnection(null);
       setRemoteError(
         error instanceof Error
@@ -86,15 +108,21 @@ export function StartRunPanel({
           : "Unable to test the remote connection.",
       );
     } finally {
-      setTestingRemote(false);
+      if (isCurrentRemoteTest(requestId)) setTestingRemote(false);
     }
   }
 
   function clearRemoteConfig() {
+    remoteTestRequestRef.current += 1;
     setRemoteConfig(defaultRemoteKafkaConfig);
     setRemoteConnection(null);
     setRemoteError(null);
-    window.localStorage.removeItem(REMOTE_CONFIG_STORAGE_KEY);
+    setTestingRemote(false);
+    removeStoredValue(REMOTE_CONFIG_STORAGE_KEY);
+  }
+
+  function isCurrentRemoteTest(requestId: number) {
+    return isMountedRef.current && remoteTestRequestRef.current === requestId;
   }
 
   return (
@@ -119,8 +147,8 @@ export function StartRunPanel({
                 <span>{scenario.topic.partitions} partitions</span>
               </div>
               <ul className="mt-3 space-y-2 text-sm leading-5 text-[#31566a]">
-                {scenario.learningObjectives.map((objective) => (
-                  <li key={objective} className="flex gap-2">
+                {scenario.learningObjectives.map((objective, index) => (
+                  <li key={`${objective}-${index}`} className="flex gap-2">
                     <span
                       aria-hidden
                       className="mt-1.5 size-2 shrink-0 rounded-full bg-amber-500"
@@ -379,7 +407,11 @@ function RemoteConfigDrawer({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <Button onClick={onTest} disabled={isTesting} type="button">
+          <Button
+            onClick={onTest}
+            disabled={isTesting || missingFields.length > 0}
+            type="button"
+          >
             {isTesting ? "Testing" : "Test connection"}
           </Button>
           <Button variant="danger" onClick={onClear} type="button">
@@ -426,13 +458,10 @@ function ConnectionNotice({
 }
 
 function connectionLabel(connection: ConnectionStatus | null) {
-  if (!connection) return "Ready";
-  if (connection.status === "demo_mode") return "Local demo runtime";
-  if (connection.status === "connected") return "Connected";
-  if (connection.status === "configuration_missing")
-    return "Configuration missing";
-  if (connection.status === "connection_failed") return "Connection failed";
-  return "Disconnected";
+  return connectionStatusLabel(connection, {
+    emptyLabel: "Ready",
+    labels: { demo_mode: "Local demo runtime" },
+  });
 }
 
 function remoteStatusLabel(
@@ -440,12 +469,14 @@ function remoteStatusLabel(
   missingFields: string[],
 ) {
   if (missingFields.length > 0) return "Configuration required";
-  if (!connection) return "Ready to test";
-  if (connection.status === "connected") return "Connected";
-  if (connection.status === "connection_failed") return "Connection failed";
-  if (connection.status === "configuration_missing")
-    return "Configuration required";
-  return "Ready";
+  return connectionStatusLabel(connection, {
+    emptyLabel: "Ready to test",
+    labels: {
+      configuration_missing: "Configuration required",
+      demo_mode: "Ready",
+      disconnected: "Ready",
+    },
+  });
 }
 
 function requiredRemoteFields(config: RemoteKafkaConfig) {
@@ -456,40 +487,18 @@ function requiredRemoteFields(config: RemoteKafkaConfig) {
   return missing;
 }
 
-function normalizeRemoteConfig(value: unknown): RemoteKafkaConfig {
-  if (!value || typeof value !== "object") return defaultRemoteKafkaConfig;
-  const record = value as Partial<RemoteKafkaConfig>;
-  return {
-    brokers: typeof record.brokers === "string" ? record.brokers : "",
-    username: typeof record.username === "string" ? record.username : "",
-    password: typeof record.password === "string" ? record.password : "",
-    saslMechanism: isSaslMechanism(record.saslMechanism)
-      ? record.saslMechanism
-      : "SCRAM-SHA-256",
-    useTls: typeof record.useTls === "boolean" ? record.useTls : true,
-    caCertificate:
-      typeof record.caCertificate === "string" ? record.caCertificate : "",
-  };
-}
-
 function loadSavedRemoteConfig() {
-  if (typeof window === "undefined") return defaultRemoteKafkaConfig;
-  const saved = window.localStorage.getItem(REMOTE_CONFIG_STORAGE_KEY);
+  const saved = getStoredValue(REMOTE_CONFIG_STORAGE_KEY);
   if (!saved) return defaultRemoteKafkaConfig;
   try {
-    return normalizeRemoteConfig(JSON.parse(saved));
+    const result = remoteKafkaConfigSchema.safeParse(JSON.parse(saved));
+    if (result.success) return result.data;
+    removeStoredValue(REMOTE_CONFIG_STORAGE_KEY);
+    return defaultRemoteKafkaConfig;
   } catch {
-    window.localStorage.removeItem(REMOTE_CONFIG_STORAGE_KEY);
+    removeStoredValue(REMOTE_CONFIG_STORAGE_KEY);
     return defaultRemoteKafkaConfig;
   }
-}
-
-function isSaslMechanism(
-  value: unknown,
-): value is RemoteKafkaConfig["saslMechanism"] {
-  return (
-    value === "PLAIN" || value === "SCRAM-SHA-256" || value === "SCRAM-SHA-512"
-  );
 }
 
 const fieldClassName =

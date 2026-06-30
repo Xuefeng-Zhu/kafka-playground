@@ -248,12 +248,6 @@ export function partitionAssignments(consumers: ConsumerSnapshot[]) {
   return assignments;
 }
 
-export function connectorPathForPartition(partition: number) {
-  const y = partition === 0 ? 66 : partition === 1 ? 80 : 87;
-  const endY = partition === 0 ? 63 : partition === 1 ? 75 : 87;
-  return `M64 ${y} C72 ${y}, 76 ${endY}, 84 ${endY}`;
-}
-
 export function toneForPartition(partition: number) {
   return partitionTones[partition % partitionTones.length];
 }

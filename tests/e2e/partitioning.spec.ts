@@ -1,6 +1,7 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type ConsoleMessage, type Page, test } from "@playwright/test";
 
 const idleConsumerLabel = "idle - no partition available";
+const consoleFailures = new WeakMap<Page, string[]>();
 const scenarioOverlayCases = [
   { id: "partitioning", overlayId: "key-router", title: "Key router" },
   {
@@ -70,6 +71,25 @@ const scenarioOverlayCases = [
     title: "Authorization gate",
   },
 ];
+
+test.beforeEach(({ page }) => {
+  const failures: string[] = [];
+  consoleFailures.set(page, failures);
+  page.on("console", (message) => {
+    if (!["error", "warning"].includes(message.type())) return;
+    if (isBenignResourceLoadFailure(message)) return;
+    const { url } = message.location();
+    const source = url ? ` (${url})` : "";
+    failures.push(`[${message.type()}] ${message.text()}${source}`);
+  });
+  page.on("pageerror", (error) => {
+    failures.push(`[pageerror] ${error.message}`);
+  });
+});
+
+test.afterEach(({ page }) => {
+  expect(consoleFailures.get(page) ?? []).toEqual([]);
+});
 
 const focusedOverlayActions = [
   {
@@ -299,8 +319,8 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   ).toHaveCount(0);
 
   const topologyContent = page.getByTestId("topology-canvas-content");
-  const topologyViewport = page.locator(".react-flow__viewport");
   await expect(page.getByTestId("topology-flow")).toBeVisible();
+  await expectReactFlowStylesLoaded(page);
   await expect(topologyContent).toBeVisible();
   await expect(page.getByTestId("topology-node-producer")).toBeVisible();
   await expect(page.getByTestId("topology-node-topic")).toBeVisible();
@@ -333,7 +353,11 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   expect(topologyCanvasBox).not.toBeNull();
   if (topologyCanvasBox) {
     await page.mouse.move(topologyCanvasBox.x + 80, topologyCanvasBox.y + 80);
+    const scrollBeforeWheel = await pageScrollPosition(page);
     await page.mouse.wheel(0, -120);
+    await expect
+      .poll(() => pageScrollPosition(page))
+      .toEqual(scrollBeforeWheel);
   }
   await expect(page.getByText("80%")).toBeVisible();
   await expect
@@ -620,7 +644,11 @@ test("scenario topology overlays react to scenario actions", async ({
     }
 
     await page.getByRole("tab", { name: "Insights" }).click();
-    await page.getByRole("button", { name: scenarioCase.action }).click();
+    const actionButton = page.getByRole("button", {
+      name: scenarioCase.action,
+    });
+    await actionButton.click();
+    await expect(actionButton).toBeEnabled();
     await expect
       .poll(async () =>
         page
@@ -681,6 +709,7 @@ async function topologyViewportZoom(page: Page) {
 }
 
 async function expectTopologyNodeFramed(page: Page, testId: string) {
+  await expectReactFlowStylesLoaded(page);
   const node = page.getByTestId(testId);
   await expect(node).toBeVisible();
   await expect
@@ -703,12 +732,66 @@ async function expectTopologyNodeFramed(page: Page, testId: string) {
     .toBe(true);
 }
 
+async function expectReactFlowStylesLoaded(page: Page) {
+  await expect
+    .poll(async () =>
+      page
+        .locator(".react-flow")
+        .first()
+        .evaluate((element) =>
+          getComputedStyle(element)
+            .getPropertyValue("--xy-edge-stroke-default")
+            .trim(),
+        ),
+    )
+    .toBe("#b1b1b7");
+}
+
+async function pageScrollPosition(page: Page) {
+  return page.evaluate(() => ({
+    mainTop: document.querySelector("main")?.scrollTop ?? 0,
+    x: window.scrollX,
+    y: window.scrollY,
+  }));
+}
+
+function isBenignResourceLoadFailure(message: ConsoleMessage) {
+  if (!message.text().startsWith("Failed to load resource:")) return false;
+  const { url } = message.location();
+  if (!url) return false;
+  try {
+    const { pathname } = new URL(url);
+    if (
+      message.text().includes("status of 404") &&
+      /^\/api\/v1\/runs\/[^/]+$/.test(pathname)
+    ) {
+      return true;
+    }
+    return [
+      "/favicon.ico",
+      "/apple-touch-icon.png",
+      "/apple-touch-icon-precomposed.png",
+    ].includes(pathname);
+  } catch {
+    return false;
+  }
+}
+
 async function resetActiveRun(page: Page) {
   const response = await page.request.get("/api/v1/runs");
-  if (!response.ok()) return;
+  expect(
+    response.ok(),
+    `Unable to inspect the active run before the test (${response.status()} ${response.statusText()}).`,
+  ).toBe(true);
 
   const payload = (await response.json()) as { run: { runId?: string } | null };
   if (payload.run?.runId) {
-    await page.request.post(`/api/v1/runs/${payload.run.runId}/reset`);
+    const resetResponse = await page.request.post(
+      `/api/v1/runs/${payload.run.runId}/reset`,
+    );
+    expect(
+      resetResponse.ok(),
+      `Unable to reset active run ${payload.run.runId} before the test (${resetResponse.status()} ${resetResponse.statusText()}).`,
+    ).toBe(true);
   }
 }

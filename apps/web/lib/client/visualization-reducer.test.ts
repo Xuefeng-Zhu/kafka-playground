@@ -67,4 +67,19 @@ describe("visualization reducer", () => {
     expect(merged).toBe(state);
     expect(merged.snapshot?.messageCounts.produced).toBe(0);
   });
+
+  it("clears sequence gaps when a snapshot fills the missing events", () => {
+    let state = initializeFromSnapshot(snapshot);
+    state = applyRuntimeEvent(state, event(1));
+    state = applyRuntimeEvent(state, event(3));
+
+    const merged = mergeSnapshot(state, {
+      ...snapshot,
+      recentEvents: [event(2), event(3)],
+      sequence: 3,
+    });
+
+    expect(merged.events.map((item) => item.sequence)).toEqual([1, 2, 3]);
+    expect(merged.hasSequenceGap).toBe(false);
+  });
 });

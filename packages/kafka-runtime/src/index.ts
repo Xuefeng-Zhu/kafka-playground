@@ -13,11 +13,19 @@ import {
   type ConsumerLifecycleSource,
   type ConsumerRunSource,
 } from "./consumer-handlers";
+import { assertRemoteKafkaBrokersAllowed } from "./broker-policy";
+import {
+  maskBrokerHost,
+  parseBrokerList,
+  stablePartition,
+} from "./broker-utils";
 
-export type RuntimeEventSink = (event: {
-  type: string;
-  [key: string]: unknown;
-}) => void;
+export { RemoteKafkaBrokerPolicyError } from "./broker-policy";
+export {
+  maskBrokerHost,
+  parseBrokerList,
+  stablePartition,
+} from "./broker-utils";
 
 export type CreateRunInput = {
   runId: string;
@@ -124,18 +132,6 @@ export class RemoteKafkaConfigurationError extends Error {
   }
 }
 
-export class RemoteKafkaBrokerPolicyError extends Error {
-  readonly code = "REMOTE_KAFKA_BROKER_NOT_ALLOWED";
-  readonly status = 400;
-
-  constructor(readonly broker: string) {
-    super(
-      `Remote Kafka broker ${broker} is not allowed. Use a public broker hostname or IP address.`,
-    );
-    this.name = "RemoteKafkaBrokerPolicyError";
-  }
-}
-
 export const serverEnvSchema = z.object({
   KAFKA_MODE: z.enum(["demo", "aiven"]).default("demo"),
   AIVEN_KAFKA_BROKERS: z.string().optional().default(""),
@@ -167,23 +163,6 @@ export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 export function loadServerEnv(source: NodeJS.ProcessEnv = process.env) {
   return serverEnvSchema.parse(source);
-}
-
-export function parseBrokerList(value: string) {
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-export function maskBrokerHost(value: string | undefined) {
-  if (!value) return null;
-  const first = parseBrokerList(value)[0];
-  if (!first) return null;
-  const host = first.split(":")[0] ?? "";
-  const pieces = host.split(".");
-  if (pieces.length <= 2) return `${host.slice(0, 2)}***`;
-  return `${pieces[0]?.slice(0, 2)}***.${pieces.slice(-2).join(".")}`;
 }
 
 export function sanitizeKafkaError(error: unknown, secrets: string[] = []) {
@@ -299,95 +278,15 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
   ) {}
 
   async testConnection(): Promise<ConnectionStatus> {
-    const missingVariables = getMissingAivenVariables(this.env);
-    if (missingVariables.length > 0) {
-      return {
-        status: "configuration_missing",
-        mode: "aiven",
-        maskedBrokerHost: maskBrokerHost(this.env.AIVEN_KAFKA_BROKERS),
-        brokerCount: parseBrokerList(this.env.AIVEN_KAFKA_BROKERS).length,
-        topicCount: null,
-        missingVariables,
-        error: null,
-        checkedAt: new Date().toISOString(),
-      };
-    }
-
-    let admin: Admin | null = null;
-    try {
-      const kafka = await createAivenKafkaClient(this.env);
-      admin = kafka.admin();
-      await admin.connect();
-      let topicCount: number | null = null;
-      let topicListError: ConnectionStatus["error"] = null;
-      try {
-        topicCount = (await admin.listTopics()).length;
-      } catch (error) {
-        topicListError = sanitizeKafkaError(error, aivenSecrets(this.env));
-      }
-      return {
-        status: "connected",
-        mode: "aiven",
-        maskedBrokerHost: maskBrokerHost(this.env.AIVEN_KAFKA_BROKERS),
-        brokerCount: parseBrokerList(this.env.AIVEN_KAFKA_BROKERS).length,
-        topicCount,
-        missingVariables: [],
-        error: topicListError,
-        checkedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      return {
-        status: "connection_failed",
-        mode: "aiven",
-        maskedBrokerHost: maskBrokerHost(this.env.AIVEN_KAFKA_BROKERS),
-        brokerCount: parseBrokerList(this.env.AIVEN_KAFKA_BROKERS).length,
-        topicCount: null,
-        missingVariables: [],
-        error: sanitizeKafkaError(error, aivenSecrets(this.env)),
-        checkedAt: new Date().toISOString(),
-      };
-    } finally {
-      await this.disconnectSafely("connection.admin.disconnect", admin);
-    }
+    return testKafkaConnection(this.operations());
   }
 
   async createRun(input: CreateRunInput) {
-    assertAivenConfigured(this.env);
-    const kafka = await createAivenKafkaClient(this.env);
-    const admin = kafka.admin();
-    try {
-      await admin.connect();
-      await admin.createTopics({
-        waitForLeaders: true,
-        topics: [
-          { topic: input.topicName, numPartitions: input.partitionCount },
-        ],
-      });
-    } finally {
-      await this.disconnectSafely("run.admin.disconnect", admin);
-    }
+    await createKafkaRunResources(this.operations(), input);
   }
 
   async produce(input: ProduceInput): Promise<ProduceResult> {
-    assertAivenConfigured(this.env);
-    const kafka = await createAivenKafkaClient(this.env);
-    const producer = kafka.producer();
-    try {
-      await producer.connect();
-      const result = await producer.send({
-        topic: input.topicName,
-        messages: [
-          {
-            key: input.key ?? undefined,
-            value: JSON.stringify(input.value),
-            headers: input.headers,
-          },
-        ],
-      });
-      return normalizeDeliveryReport(result, input.topicName);
-    } finally {
-      await this.disconnectSafely("produce.producer.disconnect", producer);
-    }
+    return produceKafkaMessage(this.operations(), input);
   }
 
   async createConsumer(
@@ -395,82 +294,32 @@ export class AivenKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     consumerId: string,
     callbacks: PlaygroundConsumerCallbacks,
   ): Promise<PlaygroundConsumerHandle> {
-    assertAivenConfigured(this.env);
-    const kafka = await createAivenKafkaClient(this.env, consumerId);
-    const consumer = kafka.consumer({
-      groupId: run.consumerGroupId,
-      allowAutoTopicCreation: false,
-    });
-    const secrets = aivenSecrets(this.env);
-    const sanitizeAivenKafkaError = (error: unknown) =>
-      sanitizeKafkaError(error, secrets);
-    bindConsumerLifecycleHandlers(
-      consumer as ConsumerLifecycleSource,
+    return createKafkaConsumerHandle(
+      this.operations(),
       run,
-      callbacks,
-      this.diagnostics,
-      sanitizeAivenKafkaError,
-    );
-    await consumer.connect();
-    await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
-    startConsumerRun(
-      consumer as ConsumerRunSource,
-      callbacks,
-      this.diagnostics,
-      sanitizeAivenKafkaError,
-    );
-    return {
       consumerId,
-      async commit(input) {
-        await consumer.commitOffsets([
-          {
-            topic: input.topic,
-            partition: input.partition,
-            offset: input.offset,
-          },
-        ]);
-      },
-      async disconnect() {
-        await consumer.disconnect();
-      },
-    };
+      callbacks,
+    );
   }
 
   async deleteRunResources(input: CreateRunInput): Promise<CleanupResult> {
-    assertAivenConfigured(this.env);
-    const kafka = await createAivenKafkaClient(this.env);
-    const admin = kafka.admin();
-    try {
-      await admin.connect();
-      return await deleteTopicResource(
-        admin,
-        input.topicName,
-        aivenSecrets(this.env),
-      );
-    } catch (error) {
-      return failedTopicDelete(input.topicName, error, aivenSecrets(this.env));
-    } finally {
-      await this.disconnectSafely("cleanup.admin.disconnect", admin);
-    }
+    return deleteKafkaRunResources(this.operations(), input);
   }
 
   async shutdown() {
     return;
   }
 
-  private async disconnectSafely(
-    operation: string,
-    handle: { disconnect(): Promise<void> } | null,
-  ) {
-    if (!handle) return;
-    try {
-      await handle.disconnect();
-    } catch (error) {
-      this.diagnostics.onDisconnectError?.({
-        operation,
-        error: sanitizeKafkaError(error),
-      });
-    }
+  private operations(): KafkaJsRuntimeOperations {
+    return {
+      mode: "aiven",
+      brokers: this.env.AIVEN_KAFKA_BROKERS,
+      missingVariables: () => getMissingAivenVariables(this.env),
+      assertReady: () => assertAivenConfigured(this.env),
+      createClient: (clientId) => createAivenKafkaClient(this.env, clientId),
+      secrets: () => aivenSecrets(this.env),
+      diagnostics: this.diagnostics,
+    };
   }
 }
 
@@ -483,101 +332,15 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
   ) {}
 
   async testConnection(): Promise<ConnectionStatus> {
-    const missingVariables = getMissingRemoteKafkaVariables(this.config);
-    if (missingVariables.length > 0) {
-      return {
-        status: "configuration_missing",
-        mode: "remote",
-        maskedBrokerHost: maskBrokerHost(this.config.brokers),
-        brokerCount: parseBrokerList(this.config.brokers).length,
-        topicCount: null,
-        missingVariables,
-        error: null,
-        checkedAt: new Date().toISOString(),
-      };
-    }
-
-    let admin: Admin | null = null;
-    try {
-      await assertRemoteKafkaBrokersAllowed(this.config);
-      const kafka = await createRemoteKafkaClient(this.config);
-      admin = kafka.admin();
-      await admin.connect();
-      let topicCount: number | null = null;
-      let topicListError: ConnectionStatus["error"] = null;
-      try {
-        topicCount = (await admin.listTopics()).length;
-      } catch (error) {
-        topicListError = sanitizeKafkaError(
-          error,
-          remoteKafkaSecrets(this.config),
-        );
-      }
-      return {
-        status: "connected",
-        mode: "remote",
-        maskedBrokerHost: maskBrokerHost(this.config.brokers),
-        brokerCount: parseBrokerList(this.config.brokers).length,
-        topicCount,
-        missingVariables: [],
-        error: topicListError,
-        checkedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      return {
-        status: "connection_failed",
-        mode: "remote",
-        maskedBrokerHost: maskBrokerHost(this.config.brokers),
-        brokerCount: parseBrokerList(this.config.brokers).length,
-        topicCount: null,
-        missingVariables: [],
-        error: sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
-        checkedAt: new Date().toISOString(),
-      };
-    } finally {
-      await this.disconnectSafely("connection.admin.disconnect", admin);
-    }
+    return testKafkaConnection(this.operations());
   }
 
   async createRun(input: CreateRunInput) {
-    assertRemoteKafkaConfigured(this.config);
-    await assertRemoteKafkaBrokersAllowed(this.config);
-    const kafka = await createRemoteKafkaClient(this.config);
-    const admin = kafka.admin();
-    try {
-      await admin.connect();
-      await admin.createTopics({
-        waitForLeaders: true,
-        topics: [
-          { topic: input.topicName, numPartitions: input.partitionCount },
-        ],
-      });
-    } finally {
-      await this.disconnectSafely("run.admin.disconnect", admin);
-    }
+    await createKafkaRunResources(this.operations(), input);
   }
 
   async produce(input: ProduceInput): Promise<ProduceResult> {
-    assertRemoteKafkaConfigured(this.config);
-    await assertRemoteKafkaBrokersAllowed(this.config);
-    const kafka = await createRemoteKafkaClient(this.config);
-    const producer = kafka.producer();
-    try {
-      await producer.connect();
-      const result = await producer.send({
-        topic: input.topicName,
-        messages: [
-          {
-            key: input.key ?? undefined,
-            value: JSON.stringify(input.value),
-            headers: input.headers,
-          },
-        ],
-      });
-      return normalizeDeliveryReport(result, input.topicName);
-    } finally {
-      await this.disconnectSafely("produce.producer.disconnect", producer);
-    }
+    return produceKafkaMessage(this.operations(), input);
   }
 
   async createConsumer(
@@ -585,89 +348,243 @@ export class UserConfiguredKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
     consumerId: string,
     callbacks: PlaygroundConsumerCallbacks,
   ): Promise<PlaygroundConsumerHandle> {
-    assertRemoteKafkaConfigured(this.config);
-    await assertRemoteKafkaBrokersAllowed(this.config);
-    const kafka = await createRemoteKafkaClient(this.config, consumerId);
-    const consumer = kafka.consumer({
-      groupId: run.consumerGroupId,
-      allowAutoTopicCreation: false,
-    });
-    const secrets = remoteKafkaSecrets(this.config);
-    const sanitizeRemoteKafkaError = (error: unknown) =>
-      sanitizeKafkaError(error, secrets);
-    bindConsumerLifecycleHandlers(
-      consumer as ConsumerLifecycleSource,
+    return createKafkaConsumerHandle(
+      this.operations(),
       run,
-      callbacks,
-      this.diagnostics,
-      sanitizeRemoteKafkaError,
-    );
-    await consumer.connect();
-    await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
-    startConsumerRun(
-      consumer as ConsumerRunSource,
-      callbacks,
-      this.diagnostics,
-      sanitizeRemoteKafkaError,
-    );
-    return {
       consumerId,
-      async commit(input) {
-        await consumer.commitOffsets([
-          {
-            topic: input.topic,
-            partition: input.partition,
-            offset: input.offset,
-          },
-        ]);
-      },
-      async disconnect() {
-        await consumer.disconnect();
-      },
-    };
+      callbacks,
+    );
   }
 
   async deleteRunResources(input: CreateRunInput): Promise<CleanupResult> {
-    assertRemoteKafkaConfigured(this.config);
-    await assertRemoteKafkaBrokersAllowed(this.config);
-    const kafka = await createRemoteKafkaClient(this.config);
-    const admin = kafka.admin();
-    try {
-      await admin.connect();
-      return await deleteTopicResource(
-        admin,
-        input.topicName,
-        remoteKafkaSecrets(this.config),
-      );
-    } catch (error) {
-      return failedTopicDelete(
-        input.topicName,
-        error,
-        remoteKafkaSecrets(this.config),
-      );
-    } finally {
-      await this.disconnectSafely("cleanup.admin.disconnect", admin);
-    }
+    return deleteKafkaRunResources(this.operations(), input);
   }
 
   async shutdown() {
     return;
   }
 
-  private async disconnectSafely(
-    operation: string,
-    handle: { disconnect(): Promise<void> } | null,
-  ) {
-    if (!handle) return;
-    try {
-      await handle.disconnect();
-    } catch (error) {
-      this.diagnostics.onDisconnectError?.({
-        operation,
-        error: sanitizeKafkaError(error, remoteKafkaSecrets(this.config)),
-      });
-    }
+  private operations(): KafkaJsRuntimeOperations {
+    return {
+      mode: "remote",
+      brokers: this.config.brokers,
+      missingVariables: () => getMissingRemoteKafkaVariables(this.config),
+      assertReady: async () => {
+        assertRemoteKafkaConfigured(this.config);
+        await assertRemoteKafkaBrokersAllowed(this.config);
+      },
+      createClient: (clientId) =>
+        createRemoteKafkaClient(this.config, clientId),
+      secrets: () => remoteKafkaSecrets(this.config),
+      diagnostics: this.diagnostics,
+    };
   }
+}
+
+type KafkaJsClient = Awaited<ReturnType<typeof createRemoteKafkaClient>>;
+
+type KafkaJsRuntimeOperations = {
+  mode: "aiven" | "remote";
+  brokers: string;
+  missingVariables(): string[];
+  assertReady(): void | Promise<void>;
+  createClient(clientId?: string): Promise<KafkaJsClient>;
+  secrets(): string[];
+  diagnostics: KafkaRuntimeDiagnostics;
+};
+
+async function testKafkaConnection(
+  operations: KafkaJsRuntimeOperations,
+): Promise<ConnectionStatus> {
+  const missingVariables = operations.missingVariables();
+  if (missingVariables.length > 0) {
+    return kafkaConnectionStatus(operations, {
+      status: "configuration_missing",
+      topicCount: null,
+      missingVariables,
+      error: null,
+    });
+  }
+
+  let admin: Admin | null = null;
+  try {
+    await operations.assertReady();
+    const kafka = await operations.createClient();
+    admin = kafka.admin();
+    await admin.connect();
+    let topicCount: number | null = null;
+    let topicListError: ConnectionStatus["error"] = null;
+    try {
+      topicCount = (await admin.listTopics()).length;
+    } catch (error) {
+      topicListError = sanitizeKafkaError(error, operations.secrets());
+    }
+    return kafkaConnectionStatus(operations, {
+      status: "connected",
+      topicCount,
+      missingVariables: [],
+      error: topicListError,
+    });
+  } catch (error) {
+    return kafkaConnectionStatus(operations, {
+      status: "connection_failed",
+      topicCount: null,
+      missingVariables: [],
+      error: sanitizeKafkaError(error, operations.secrets()),
+    });
+  } finally {
+    await disconnectKafkaHandle(
+      operations,
+      "connection.admin.disconnect",
+      admin,
+    );
+  }
+}
+
+async function createKafkaRunResources(
+  operations: KafkaJsRuntimeOperations,
+  input: CreateRunInput,
+) {
+  await operations.assertReady();
+  const kafka = await operations.createClient();
+  const admin = kafka.admin();
+  try {
+    await admin.connect();
+    await admin.createTopics({
+      waitForLeaders: true,
+      topics: [{ topic: input.topicName, numPartitions: input.partitionCount }],
+    });
+  } finally {
+    await disconnectKafkaHandle(operations, "run.admin.disconnect", admin);
+  }
+}
+
+async function produceKafkaMessage(
+  operations: KafkaJsRuntimeOperations,
+  input: ProduceInput,
+): Promise<ProduceResult> {
+  await operations.assertReady();
+  const kafka = await operations.createClient();
+  const producer = kafka.producer();
+  try {
+    await producer.connect();
+    const result = await producer.send({
+      topic: input.topicName,
+      messages: [
+        {
+          key: input.key ?? undefined,
+          value: JSON.stringify(input.value),
+          headers: input.headers,
+        },
+      ],
+    });
+    return normalizeDeliveryReport(result, input.topicName);
+  } finally {
+    await disconnectKafkaHandle(
+      operations,
+      "produce.producer.disconnect",
+      producer,
+    );
+  }
+}
+
+async function createKafkaConsumerHandle(
+  operations: KafkaJsRuntimeOperations,
+  run: CreateRunInput,
+  consumerId: string,
+  callbacks: PlaygroundConsumerCallbacks,
+): Promise<PlaygroundConsumerHandle> {
+  await operations.assertReady();
+  const kafka = await operations.createClient(consumerId);
+  const consumer = kafka.consumer({
+    groupId: run.consumerGroupId,
+    allowAutoTopicCreation: false,
+  });
+  const sanitizeRuntimeError = (error: unknown) =>
+    sanitizeKafkaError(error, operations.secrets());
+  bindConsumerLifecycleHandlers(
+    consumer as ConsumerLifecycleSource,
+    run,
+    callbacks,
+    operations.diagnostics,
+    sanitizeRuntimeError,
+  );
+  await consumer.connect();
+  await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
+  startConsumerRun(
+    consumer as ConsumerRunSource,
+    callbacks,
+    operations.diagnostics,
+    sanitizeRuntimeError,
+  );
+  return {
+    consumerId,
+    async commit(input) {
+      await consumer.commitOffsets([
+        {
+          topic: input.topic,
+          partition: input.partition,
+          offset: input.offset,
+        },
+      ]);
+    },
+    async disconnect() {
+      await consumer.disconnect();
+    },
+  };
+}
+
+async function deleteKafkaRunResources(
+  operations: KafkaJsRuntimeOperations,
+  input: CreateRunInput,
+): Promise<CleanupResult> {
+  await operations.assertReady();
+  const kafka = await operations.createClient();
+  const admin = kafka.admin();
+  try {
+    await admin.connect();
+    return await deleteTopicResource(
+      admin,
+      input.topicName,
+      operations.secrets(),
+    );
+  } catch (error) {
+    return failedTopicDelete(input.topicName, error, operations.secrets());
+  } finally {
+    await disconnectKafkaHandle(operations, "cleanup.admin.disconnect", admin);
+  }
+}
+
+async function disconnectKafkaHandle(
+  operations: KafkaJsRuntimeOperations,
+  operation: string,
+  handle: { disconnect(): Promise<void> } | null,
+) {
+  if (!handle) return;
+  try {
+    await handle.disconnect();
+  } catch (error) {
+    operations.diagnostics.onDisconnectError?.({
+      operation,
+      error: sanitizeKafkaError(error, operations.secrets()),
+    });
+  }
+}
+
+function kafkaConnectionStatus(
+  operations: KafkaJsRuntimeOperations,
+  status: Pick<
+    ConnectionStatus,
+    "status" | "topicCount" | "missingVariables" | "error"
+  >,
+): ConnectionStatus {
+  return {
+    mode: operations.mode,
+    maskedBrokerHost: maskBrokerHost(operations.brokers),
+    brokerCount: parseBrokerList(operations.brokers).length,
+    checkedAt: new Date().toISOString(),
+    ...status,
+  };
 }
 
 export function createKafkaRuntimeAdapter(
@@ -714,100 +631,6 @@ function assertRemoteKafkaConfigured(config: RemoteKafkaConfig) {
   if (missing.length > 0) {
     throw new RemoteKafkaConfigurationError(missing);
   }
-}
-
-async function assertRemoteKafkaBrokersAllowed(config: RemoteKafkaConfig) {
-  for (const broker of parseBrokerList(config.brokers)) {
-    const host = brokerHost(broker);
-    if (!host || isDisallowedBrokerHost(host)) {
-      throw new RemoteKafkaBrokerPolicyError(broker);
-    }
-    for (const address of await resolveBrokerAddresses(host)) {
-      if (isDisallowedIpAddress(address)) {
-        throw new RemoteKafkaBrokerPolicyError(broker);
-      }
-    }
-  }
-}
-
-function brokerHost(broker: string) {
-  const trimmed = broker.trim();
-  if (!trimmed) return "";
-  if (trimmed.startsWith("[")) {
-    return trimmed.slice(1, trimmed.indexOf("]"));
-  }
-  return trimmed.split(":")[0] ?? "";
-}
-
-function isDisallowedBrokerHost(host: string) {
-  const normalized = host.toLowerCase().replace(/\.$/, "");
-  return (
-    normalized === "localhost" ||
-    normalized.endsWith(".localhost") ||
-    isDisallowedIpAddress(normalized)
-  );
-}
-
-async function resolveBrokerAddresses(host: string) {
-  if (isIpAddress(host)) return [host];
-  const { lookup } = await import("node:dns/promises");
-  return (await lookup(host, { all: true, verbatim: true })).map(
-    (item) => item.address,
-  );
-}
-
-function isIpAddress(value: string) {
-  return Boolean(ipv4ToNumber(value)) || value.includes(":");
-}
-
-function isDisallowedIpAddress(value: string) {
-  const ipv4 = ipv4ToNumber(value);
-  if (ipv4 !== null) {
-    return (
-      inIpv4Range(ipv4, "0.0.0.0", 8) ||
-      inIpv4Range(ipv4, "10.0.0.0", 8) ||
-      inIpv4Range(ipv4, "100.64.0.0", 10) ||
-      inIpv4Range(ipv4, "127.0.0.0", 8) ||
-      inIpv4Range(ipv4, "169.254.0.0", 16) ||
-      inIpv4Range(ipv4, "172.16.0.0", 12) ||
-      inIpv4Range(ipv4, "192.0.0.0", 24) ||
-      inIpv4Range(ipv4, "192.0.2.0", 24) ||
-      inIpv4Range(ipv4, "192.168.0.0", 16) ||
-      inIpv4Range(ipv4, "198.18.0.0", 15) ||
-      inIpv4Range(ipv4, "198.51.100.0", 24) ||
-      inIpv4Range(ipv4, "203.0.113.0", 24) ||
-      inIpv4Range(ipv4, "224.0.0.0", 4) ||
-      inIpv4Range(ipv4, "240.0.0.0", 4)
-    );
-  }
-  const normalized = value.toLowerCase();
-  return (
-    normalized === "::1" ||
-    normalized === "::" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("fe80:")
-  );
-}
-
-function ipv4ToNumber(value: string) {
-  const parts = value.split(".");
-  if (parts.length !== 4) return null;
-  let result = 0;
-  for (const part of parts) {
-    if (!/^\d+$/.test(part)) return null;
-    const number = Number(part);
-    if (number < 0 || number > 255) return null;
-    result = result * 256 + number;
-  }
-  return result >>> 0;
-}
-
-function inIpv4Range(value: number, baseAddress: string, bits: number) {
-  const base = ipv4ToNumber(baseAddress);
-  if (base === null) return false;
-  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
-  return (value & mask) === (base & mask);
 }
 
 function aivenSecrets(env: ServerEnv) {
@@ -922,7 +745,7 @@ async function createRemoteKafkaClient(
   config: RemoteKafkaConfig,
   clientId = "kafka-visual-playground",
 ) {
-  const [{ Kafka, logLevel }] = await Promise.all([import("kafkajs")]);
+  const { Kafka, logLevel } = await import("kafkajs");
   return new Kafka({
     clientId,
     brokers: parseBrokerList(config.brokers),
@@ -972,12 +795,4 @@ function createSaslOptions(config: RemoteKafkaConfig): SASLOptions {
     return { mechanism: "scram-sha-512", ...credentials };
   }
   return { mechanism: "scram-sha-256", ...credentials };
-}
-
-export function stablePartition(key: string, partitionCount: number) {
-  let hash = 0;
-  for (let index = 0; index < key.length; index += 1) {
-    hash = (hash * 31 + key.charCodeAt(index)) | 0;
-  }
-  return Math.abs(hash) % partitionCount;
 }

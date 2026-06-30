@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { RunSnapshot } from "@kplay/contracts";
 import { SCENARIOS } from "@kplay/scenario-engine";
+import {
+  consumerSnapshot,
+  playgroundMessage,
+  runSnapshot,
+} from "./run-snapshot-test-fixtures";
 import { deriveScenarioCheckpoint } from "./scenario-checkpoints";
 
 describe("deriveScenarioCheckpoint", () => {
   it("provides a valid checkpoint for every catalog scenario", () => {
     for (const scenario of SCENARIOS) {
       const checkpoint = deriveScenarioCheckpoint(
-        snapshot({ scenarioId: scenario.id }),
+        runSnapshot({ scenarioId: scenario.id }),
       );
       const optionIds = checkpoint.options.map((option) => option.id);
 
@@ -25,19 +29,19 @@ describe("deriveScenarioCheckpoint", () => {
 
   it("prioritizes idle consumer checkpoints when members exceed partitions", () => {
     const checkpoint = deriveScenarioCheckpoint(
-      snapshot({
+      runSnapshot({
         scenarioId: "partitioning",
         partitionCount: 2,
         consumers: [
-          consumer({
+          consumerSnapshot({
             consumerId: "consumer-1",
             assignments: [{ topic: "kplay.test", partition: 0 }],
           }),
-          consumer({
+          consumerSnapshot({
             consumerId: "consumer-2",
             assignments: [{ topic: "kplay.test", partition: 1 }],
           }),
-          consumer({ consumerId: "consumer-3", assignments: [] }),
+          consumerSnapshot({ consumerId: "consumer-3", assignments: [] }),
         ],
       }),
     );
@@ -49,9 +53,11 @@ describe("deriveScenarioCheckpoint", () => {
 
   it("surfaces replay risk for received but uncommitted at-least-once messages", () => {
     const checkpoint = deriveScenarioCheckpoint(
-      snapshot({
+      runSnapshot({
         scenarioId: "at-least-once-duplicates",
-        recentMessages: [message({ state: "received", committedOffset: null })],
+        recentMessages: [
+          playgroundMessage({ state: "received", committedOffset: null }),
+        ],
       }),
     );
 
@@ -61,20 +67,22 @@ describe("deriveScenarioCheckpoint", () => {
 
   it("does not treat crashed consumers as idle members", () => {
     const checkpoint = deriveScenarioCheckpoint(
-      snapshot({
+      runSnapshot({
         scenarioId: "at-least-once-duplicates",
         consumers: [
-          consumer({
+          consumerSnapshot({
             consumerId: "consumer-1",
             status: "crashed",
             assignments: [],
           }),
-          consumer({
+          consumerSnapshot({
             consumerId: "consumer-2",
             assignments: [{ topic: "kplay.test", partition: 0 }],
           }),
         ],
-        recentMessages: [message({ state: "received", committedOffset: null })],
+        recentMessages: [
+          playgroundMessage({ state: "received", committedOffset: null }),
+        ],
       }),
     );
 
@@ -83,7 +91,7 @@ describe("deriveScenarioCheckpoint", () => {
 
   it("surfaces retry routing once failures are visible", () => {
     const checkpoint = deriveScenarioCheckpoint(
-      snapshot({
+      runSnapshot({
         scenarioId: "retry-dead-letter-queues",
         messageCounts: {
           produced: 3,
@@ -101,7 +109,7 @@ describe("deriveScenarioCheckpoint", () => {
 
   it("explains the busiest partition during hot-key skew", () => {
     const checkpoint = deriveScenarioCheckpoint(
-      snapshot({
+      runSnapshot({
         scenarioId: "hot-partitions-key-skew",
         keyStrategy: { type: "fixed", value: "celebrity-user" },
         messageCounts: {
@@ -122,7 +130,7 @@ describe("deriveScenarioCheckpoint", () => {
 
   it("does not blame key skew for unkeyed hot-partition comparisons", () => {
     const checkpoint = deriveScenarioCheckpoint(
-      snapshot({
+      runSnapshot({
         scenarioId: "hot-partitions-key-skew",
         keyStrategy: { type: "no_key" },
         messageCounts: {
@@ -141,70 +149,3 @@ describe("deriveScenarioCheckpoint", () => {
     expect(checkpoint.id).toBe("hot-partition-key-choice");
   });
 });
-
-function snapshot(overrides: Partial<RunSnapshot>): RunSnapshot {
-  return {
-    runId: "run-1",
-    scenarioId: "partitioning",
-    mode: "demo",
-    status: "running",
-    topicName: "kplay.test",
-    partitionCount: 2,
-    consumerLimit: 3,
-    consumerGroupId: "kplay.test.workers",
-    producerStatus: "stopped",
-    productionRate: 1,
-    keyStrategy: { type: "round_robin_users" },
-    processingLatencyMs: 500,
-    consumers: [],
-    latestPartitionOffsets: {},
-    latestCommittedOffsets: {},
-    messageCounts: {
-      produced: 0,
-      received: 0,
-      processed: 0,
-      committed: 0,
-      failed: 0,
-    },
-    recentMessages: [],
-    recentEvents: [],
-    cleanupStatus: "not_requested",
-    sequence: 0,
-    ...overrides,
-  };
-}
-
-function consumer(
-  overrides: Partial<RunSnapshot["consumers"][number]>,
-): RunSnapshot["consumers"][number] {
-  return {
-    consumerId: "consumer-1",
-    status: "running",
-    assignments: [],
-    processedCount: 0,
-    committedCount: 0,
-    ...overrides,
-  };
-}
-
-function message(
-  overrides: Partial<RunSnapshot["recentMessages"][number]>,
-): RunSnapshot["recentMessages"][number] {
-  return {
-    messageId: "message-1",
-    runId: "run-1",
-    topic: "kplay.test",
-    partition: 0,
-    offset: "0",
-    key: "user-1",
-    value: {},
-    headers: {},
-    timestamp: new Date(0).toISOString(),
-    state: "produced",
-    assignedConsumerId: null,
-    committedOffset: null,
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString(),
-    ...overrides,
-  };
-}

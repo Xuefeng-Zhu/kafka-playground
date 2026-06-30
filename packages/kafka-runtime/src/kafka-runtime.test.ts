@@ -20,6 +20,10 @@ describe("kafka runtime", () => {
 
   it("masks broker hostnames", () => {
     expect(maskBrokerHost("kafka.example.com:9092")).toBe("ka***.example.com");
+    expect(maskBrokerHost("[2001:db8::1]:9092")).toBe("20***");
+    expect(maskBrokerHost("[2001:db8::1]:9092, backup.example.com:9092")).toBe(
+      "20***",
+    );
   });
 
   it("validates demo env without Aiven credentials", () => {

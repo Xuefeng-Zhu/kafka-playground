@@ -163,11 +163,17 @@ function bufferToString(value: Buffer | string | null | undefined) {
   return Buffer.isBuffer(value) ? value.toString("utf8") : String(value);
 }
 
-function parseJsonValue(value: Buffer | string | null | undefined) {
+function parseJsonValue(
+  value: Buffer | string | null | undefined,
+): Record<string, unknown> | null {
   const text = bufferToString(value);
   if (!text) return null;
   try {
-    return JSON.parse(text) as Record<string, unknown>;
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
   } catch {
     return null;
   }

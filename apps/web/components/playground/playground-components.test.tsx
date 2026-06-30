@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ConnectionStatus,
@@ -33,6 +33,7 @@ describe("playground shell components", () => {
 
   it("surfaces missing Aiven configuration and blocks starting a run", () => {
     const onStartRun = vi.fn();
+    const onTestRemoteConnection = vi.fn();
     render(
       <StartRunPanel
         connection={connectionStatus({
@@ -42,7 +43,7 @@ describe("playground shell components", () => {
         })}
         disabled={false}
         onStartRun={onStartRun}
-        onTestRemoteConnection={vi.fn()}
+        onTestRemoteConnection={onTestRemoteConnection}
         scenario={scenarioFixture}
       />,
     );
@@ -51,7 +52,9 @@ describe("playground shell components", () => {
     expect(screen.queryByText("Remote configuration required")).not.toBeNull();
     expect(screen.queryByText(/brokers, username, password/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Start scenario run" }));
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(onStartRun).not.toHaveBeenCalled();
+    expect(onTestRemoteConnection).not.toHaveBeenCalled();
   });
 
   it("shows selected scenario details before starting a run", () => {
@@ -146,6 +149,86 @@ describe("playground shell components", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear saved config" }));
 
     expect(window.localStorage.getItem("kplay.remoteKafka.config")).toBeNull();
+  });
+
+  it("clears invalid saved remote connection config", async () => {
+    window.localStorage.setItem(
+      "kplay.remoteKafka.config",
+      JSON.stringify({ brokers: 42 }),
+    );
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={vi.fn()}
+        onTestRemoteConnection={vi.fn()}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Remote Kafka/ }));
+
+    expect(window.localStorage.getItem("kplay.remoteKafka.config")).toBeNull();
+    expect((screen.getByLabelText("Brokers") as HTMLInputElement).value).toBe(
+      "",
+    );
+  });
+
+  it("ignores stale remote connection test results after config changes", async () => {
+    window.localStorage.clear();
+    const pendingConnection = deferred<ConnectionStatus>();
+    const onTestRemoteConnection = vi
+      .fn()
+      .mockReturnValue(pendingConnection.promise);
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={vi.fn()}
+        onTestRemoteConnection={onTestRemoteConnection}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Remote Kafka/ }));
+    fireEvent.change(screen.getByLabelText("Brokers"), {
+      target: { value: "old-broker.example.com:9092" },
+    });
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "service-user" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "service-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    fireEvent.change(screen.getByLabelText("Brokers"), {
+      target: { value: "new-broker.example.com:9092" },
+    });
+    await act(async () => {
+      pendingConnection.resolve(
+        connectionStatus({
+          status: "connected",
+          mode: "remote",
+          maskedBrokerHost: "ol***.example.com",
+          brokerCount: 1,
+        }),
+      );
+      await pendingConnection.promise;
+    });
+
+    expect(onTestRemoteConnection).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/ol\*\*\*\.example\.com/)).toBeNull();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Test connection",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it("shows Aiven configuration state before a run exists", () => {
@@ -299,6 +382,14 @@ function connectionStatus(
     checkedAt: "2026-06-26T00:00:00.000Z",
     ...override,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 const messageFixture = {

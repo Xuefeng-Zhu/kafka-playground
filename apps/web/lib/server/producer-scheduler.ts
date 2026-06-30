@@ -46,6 +46,12 @@ function scheduleProducerTick(
     try {
       await produceOne(run.runId);
     } catch (error) {
+      if (
+        run.producerStatus !== "running" ||
+        run.producerTimerGeneration !== generation
+      ) {
+        return;
+      }
       logger.error(
         { err: error, runId: run.runId },
         "Automatic production failed",

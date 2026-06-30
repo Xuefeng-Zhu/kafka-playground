@@ -130,7 +130,7 @@ export function TopologyDetails({
         <TopologyHeader
           title={scenarioNode.title}
           detail={scenarioNode.description}
-          tone={scenarioNode.tone === "emerald" ? "green" : scenarioNode.tone}
+          tone={scenarioNode.tone}
         />
         <DetailSection
           title={scenarioNode.eyebrow}
@@ -155,7 +155,7 @@ export function TopologyDetails({
           consumer?.status === "crashed"
             ? "rose"
             : consumer?.assignments.length
-              ? "green"
+              ? "emerald"
               : "amber"
         }
       />
@@ -195,11 +195,11 @@ function TopologyHeader({
 }: {
   title: string;
   detail: string;
-  tone: "amber" | "green" | "rose" | "sky" | "teal" | "violet";
+  tone: "amber" | "emerald" | "rose" | "sky" | "teal" | "violet";
 }) {
   const toneClass = {
     amber: "border-amber-500 bg-amber-100 text-amber-900",
-    green: "border-emerald-500 bg-emerald-100 text-emerald-900",
+    emerald: "border-emerald-500 bg-emerald-100 text-emerald-900",
     rose: "border-rose-500 bg-rose-100 text-rose-900",
     sky: "border-sky-500 bg-sky-50 text-sky-900",
     teal: "border-teal-700 bg-teal-100 text-teal-900",

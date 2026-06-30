@@ -3,6 +3,7 @@
 import type { ConnectionStatus, RunSnapshot } from "@kplay/contracts";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { connectionStatusLabel } from "@/lib/client/connection-labels";
 
 export function WorkspaceHeader({
   run,
@@ -149,13 +150,7 @@ function connectionLabel(
 ) {
   if (run?.mode === "remote" || run?.mode === "aiven") return "Remote Kafka";
   if (run?.mode === "demo") return "Demo mode";
-  if (!connection) return "Checking";
-  if (connection.status === "demo_mode") return "Demo mode";
-  if (connection.status === "connected") return "Connected";
-  if (connection.status === "configuration_missing")
-    return "Configuration missing";
-  if (connection.status === "connection_failed") return "Connection failed";
-  return "Disconnected";
+  return connectionStatusLabel(connection);
 }
 
 function connectionHostLabel(

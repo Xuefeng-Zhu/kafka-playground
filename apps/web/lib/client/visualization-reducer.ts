@@ -74,13 +74,22 @@ export function mergeSnapshot(
   const deduped = new Map<number, RuntimeEvent>();
   for (const event of [...state.events, ...snapshot.recentEvents])
     deduped.set(event.sequence, event);
+  const events = [...deduped.values()]
+    .sort((a, b) => a.sequence - b.sequence)
+    .slice(-1000);
   return {
     ...state,
     snapshot,
-    events: [...deduped.values()]
-      .sort((a, b) => a.sequence - b.sequence)
-      .slice(-1000),
+    events,
+    hasSequenceGap: eventsHaveSequenceGap(events),
     messages: snapshot.recentMessages,
     lastSequence: Math.max(state.lastSequence, snapshot.sequence),
   };
+}
+
+function eventsHaveSequenceGap(events: RuntimeEvent[]) {
+  for (let index = 1; index < events.length; index += 1) {
+    if (events[index].sequence !== events[index - 1].sequence + 1) return true;
+  }
+  return false;
 }

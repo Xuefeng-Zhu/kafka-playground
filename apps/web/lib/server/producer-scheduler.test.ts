@@ -4,6 +4,7 @@ import {
   restartProducerTimer,
   type ProducerSchedulerRun,
 } from "./producer-scheduler";
+import { logger } from "./logger";
 
 describe("producer scheduler", () => {
   afterEach(() => {
@@ -43,6 +44,32 @@ describe("producer scheduler", () => {
     await vi.advanceTimersByTimeAsync(100);
 
     expect(produceOne).not.toHaveBeenCalled();
+  });
+
+  it("does not log canceled in-flight producer failures", async () => {
+    vi.useFakeTimers();
+    const run = schedulerRun({ productionRate: 10 });
+    const logError = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    let rejectProduce: (error: Error) => void = () => {
+      throw new Error("Expected producer promise to start.");
+    };
+    const produceOne = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectProduce = reject;
+        }),
+    );
+
+    restartProducerTimer(run, produceOne);
+    await vi.advanceTimersByTimeAsync(100);
+    clearProducerTimer(run);
+    run.producerStatus = "stopped";
+    rejectProduce?.(new Error("reset"));
+    await Promise.resolve();
+
+    expect(logError).not.toHaveBeenCalled();
   });
 });
 

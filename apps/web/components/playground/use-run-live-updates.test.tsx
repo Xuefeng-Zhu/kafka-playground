@@ -1,0 +1,310 @@
+import { act, render, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
+
+const fetchRunSnapshot = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/client/playground-api", () => ({
+  fetchRunSnapshot,
+}));
+
+import { useRunLiveUpdates } from "./use-run-live-updates";
+
+describe("useRunLiveUpdates", () => {
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    fetchRunSnapshot.mockReset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("refreshes the run snapshot after runtime events", async () => {
+    const dispatch = vi.fn();
+    fetchRunSnapshot.mockResolvedValue({ ok: true, data: snapshotFixture });
+
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={vi.fn()}
+      />,
+    );
+
+    act(() => {
+      FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "event",
+      event: runtimeEventFixture,
+    });
+    await waitFor(() =>
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "snapshot",
+        snapshot: snapshotFixture,
+      }),
+    );
+  });
+
+  it("ignores refreshed snapshots that resolve after cleanup", async () => {
+    const pendingRefresh = deferred<{
+      ok: true;
+      data: RunSnapshot;
+    }>();
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+    fetchRunSnapshot.mockReturnValue(pendingRefresh.promise);
+    const { unmount } = render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+      />,
+    );
+
+    act(() => {
+      FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+    });
+    unmount();
+    await act(async () => {
+      pendingRefresh.resolve({ ok: true, data: snapshotFixture });
+      await pendingRefresh.promise;
+    });
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "event",
+      event: runtimeEventFixture,
+    });
+    expect(setActionError).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale snapshot refreshes that resolve after newer events", async () => {
+    const firstRefresh = deferred<{
+      ok: true;
+      data: RunSnapshot;
+    }>();
+    const secondRefresh = deferred<{
+      ok: true;
+      data: RunSnapshot;
+    }>();
+    const dispatch = vi.fn();
+    fetchRunSnapshot
+      .mockReturnValueOnce(firstRefresh.promise)
+      .mockReturnValueOnce(secondRefresh.promise);
+
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={vi.fn()}
+      />,
+    );
+
+    act(() => {
+      FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+      FakeEventSource.latest().emit("producer.started", {
+        ...runtimeEventFixture,
+        eventId: "event-2",
+        sequence: 2,
+        type: "producer.started",
+      });
+    });
+    await act(async () => {
+      secondRefresh.resolve({
+        ok: true,
+        data: { ...snapshotFixture, sequence: 2 },
+      });
+      await secondRefresh.promise;
+    });
+    await act(async () => {
+      firstRefresh.resolve({ ok: true, data: snapshotFixture });
+      await firstRefresh.promise;
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "snapshot",
+      snapshot: { ...snapshotFixture, sequence: 2 },
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "snapshot",
+      snapshot: snapshotFixture,
+    });
+  });
+
+  it("surfaces live update disconnects when snapshot refresh fails", async () => {
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+    fetchRunSnapshot.mockResolvedValue({
+      ok: false,
+      message: "Unable to refresh run snapshot.",
+    });
+
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+      />,
+    );
+
+    act(() => {
+      FakeEventSource.latest().emitError();
+    });
+
+    await waitFor(() =>
+      expect(setActionError).toHaveBeenCalledWith(
+        "Unable to refresh run snapshot.",
+      ),
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("ignores disconnect callbacks after cleanup", () => {
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+    const { unmount } = render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+      />,
+    );
+    const source = FakeEventSource.latest();
+
+    unmount();
+    act(() => {
+      source.emitError();
+    });
+
+    expect(fetchRunSnapshot).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(setActionError).not.toHaveBeenCalled();
+  });
+
+  it("ignores live callbacks after manual close", () => {
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+    let closeLiveUpdates: (() => void) | null = null;
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+        onCloseReady={(close) => {
+          closeLiveUpdates = close;
+        }}
+      />,
+    );
+    const source = FakeEventSource.latest();
+
+    act(() => {
+      closeLiveUpdates?.();
+      source.emit("run.started", runtimeEventFixture);
+      source.emitError();
+    });
+
+    expect(source.close).toHaveBeenCalled();
+    expect(fetchRunSnapshot).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(setActionError).not.toHaveBeenCalled();
+  });
+});
+
+function LiveUpdatesHarness({
+  dispatch,
+  runId,
+  setActionError,
+  onCloseReady,
+}: {
+  dispatch: Parameters<typeof useRunLiveUpdates>[0]["dispatch"];
+  runId: string | null;
+  setActionError: (message: string) => void;
+  onCloseReady?: (close: () => void) => void;
+}) {
+  const closeLiveUpdates = useRunLiveUpdates({
+    dispatch,
+    runId,
+    setActionError,
+  });
+  useEffect(() => {
+    onCloseReady?.(closeLiveUpdates);
+  }, [closeLiveUpdates, onCloseReady]);
+  return null;
+}
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  readonly listeners = new Map<string, Set<(message: MessageEvent) => void>>();
+  onmessage: ((message: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  close = vi.fn();
+
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+
+  static latest() {
+    const source = FakeEventSource.instances.at(-1);
+    if (!source) throw new Error("Expected EventSource to be created.");
+    return source;
+  }
+
+  addEventListener(type: string, listener: (message: MessageEvent) => void) {
+    const listeners = this.listeners.get(type) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  emit(type: string, payload: unknown) {
+    const message = new MessageEvent(type, { data: JSON.stringify(payload) });
+    for (const listener of this.listeners.get(type) ?? []) listener(message);
+  }
+
+  emitError() {
+    this.onerror?.(new Event("error"));
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+const runtimeEventFixture = {
+  eventId: "event-1",
+  runId: "run-1",
+  sequence: 1,
+  occurredAt: "2026-01-01T00:00:00.000Z",
+  type: "run.started",
+} satisfies RuntimeEvent;
+
+const snapshotFixture = {
+  runId: "run-1",
+  scenarioId: "partitioning",
+  mode: "demo",
+  status: "running",
+  topicName: "kplay.partitioning",
+  partitionCount: 2,
+  consumerLimit: 3,
+  consumerGroupId: "kplay-group",
+  producerStatus: "running",
+  productionRate: 1,
+  keyStrategy: { type: "round_robin_users" },
+  processingLatencyMs: 0,
+  consumers: [],
+  latestPartitionOffsets: {},
+  latestCommittedOffsets: {},
+  messageCounts: {},
+  recentMessages: [],
+  recentEvents: [runtimeEventFixture],
+  cleanupStatus: "not_requested",
+  sequence: 1,
+} satisfies RunSnapshot;

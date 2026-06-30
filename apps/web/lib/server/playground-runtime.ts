@@ -669,7 +669,17 @@ export class PlaygroundRuntime {
         run.runId,
         message.messageId,
         consumer.consumerId,
-      );
+      ).catch((error) => {
+        logger.error(
+          {
+            err: error,
+            runId: run.runId,
+            messageId: message.messageId,
+            consumerId: consumer.consumerId,
+          },
+          "Scheduled message processing failed",
+        );
+      });
     }, run.processingLatencyMs);
     const previousTimer = run.processingTimers.get(message.messageId);
     if (previousTimer) clearTimeout(previousTimer);
@@ -857,6 +867,7 @@ export class PlaygroundRuntime {
 
   private async cleanup(run: InternalRun) {
     clearProducerTimer(run);
+    run.producerStatus = "stopped";
     for (const timer of run.processingTimers.values()) clearTimeout(timer);
     run.processingTimers.clear();
     for (const [consumerId, handle] of run.consumerHandles) {
@@ -900,8 +911,13 @@ export class PlaygroundRuntime {
   }
 
   private boundMessages(run: InternalRun) {
-    if (run.messages.length > 500)
-      run.messages.splice(0, run.messages.length - 500);
+    if (run.messages.length <= 500) return;
+    const removedMessages = run.messages.splice(0, run.messages.length - 500);
+    for (const message of removedMessages) {
+      const timer = run.processingTimers.get(message.messageId);
+      if (timer) clearTimeout(timer);
+      run.processingTimers.delete(message.messageId);
+    }
   }
 
   private applyConsumerAssignment(

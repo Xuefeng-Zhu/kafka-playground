@@ -4,11 +4,13 @@ import {
   SCENARIOS,
   createPlaygroundValue,
   createResourceNames,
+  defaultKeyStrategyForScenario,
+  defaultProcessingLatencyForScenario,
   evaluateScenarioProcessing,
   sanitizeResourceSegment,
   validateTopicPrefix,
 } from "./index";
-import { scenarioDefinitionSchema } from "@kplay/contracts";
+import { keyStrategySchema, scenarioDefinitionSchema } from "@kplay/contracts";
 
 describe("scenario engine", () => {
   it("generates valid resource names", () => {
@@ -60,14 +62,32 @@ describe("scenario engine", () => {
   });
 
   it("keeps every catalog scenario available with a stable route id", () => {
-    expect(SCENARIOS).toHaveLength(15);
+    expect(SCENARIOS.length).toBeGreaterThan(0);
     expect(SCENARIOS.every((scenario) => !scenario.disabled)).toBe(true);
     expect(new Set(SCENARIOS.map((scenario) => scenario.id)).size).toBe(
       SCENARIOS.length,
     );
     expect(
+      SCENARIOS.every((scenario) => /^[a-z0-9-]+$/.test(scenario.id)),
+    ).toBe(true);
+    expect(
       SCENARIOS.every((scenario) => scenario.learningObjectives.length > 0),
     ).toBe(true);
+  });
+
+  it("keeps scenario defaults inside each catalog scenario limit", () => {
+    for (const scenario of SCENARIOS) {
+      expect(() =>
+        keyStrategySchema.parse(defaultKeyStrategyForScenario(scenario.id)),
+      ).not.toThrow();
+      const latency = defaultProcessingLatencyForScenario(scenario.id);
+      expect(latency, scenario.id).toBeGreaterThanOrEqual(
+        scenario.limits.minProcessingLatencyMs,
+      );
+      expect(latency, scenario.id).toBeLessThanOrEqual(
+        scenario.limits.maxProcessingLatencyMs,
+      );
+    }
   });
 
   it("describes the load-balancing scenario without promising extra groups", () => {

@@ -14,7 +14,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "env -u NO_COLOR playwright test",
     "kafka:cleanup": "tsx scripts/kafka-cleanup.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -30,7 +30,6 @@
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.0.10",
     "jsdom": "^27.3.0",
-    "playwright": "^1.57.0",
     "prettier": "^3.7.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

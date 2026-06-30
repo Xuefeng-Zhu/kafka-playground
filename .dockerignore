@@ -1,5 +1,6 @@
 .git
 .next
+**/next-env.d.ts
 apps/web/.next
 node_modules
 **/node_modules

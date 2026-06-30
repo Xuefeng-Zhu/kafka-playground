@@ -3,6 +3,8 @@ import { ArrowRight, CircleDot } from "lucide-react";
 import { PRIMARY_SCENARIO, SCENARIOS } from "@kplay/scenario-engine";
 
 export default function HomePage() {
+  const primaryScenarioHref = `/scenarios/${PRIMARY_SCENARIO.id}`;
+
   return (
     <main className="min-h-screen bg-[var(--kplay-bg)] px-6 py-8 text-[var(--kplay-text)]">
       <div className="mx-auto flex max-w-7xl flex-col gap-8">
@@ -17,7 +19,7 @@ export default function HomePage() {
             </p>
           </div>
           <Link
-            href="/scenarios/partitioning"
+            href={primaryScenarioHref}
             className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-teal-700 px-4 py-2 text-sm font-extrabold text-white shadow-[4px_4px_0_rgba(15,118,110,0.18)] transition hover:bg-teal-800 focus:outline-none focus:ring-4 focus:ring-sky-200"
           >
             Open playground <ArrowRight size={16} aria-hidden />
@@ -26,7 +28,7 @@ export default function HomePage() {
 
         <section className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
           <Link
-            href="/scenarios/partitioning"
+            href={primaryScenarioHref}
             className="group rounded-2xl border-[3px] border-teal-700 bg-teal-100 p-6 shadow-[7px_7px_0_rgba(15,118,110,0.14)] transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
           >
             <div className="flex items-start justify-between gap-4">
@@ -47,9 +49,9 @@ export default function HomePage() {
               />
             </div>
             <ul className="mt-6 grid gap-2 text-sm text-[#31566a] md:grid-cols-2">
-              {PRIMARY_SCENARIO.learningObjectives.map((objective) => (
+              {PRIMARY_SCENARIO.learningObjectives.map((objective, index) => (
                 <li
-                  key={objective}
+                  key={`${objective}-${index}`}
                   className="rounded-2xl border-2 border-teal-700 bg-[#fffdf5] p-3 font-semibold"
                 >
                   {objective}

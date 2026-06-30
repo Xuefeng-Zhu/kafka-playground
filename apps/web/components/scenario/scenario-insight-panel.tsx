@@ -52,9 +52,9 @@ export function ScenarioInsightPanel({
           </p>
         </div>
         <dl className="grid min-w-[260px] flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
-          {insight.metrics.map((metric) => (
+          {insight.metrics.map((metric, index) => (
             <div
-              key={metric.label}
+              key={`${metric.label}-${index}`}
               className={`rounded-xl border-2 px-3 py-2 ${toneClass[metric.tone ?? "sky"]}`}
             >
               <dt className="text-[10px] font-extrabold uppercase tracking-[0.12em] opacity-75">
@@ -68,9 +68,9 @@ export function ScenarioInsightPanel({
         </dl>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        {insight.chips.map((chip) => (
+        {insight.chips.map((chip, index) => (
           <span
-            key={chip}
+            key={`${chip}-${index}`}
             className="rounded-full border-2 border-teal-700 bg-teal-50 px-2 py-0.5 text-[11px] font-extrabold text-teal-800"
           >
             {chip}

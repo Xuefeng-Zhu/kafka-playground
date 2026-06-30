@@ -121,9 +121,15 @@ export function ControlsPanel({
             type="number"
             value={snapshot.productionRate}
             disabled={disabled}
-            onChange={(event) =>
-              onUpdateSettings({ productionRate: Number(event.target.value) })
-            }
+            onChange={(event) => {
+              const productionRate = parseNumberInput(event.target.value, {
+                min: 1,
+                max: 10,
+              });
+              if (productionRate !== null) {
+                onUpdateSettings({ productionRate });
+              }
+            }}
           />
           <input
             aria-label="Produce rate slider"
@@ -133,9 +139,15 @@ export function ControlsPanel({
             type="range"
             value={snapshot.productionRate}
             disabled={disabled}
-            onChange={(event) =>
-              onUpdateSettings({ productionRate: Number(event.target.value) })
-            }
+            onChange={(event) => {
+              const productionRate = parseNumberInput(event.target.value, {
+                min: 1,
+                max: 10,
+              });
+              if (productionRate !== null) {
+                onUpdateSettings({ productionRate });
+              }
+            }}
           />
         </label>
 
@@ -150,11 +162,15 @@ export function ControlsPanel({
             type="number"
             value={snapshot.processingLatencyMs}
             disabled={disabled}
-            onChange={(event) =>
-              onUpdateSettings({
-                processingLatencyMs: Number(event.target.value),
-              })
-            }
+            onChange={(event) => {
+              const processingLatencyMs = parseNumberInput(event.target.value, {
+                min: 0,
+                max: 3000,
+              });
+              if (processingLatencyMs !== null) {
+                onUpdateSettings({ processingLatencyMs });
+              }
+            }}
           />
           <input
             aria-label="Processing latency slider"
@@ -165,11 +181,15 @@ export function ControlsPanel({
             type="range"
             value={snapshot.processingLatencyMs}
             disabled={disabled}
-            onChange={(event) =>
-              onUpdateSettings({
-                processingLatencyMs: Number(event.target.value),
-              })
-            }
+            onChange={(event) => {
+              const processingLatencyMs = parseNumberInput(event.target.value, {
+                min: 0,
+                max: 3000,
+              });
+              if (processingLatencyMs !== null) {
+                onUpdateSettings({ processingLatencyMs });
+              }
+            }}
           />
         </label>
 
@@ -271,4 +291,18 @@ export function ControlsPanel({
       </div>
     </div>
   );
+}
+
+function parseNumberInput(
+  value: string,
+  { max, min }: { max: number; min: number },
+) {
+  if (value.trim() === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return null;
+  }
+  return parsed;
 }

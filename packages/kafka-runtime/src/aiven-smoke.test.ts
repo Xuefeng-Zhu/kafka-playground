@@ -32,6 +32,7 @@ describe("optional real Aiven smoke", () => {
         partitionCount: 2,
       };
       let consumer: PlaygroundConsumerHandle | null = null;
+      let consumedTimeout: ReturnType<typeof setTimeout> | null = null;
       try {
         await adapter.createRun(run);
         const eventId = crypto.randomUUID();
@@ -55,7 +56,7 @@ describe("optional real Aiven smoke", () => {
         const consumed = new Promise<ConsumedMessage>((resolve, reject) => {
           resolveConsumed = resolve;
           rejectConsumed = reject;
-          setTimeout(
+          consumedTimeout = setTimeout(
             () => reject(new Error("Timed out waiting for Aiven message.")),
             30_000,
           );
@@ -86,6 +87,7 @@ describe("optional real Aiven smoke", () => {
           offset: String(Number(message.offset) + 1),
         });
       } finally {
+        if (consumedTimeout) clearTimeout(consumedTimeout);
         await consumer?.disconnect().catch(() => undefined);
         await adapter.deleteRunResources(run).catch(() => undefined);
         await adapter.shutdown();

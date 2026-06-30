@@ -5,7 +5,7 @@ import {
   latestPayloadString,
 } from "./scenario-metrics";
 
-export type ScenarioInsight = {
+type ScenarioInsight = {
   title: string;
   summary: string;
   metrics: Array<{

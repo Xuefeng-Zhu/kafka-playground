@@ -17,6 +17,17 @@ export async function GET(request: Request, context: Context) {
         let closed = false;
         let unsubscribe: (() => void) | null = null;
         let heartbeat: ReturnType<typeof setInterval> | null = null;
+        const closeController = () => {
+          try {
+            controller.close();
+          } catch {
+            // The client may already have closed the stream.
+          }
+        };
+        const handleAbort = () => {
+          cleanup();
+          closeController();
+        };
         const cleanup = () => {
           if (closed) return;
           closed = true;
@@ -24,8 +35,14 @@ export async function GET(request: Request, context: Context) {
           heartbeat = null;
           unsubscribe?.();
           unsubscribe = null;
+          request.signal.removeEventListener("abort", handleAbort);
         };
         cleanupStream = cleanup;
+        if (request.signal.aborted) {
+          cleanup();
+          closeController();
+          return;
+        }
         const safeEnqueue = (chunk: string) => {
           if (closed) return;
           try {
@@ -46,8 +63,9 @@ export async function GET(request: Request, context: Context) {
             );
           }
         };
-        const lastEventId =
-          Number(request.headers.get("last-event-id") ?? "0") || null;
+        const lastEventId = parseLastEventId(
+          request.headers.get("last-event-id"),
+        );
         unsubscribe = playgroundRuntime.subscribe(runId, lastEventId, {
           id: crypto.randomUUID(),
           enqueue,
@@ -60,14 +78,7 @@ export async function GET(request: Request, context: Context) {
         heartbeat = setInterval(() => {
           safeEnqueue(`: heartbeat ${Date.now()}\n\n`);
         }, 15_000);
-        request.signal.addEventListener("abort", () => {
-          cleanup();
-          try {
-            controller.close();
-          } catch {
-            // The client may already have closed the stream.
-          }
-        });
+        request.signal.addEventListener("abort", handleAbort, { once: true });
       },
       cancel() {
         cleanupStream();
@@ -85,4 +96,10 @@ export async function GET(request: Request, context: Context) {
   } catch (error) {
     return problem(error, id);
   }
+}
+
+function parseLastEventId(value: string | null) {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }

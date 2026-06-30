@@ -84,7 +84,7 @@ select {
 }
 
 .kplay-topology-flow .react-flow__pane {
-  z-index: 0;
+  z-index: 1;
 }
 
 .kplay-topology-flow .react-flow__renderer,

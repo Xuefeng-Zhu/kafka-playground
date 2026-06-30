@@ -1,6 +1,7 @@
-import type { PlaygroundMessage, RunSnapshot } from "@kplay/contracts";
+import type { RunSnapshot } from "@kplay/contracts";
 import { SCENARIOS } from "@kplay/scenario-engine";
 import { describe, expect, it } from "vitest";
+import { playgroundMessage, runSnapshot } from "./run-snapshot-test-fixtures";
 import { deriveScenarioTopology } from "./scenario-topology";
 
 const coreNodeIds = new Set(["producer", "topic", "consumerGroup"]);
@@ -34,6 +35,10 @@ describe("deriveScenarioTopology", () => {
         new Set(topology.edges.map((edge) => edge.id)).size,
         scenario.id,
       ).toBe(topology.edges.length);
+      if (scenario.id !== "partitioning") {
+        expect(nodeIds.has("key-router"), scenario.id).toBe(false);
+        expect(nodeIds.has("commit-progress"), scenario.id).toBe(false);
+      }
 
       for (const node of topology.nodes) {
         expect(node.title, node.id).not.toHaveLength(0);
@@ -144,17 +149,12 @@ function snapshotFor(
   scenarioId: string,
   overrides: Partial<RunSnapshot> = {},
 ): RunSnapshot {
-  return {
+  return runSnapshot({
     runId: `run-${scenarioId}`,
     scenarioId,
-    mode: "demo",
-    status: "running",
     topicName: `kplay.${scenarioId}`,
     partitionCount: 3,
-    consumerLimit: 3,
     consumerGroupId: `group-${scenarioId}`,
-    producerStatus: "stopped",
-    productionRate: 1,
     keyStrategy: { type: "fixed", value: "user-1" },
     processingLatencyMs: 250,
     consumers: [
@@ -166,28 +166,15 @@ function snapshotFor(
         committedCount: 0,
       },
     ],
-    latestPartitionOffsets: {},
-    latestCommittedOffsets: {},
-    messageCounts: {
-      produced: 0,
-      received: 0,
-      processed: 0,
-      committed: 0,
-      failed: 0,
-    },
-    recentMessages: [],
-    recentEvents: [],
-    cleanupStatus: "not_requested",
-    sequence: 0,
     ...overrides,
-  };
+  });
 }
 
 function message(
   messageId: string,
   payload: Record<string, unknown>,
-): PlaygroundMessage {
-  return {
+): RunSnapshot["recentMessages"][number] {
+  return playgroundMessage({
     messageId,
     runId: "run",
     topic: "topic",
@@ -200,7 +187,5 @@ function message(
     state: "committed",
     assignedConsumerId: "consumer-1",
     committedOffset: "1",
-    createdAt: "2026-06-26T00:00:00.000Z",
-    updatedAt: "2026-06-26T00:00:00.000Z",
-  };
+  });
 }

@@ -1,7 +1,7 @@
 import type { RunSnapshot } from "@kplay/contracts";
 import { busiestPartition } from "./scenario-metrics";
 
-export type ScenarioCheckpointOption = {
+type ScenarioCheckpointOption = {
   id: string;
   label: string;
 };
