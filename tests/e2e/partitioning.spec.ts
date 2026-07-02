@@ -131,6 +131,9 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.goto("/scenarios/partitioning");
   await page.evaluate(() => {
     window.localStorage.removeItem("kplay.lowerPanel.activeTab");
+    Object.keys(window.localStorage)
+      .filter((key) => key.startsWith("kplay.topology.overlayPositions."))
+      .forEach((key) => window.localStorage.removeItem(key));
   });
   await page.reload();
   await expect(page.getByTestId("lower-panel-tabs")).toHaveCount(0);
@@ -285,6 +288,10 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByLabel("Messages per second")).toBeVisible();
   await expect(page.getByLabel("Key strategy")).toBeVisible();
   await expect(page.getByLabel("Consumer processing latency")).toBeVisible();
+  await page.getByLabel("Messages per second").fill("11");
+  await expect(page.getByLabel("Messages per second")).toHaveValue("1");
+  await page.getByLabel("Messages per second").fill("");
+  await expect(page.getByLabel("Messages per second")).toHaveValue("1");
   const settingsControlTops = await page
     .locator(
       "#run-settings-panel input[aria-label='Messages per second'], #run-settings-panel select#key-strategy, #run-settings-panel input[aria-label='Consumer processing latency'], #run-settings-panel span:has-text('0 consumers')",
@@ -325,6 +332,63 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByTestId("topology-node-producer")).toBeVisible();
   await expect(page.getByTestId("topology-node-topic")).toBeVisible();
   await expect(page.getByTestId("topology-node-consumer-group")).toBeVisible();
+  await expect(
+    page.getByTestId("topology-scenario-node-key-router"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("topology-scenario-node-commit-progress"),
+  ).toBeVisible();
+  await expectTopologyOverlaysClearCore(page, [
+    "topology-scenario-node-key-router",
+    "topology-scenario-node-commit-progress",
+  ]);
+  const keyRouterBeforeDrag = await dragTopologyNode(
+    page,
+    "topology-scenario-node-key-router",
+    { x: -48, y: 52 },
+  );
+  await expect
+    .poll(async () => {
+      const box = await page
+        .getByTestId("topology-scenario-node-key-router")
+        .boundingBox();
+      return box ? Math.round(box.x - keyRouterBeforeDrag.x) : 0;
+    })
+    .toBeLessThanOrEqual(-20);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.entries(window.localStorage)
+          .filter(([key]) =>
+            key.startsWith("kplay.topology.overlayPositions.partitioning."),
+          )
+          .map(([, value]) => value)
+          .join("\n"),
+      ),
+    )
+    .toContain("key-router");
+  await page.reload();
+  await expect(
+    page.getByTestId("topology-scenario-node-key-router"),
+  ).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await page
+        .getByTestId("topology-scenario-node-key-router")
+        .boundingBox();
+      return box ? Math.round(box.x - keyRouterBeforeDrag.x) : 0;
+    })
+    .toBeLessThanOrEqual(-20);
+  await page.getByRole("button", { name: "Reset overlay positions" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.keys(window.localStorage).filter((key) =>
+          key.startsWith("kplay.topology.overlayPositions.partitioning."),
+        ),
+      ),
+    )
+    .toEqual([]);
   await expect(page.getByTestId("topology-edge-producer-topic")).toHaveCount(1);
   await page.getByRole("button", { name: "Inspect producer" }).click();
   await expect(page.getByText("Topology Inspector")).toBeVisible();
@@ -497,6 +561,10 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("tab", { name: "Controls" }).click();
+  await page.getByRole("button", { name: "Produce one" }).click();
+  await expect(page.getByText("Message Inspector")).toBeVisible();
+  await page.getByRole("button", { name: "Close message inspector" }).click();
   await expect(page.getByTestId("partition-owner-0")).toBeVisible();
   await expect
     .poll(async () =>
@@ -505,6 +573,13 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
         .evaluate((element) => element.scrollWidth <= element.clientWidth),
     )
     .toBe(true);
+  await expect
+    .poll(async () =>
+      page
+        .getByTestId("topology-canvas")
+        .evaluate((element) => Math.round(element.getBoundingClientRect().top)),
+    )
+    .toBeGreaterThanOrEqual(0);
 
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(
@@ -602,6 +677,7 @@ test("every scenario renders and inspects a distinct topology overlay", async ({
     await expectTopologyNodeFramed(page, "topology-node-producer");
     await expectTopologyNodeFramed(page, "topology-node-topic");
     await expectTopologyNodeFramed(page, "topology-node-consumer-group");
+    await expectTopologyOverlaysClearCore(page);
     await expectTopologyNodeFramed(
       page,
       `topology-scenario-node-${scenarioCase.overlayId}`,
@@ -730,6 +806,118 @@ async function expectTopologyNodeFramed(page: Page, testId: string) {
       }),
     )
     .toBe(true);
+}
+
+async function dragTopologyNode(
+  page: Page,
+  testId: string,
+  delta: { x: number; y: number },
+) {
+  const box = await page.getByTestId(testId).boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) throw new Error(`Missing topology node ${testId}`);
+
+  const start = {
+    x: box.x + box.width / 2,
+    y: box.y + Math.min(28, box.height / 2),
+  };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 8 });
+  await page.mouse.up();
+  return box;
+}
+
+async function expectTopologyOverlaysClearCore(
+  page: Page,
+  overlayIds?: string[],
+) {
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ overlayIds: evaluatedOverlayIds }) => {
+          const coreIds = [
+            "topology-node-producer",
+            "topology-node-topic",
+            "topology-node-consumer-group",
+          ];
+          const gap = 8;
+          const readBox = (testId: string) => {
+            const element = document.querySelector(`[data-testid="${testId}"]`);
+            if (!element) return null;
+            const box = element.getBoundingClientRect();
+            return {
+              bottom: box.bottom,
+              left: box.left,
+              right: box.right,
+              top: box.top,
+            };
+          };
+          const canvasBox = readBox("topology-canvas");
+          const coreBoxes = coreIds.map((id) => [id, readBox(id)] as const);
+          const resolvedOverlayIds =
+            evaluatedOverlayIds ??
+            Array.from(
+              document.querySelectorAll<HTMLElement>(
+                '[data-testid^="topology-scenario-node-"]',
+              ),
+              (element) => element.dataset.testid ?? "",
+            ).filter(Boolean);
+          const overlayBoxes = resolvedOverlayIds.map(
+            (id) => [id, readBox(id)] as const,
+          );
+          const formatBox = (box: {
+            bottom: number;
+            left: number;
+            right: number;
+            top: number;
+          }) =>
+            [
+              Math.round(box.left),
+              Math.round(box.top),
+              Math.round(box.right),
+              Math.round(box.bottom),
+            ].join(",");
+          const missing = [...coreBoxes, ...overlayBoxes]
+            .filter(([, box]) => !box)
+            .map(([id]) => `missing ${id}`);
+          if (!canvasBox) missing.push("missing topology-canvas");
+          if (missing.length > 0) return missing;
+
+          const overlaps: string[] = [];
+          for (const [overlayId, overlayBox] of overlayBoxes) {
+            if (
+              overlayBox &&
+              canvasBox &&
+              (overlayBox.left < canvasBox.left ||
+                overlayBox.right > canvasBox.right ||
+                overlayBox.top < canvasBox.top ||
+                overlayBox.bottom > canvasBox.bottom)
+            ) {
+              overlaps.push(
+                `${overlayId} leaves topology canvas: overlay=${formatBox(overlayBox)} canvas=${formatBox(canvasBox)}`,
+              );
+            }
+            for (const [coreId, coreBox] of coreBoxes) {
+              if (!overlayBox || !coreBox) continue;
+              const hasGap =
+                overlayBox.right + gap <= coreBox.left ||
+                overlayBox.left >= coreBox.right + gap ||
+                overlayBox.bottom + gap <= coreBox.top ||
+                overlayBox.top >= coreBox.bottom + gap;
+              if (!hasGap) {
+                overlaps.push(
+                  `${overlayId} overlaps ${coreId}: overlay=${formatBox(overlayBox)} core=${formatBox(coreBox)}`,
+                );
+              }
+            }
+          }
+          return overlaps;
+        },
+        { overlayIds },
+      ),
+    )
+    .toEqual([]);
 }
 
 async function expectReactFlowStylesLoaded(page: Page) {

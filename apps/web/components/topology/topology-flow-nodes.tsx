@@ -277,7 +277,7 @@ function ScenarioOverlayFlowNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
 
   return (
     <div
-      className="nodrag pointer-events-auto relative"
+      className="pointer-events-auto relative cursor-grab active:cursor-grabbing"
       data-testid={`topology-scenario-node-${model.id}`}
     >
       <button

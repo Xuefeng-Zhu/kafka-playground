@@ -101,10 +101,12 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isActionPending, setActionPending] = useState(false);
   const [isInspectorOpen, setInspectorOpen] = useState(false);
+  const [shouldFrameTopology, setShouldFrameTopology] = useState(false);
   const [selectedTopologyNode, setSelectedTopologyNode] =
     useState<TopologySelection | null>(null);
   const actionInFlightRef = useRef(false);
   const workspaceGridRef = useRef<HTMLDivElement | null>(null);
+  const topologySectionRef = useRef<HTMLElement | null>(null);
   const timelineResizeRef = useRef<TimelineResizeState | null>(null);
   const lowerPanelTabRefs = useRef<
     Partial<Record<LowerPanelTab, HTMLButtonElement | null>>
@@ -205,6 +207,17 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     };
   }, [router, scenarioId, clearRunSelection]);
 
+  useEffect(() => {
+    if (!shouldFrameTopology || !run) return;
+    const frame = requestAnimationFrame(() => {
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        topologySectionRef.current?.scrollIntoView({ block: "start" });
+      }
+      setShouldFrameTopology(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [run, shouldFrameTopology]);
+
   const selectedEvent = useMemo(() => {
     if (selectedEventSequence === null) return null;
     return (
@@ -254,6 +267,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         }),
       });
       dispatch({ type: "snapshot", snapshot });
+      setShouldFrameTopology(true);
       selectLowerPanelTab("controls");
     });
   }
@@ -318,6 +332,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     await runAction(async () => {
       const snapshot = await produceMessage(run.runId);
       dispatch({ type: "snapshot", snapshot });
+      setShouldFrameTopology(true);
       resetSelection();
       setSelectedTopologyNode(null);
       setInspectorOpen(true);
@@ -552,7 +567,10 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
           />
         </aside>
 
-        <section className="relative min-h-[560px] border-b-[3px] border-teal-700 bg-[#ecfeff] lg:min-h-0 lg:border-b-0 lg:border-r-[3px]">
+        <section
+          ref={topologySectionRef}
+          className="relative min-h-[560px] border-b-[3px] border-teal-700 bg-[#ecfeff] lg:min-h-0 lg:border-b-0 lg:border-r-[3px]"
+        >
           {!run ? (
             <StartRunPanel
               connection={connection}
