@@ -11,12 +11,18 @@ import {
   useViewport,
   type Edge,
   type Node,
+  type OnNodeDrag,
 } from "@xyflow/react";
-import { Maximize2, Minus, Network, Plus } from "lucide-react";
+import { Maximize2, Minus, Network, Plus, RotateCcw } from "lucide-react";
 import {
   deriveScenarioTopology,
   type ScenarioTopologyEdge,
 } from "@/lib/client/scenario-topology";
+import {
+  getStoredValue,
+  removeStoredValue,
+  setStoredValue,
+} from "@/lib/client/safe-storage";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { partitionAssignments, toneForPartition } from "./topology-cards";
 import {
@@ -37,6 +43,7 @@ import {
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.35;
 const ZOOM_STEP = 0.15;
+const OVERLAY_POSITION_STORAGE_PREFIX = "kplay.topology.overlayPositions";
 
 type TopologyNode =
   | Node<ProducerNodeData, "producer">
@@ -44,6 +51,8 @@ type TopologyNode =
   | Node<ConsumerGroupNodeData, "consumerGroup">
   | Node<ScenarioNodeData, "scenarioNode">;
 type TopologyEdge = Edge<Record<string, never>, "smoothstep">;
+type Position = { x: number; y: number };
+type SavedScenarioPositions = Record<string, Position>;
 
 export function KafkaTopology({
   snapshot,
@@ -105,6 +114,7 @@ function KafkaTopologyFlow({
         assignmentByPartition.get(activePartition)?.consumerId ??
         null);
   const [layout, setLayout] = useState<TopologyLayout>("auto");
+  const [overlayPositionRevision, setOverlayPositionRevision] = useState(0);
   const hasMountedRef = useRef(false);
   const topologyCanvasRef = useRef<HTMLDivElement | null>(null);
   const isCompact = useCompactTopology();
@@ -144,6 +154,22 @@ function KafkaTopologyFlow({
     () => fitNodeIds.map((id) => ({ id })),
     [fitNodeIds],
   );
+  const overlayPositionStorageKey = useMemo(
+    () =>
+      [
+        OVERLAY_POSITION_STORAGE_PREFIX,
+        snapshot.scenarioId,
+        layout,
+        isCompact ? "compact" : "wide",
+      ].join("."),
+    [isCompact, layout, snapshot.scenarioId],
+  );
+  const savedScenarioPositions = useMemo(() => {
+    void overlayPositionRevision;
+    return parseSavedScenarioPositions(
+      getStoredValue(overlayPositionStorageKey),
+    );
+  }, [overlayPositionRevision, overlayPositionStorageKey]);
   const flowKey = useMemo(
     () =>
       [
@@ -172,6 +198,29 @@ function KafkaTopologyFlow({
       padding: { x: 32, y: 28 },
     });
   }, [fitViewNodeOptions, flow]);
+
+  const resetOverlayPositions = useCallback(() => {
+    removeStoredValue(overlayPositionStorageKey);
+    setOverlayPositionRevision((current) => current + 1);
+    setViewportHome();
+  }, [overlayPositionStorageKey, setViewportHome]);
+
+  const handleNodeDragStop = useCallback<OnNodeDrag<TopologyNode>>(
+    (_event, node) => {
+      if (node.type !== "scenarioNode" || isCompact) return;
+      const scenarioNodeId = node.id.slice("scenario-".length);
+      const next = {
+        ...savedScenarioPositions,
+        [scenarioNodeId]: {
+          x: Math.round(node.position.x),
+          y: Math.round(node.position.y),
+        },
+      };
+      setStoredValue(overlayPositionStorageKey, JSON.stringify(next));
+      setOverlayPositionRevision((current) => current + 1);
+    },
+    [isCompact, overlayPositionStorageKey, savedScenarioPositions],
+  );
 
   useEffect(() => {
     if (!hasMountedRef.current) {
@@ -307,8 +356,10 @@ function KafkaTopologyFlow({
       (model) => ({
         id: scenarioFlowNodeId(model.id),
         type: "scenarioNode",
-        position: isCompact ? model.compactPosition : model.position,
-        draggable: false,
+        position: isCompact
+          ? model.compactPosition
+          : (savedScenarioPositions[model.id] ?? model.position),
+        draggable: !isCompact,
         selectable: false,
         data: {
           model,
@@ -336,6 +387,7 @@ function KafkaTopologyFlow({
     scenarioTopology.nodes,
     selectedMessageId,
     selectedNode,
+    savedScenarioPositions,
     snapshot,
   ]);
 
@@ -422,8 +474,8 @@ function KafkaTopologyFlow({
       className="kplay-grid-bg relative min-h-[620px] overflow-hidden lg:h-full lg:min-h-0"
       data-testid="topology-canvas"
     >
-      <div className="absolute left-4 right-4 top-5 z-20 flex flex-wrap items-center justify-end gap-3 lg:left-6 lg:right-6">
-        <div className="flex items-center gap-2 lg:gap-3">
+      <div className="pointer-events-none absolute left-4 right-4 top-5 z-20 flex flex-wrap items-center justify-end gap-3 lg:left-6 lg:right-6">
+        <div className="pointer-events-auto flex items-center gap-2 lg:gap-3">
           <button
             className="inline-flex h-8 items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]"
             onClick={toggleLayout}
@@ -460,6 +512,14 @@ function KafkaTopologyFlow({
           >
             <Maximize2 size={15} aria-hidden />
           </button>
+          <button
+            className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]"
+            onClick={resetOverlayPositions}
+            aria-label="Reset overlay positions"
+            title="Reset overlay positions"
+          >
+            <RotateCcw size={15} aria-hidden />
+          </button>
         </div>
       </div>
 
@@ -472,7 +532,7 @@ function KafkaTopologyFlow({
           minZoom={MIN_ZOOM}
           maxZoom={MAX_ZOOM}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          nodesDraggable={false}
+          nodesDraggable={!isCompact}
           nodesConnectable={false}
           nodesFocusable={false}
           edgesFocusable={false}
@@ -490,6 +550,7 @@ function KafkaTopologyFlow({
             padding: { x: 32, y: 28 },
           }}
           onError={handleReactFlowError}
+          onNodeDragStop={handleNodeDragStop}
           noDragClassName="nodrag"
           noPanClassName="nopan"
           className="kplay-topology-flow"
@@ -506,6 +567,32 @@ function clampZoom(nextZoom: number) {
 
 function edgeTestId(value: string): TopologyEdge["domAttributes"] {
   return { "data-testid": value } as TopologyEdge["domAttributes"];
+}
+
+function parseSavedScenarioPositions(
+  value: string | null,
+): SavedScenarioPositions {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, Position] => {
+        const [, position] = entry;
+        return (
+          !!position &&
+          typeof position === "object" &&
+          !Array.isArray(position) &&
+          Number.isFinite((position as Position).x) &&
+          Number.isFinite((position as Position).y)
+        );
+      }),
+    );
+  } catch {
+    return {};
+  }
 }
 
 function handleReactFlowError(code: string, message: string) {
