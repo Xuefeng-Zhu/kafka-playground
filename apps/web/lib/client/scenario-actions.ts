@@ -49,7 +49,7 @@ export function deriveScenarioActions(snapshot: RunSnapshot): ScenarioAction[] {
         label: "Slow commit window",
         description:
           "Increase processing latency so pre-commit interruption is easier to see.",
-        settings: { processingLatencyMs: 2500 },
+        settings: { processingLatencyMs: 5000 },
       },
     ];
   }

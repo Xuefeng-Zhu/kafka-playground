@@ -5,7 +5,12 @@ const standardLimits = {
   maxConsumers: 3,
   maxProduceRate: 10,
   minProcessingLatencyMs: 0,
-  maxProcessingLatencyMs: 3000,
+  maxProcessingLatencyMs: 5000,
+};
+
+const fanOutLoadBalancingLimits = {
+  ...standardLimits,
+  maxConsumers: 4,
 };
 
 export const SCENARIOS: ScenarioDefinition[] = [
@@ -36,7 +41,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
       "Unkeyed events distribute across partitions differently than fixed-key events.",
     ],
     topic: { partitions: 3 },
-    limits: standardLimits,
+    limits: fanOutLoadBalancingLimits,
   },
   {
     id: "at-least-once-duplicates",

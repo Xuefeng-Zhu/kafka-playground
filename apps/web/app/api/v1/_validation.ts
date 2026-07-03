@@ -23,7 +23,7 @@ export function describeSettingsIssue(issue: ZodIssue) {
     return "Production rate must be between 1 and 10 messages per second.";
   }
   if (path === "processingLatencyMs") {
-    return "Processing latency must be between 0 and 3000 ms.";
+    return "Processing latency must be between 0 and 5000 ms.";
   }
   if (path === "keyStrategy.value") {
     return "Fixed keys must be between 1 and 80 characters.";

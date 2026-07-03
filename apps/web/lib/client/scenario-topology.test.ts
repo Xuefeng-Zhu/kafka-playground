@@ -95,6 +95,24 @@ describe("deriveScenarioTopology", () => {
     });
   });
 
+  it("preserves authored wide overlay positions and keeps fan-out idle members clear of spread consumers", () => {
+    const schemaTopology = deriveScenarioTopology(
+      snapshotFor("schema-evolution-karapace"),
+    );
+    expect(
+      schemaTopology.nodes.find((node) => node.id === "compatibility-gate")
+        ?.position,
+    ).toEqual({ x: 604, y: 32 });
+
+    const fanOutTopology = deriveScenarioTopology(
+      snapshotFor("fan-out-load-balancing"),
+    );
+    expect(
+      fanOutTopology.nodes.find((node) => node.id === "idle-members")?.position
+        .x,
+    ).toBeGreaterThanOrEqual(1260);
+  });
+
   it("surfaces hot partition counts from per-partition message totals", () => {
     const topology = deriveScenarioTopology(
       snapshotFor("hot-partitions-key-skew", {

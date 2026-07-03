@@ -131,6 +131,9 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.goto("/scenarios/partitioning");
   await page.evaluate(() => {
     window.localStorage.removeItem("kplay.lowerPanel.activeTab");
+    Object.keys(window.localStorage)
+      .filter((key) => key.startsWith("kplay.topology.overlayPositions."))
+      .forEach((key) => window.localStorage.removeItem(key));
   });
   await page.reload();
   await expect(page.getByTestId("lower-panel-tabs")).toHaveCount(0);
@@ -199,6 +202,12 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   ).toBeVisible();
   await page.getByRole("button", { name: "Start scenario run" }).click();
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+  await expect(page.getByTestId("partition-empty-state-0")).toContainText(
+    "No messages yet",
+  );
+  await expect(page.getByTestId("partition-placeholder-offset-0")).toHaveCount(
+    0,
+  );
   await expect(page.getByTestId("lower-panel-tab-controls")).toHaveAttribute(
     "aria-selected",
     "true",
@@ -285,6 +294,10 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByLabel("Messages per second")).toBeVisible();
   await expect(page.getByLabel("Key strategy")).toBeVisible();
   await expect(page.getByLabel("Consumer processing latency")).toBeVisible();
+  await page.getByLabel("Messages per second").fill("11");
+  await expect(page.getByLabel("Messages per second")).toHaveValue("1");
+  await page.getByLabel("Messages per second").fill("");
+  await expect(page.getByLabel("Messages per second")).toHaveValue("1");
   const settingsControlTops = await page
     .locator(
       "#run-settings-panel input[aria-label='Messages per second'], #run-settings-panel select#key-strategy, #run-settings-panel input[aria-label='Consumer processing latency'], #run-settings-panel span:has-text('0 consumers')",
@@ -325,6 +338,64 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByTestId("topology-node-producer")).toBeVisible();
   await expect(page.getByTestId("topology-node-topic")).toBeVisible();
   await expect(page.getByTestId("topology-node-consumer-group")).toBeVisible();
+  await expect(
+    page.getByTestId("topology-scenario-node-key-router"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("topology-scenario-node-commit-progress"),
+  ).toBeVisible();
+  await expectTopologyOverlaysClearCore(page, [
+    "topology-scenario-node-key-router",
+    "topology-scenario-node-commit-progress",
+  ]);
+  const keyRouterBeforeDrag = await dragTopologyNode(
+    page,
+    "topology-scenario-node-key-router",
+    { x: -48, y: 52 },
+  );
+  await expect
+    .poll(async () => {
+      const box = await page
+        .getByTestId("topology-scenario-node-key-router")
+        .boundingBox();
+      return box ? Math.round(box.x - keyRouterBeforeDrag.x) : 0;
+    })
+    .toBeLessThanOrEqual(-20);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.entries(window.localStorage)
+          .filter(([key]) =>
+            key.startsWith("kplay.topology.overlayPositions.partitioning."),
+          )
+          .map(([, value]) => value)
+          .join("\n"),
+      ),
+    )
+    .toContain("key-router");
+  await page.reload();
+  await expect(
+    page.getByTestId("topology-scenario-node-key-router"),
+  ).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await page
+        .getByTestId("topology-scenario-node-key-router")
+        .boundingBox();
+      return box ? Math.round(box.x - keyRouterBeforeDrag.x) : 0;
+    })
+    .toBeLessThanOrEqual(-20);
+  await page.getByRole("button", { name: "Reset overlay positions" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.keys(window.localStorage).filter((key) =>
+          key.startsWith("kplay.topology.overlayPositions.partitioning."),
+        ),
+      ),
+    )
+    .toEqual([]);
+  await expectTopologyNodeFramed(page, "topology-scenario-node-key-router");
   await expect(page.getByTestId("topology-edge-producer-topic")).toHaveCount(1);
   await page.getByRole("button", { name: "Inspect producer" }).click();
   await expect(page.getByText("Topology Inspector")).toBeVisible();
@@ -497,6 +568,10 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("tab", { name: "Controls" }).click();
+  await page.getByRole("button", { name: "Produce one" }).click();
+  await expect(page.getByText("Message Inspector")).toBeVisible();
+  await page.getByRole("button", { name: "Close message inspector" }).click();
   await expect(page.getByTestId("partition-owner-0")).toBeVisible();
   await expect
     .poll(async () =>
@@ -505,6 +580,13 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
         .evaluate((element) => element.scrollWidth <= element.clientWidth),
     )
     .toBe(true);
+  await expect
+    .poll(async () =>
+      page
+        .getByTestId("topology-canvas")
+        .evaluate((element) => Math.round(element.getBoundingClientRect().top)),
+    )
+    .toBeGreaterThanOrEqual(0);
 
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(
@@ -556,6 +638,46 @@ test("non-primary scenarios are routable and startable", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("fan-out scenario can show an idle consumer beyond the partition count", async ({
+  page,
+}) => {
+  await resetActiveRun(page);
+  await page.goto("/scenarios/fan-out-load-balancing");
+  await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+
+  const addConsumerButton = page.getByRole("button", { name: /^Consumer$/ });
+  for (let index = 1; index <= 4; index += 1) {
+    await addConsumerButton.click();
+    await expect(
+      page.getByTestId(`consumer-node-consumer-${index}`),
+    ).toBeVisible();
+    if (index === 1) {
+      await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+        "active",
+      );
+      await expect(
+        page.getByTestId("consumer-node-consumer-1"),
+      ).not.toContainText("P0,P1,P2");
+    }
+  }
+
+  await expect(addConsumerButton).toBeDisabled();
+  await expect(page.getByTestId("run-settings-panel")).toContainText("C4");
+  await expect(page.getByTestId("consumer-node-consumer-4")).toContainText(
+    idleConsumerLabel,
+  );
+  await expect(
+    page.locator("span", { hasText: idleConsumerLabel }),
+  ).toBeVisible();
+  const idleMembersOverlay = page.getByTestId(
+    "topology-scenario-node-idle-members",
+  );
+  await expect(idleMembersOverlay).toBeVisible();
+  await expect(idleMembersOverlay).toContainText("Idle");
+  await expect(idleMembersOverlay).toContainText("1");
+});
+
 test("sidebar scenario navigation retires the active run", async ({ page }) => {
   await resetActiveRun(page);
   await page.goto("/scenarios/partitioning");
@@ -602,6 +724,7 @@ test("every scenario renders and inspects a distinct topology overlay", async ({
     await expectTopologyNodeFramed(page, "topology-node-producer");
     await expectTopologyNodeFramed(page, "topology-node-topic");
     await expectTopologyNodeFramed(page, "topology-node-consumer-group");
+    await expectTopologyOverlaysClearCore(page);
     await expectTopologyNodeFramed(
       page,
       `topology-scenario-node-${scenarioCase.overlayId}`,
@@ -669,9 +792,38 @@ test("consumer crash remains visible and replays uncommitted work", async ({
   await page.getByRole("button", { name: "Slow commit window" }).click();
   await page.getByRole("tab", { name: "Controls" }).click();
   await page.getByRole("button", { name: /^Consumer$/ }).click();
-  await page.getByRole("button", { name: "Produce one" }).click();
-  await expect(page.getByText("Message Inspector")).toBeVisible();
-  await page.getByRole("button", { name: "Close message inspector" }).click();
+  await expect(page.getByTestId("consumer-node-consumer-1")).toBeVisible();
+  const runId = await activeRunId(page);
+  await produceOneViaApi(page, runId);
+  await produceOneViaApi(page, runId);
+  await produceOneViaApi(page, runId);
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    "Working: 3 tasks",
+  );
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    "payment-1",
+  );
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    /\+1 more/,
+  );
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    /payment-\d+ \| P\d+@\d+ \| (received|processing|processed|commit_requested) \| \d+\.\ds/,
+  );
+  await page.getByRole("button", { name: "Inspect consumer-1" }).click();
+  const drawer = page.locator("#message-inspector-drawer");
+  await expect(drawer.getByText("Consumer Metrics")).toBeVisible();
+  await expect(drawer.getByText("Active tasks")).toBeVisible();
+  await expect(drawer).toContainText("payment-1");
+  await expect(drawer.getByText("Task 1")).toBeVisible();
+  await expect(drawer.getByText("Task 2")).toBeVisible();
+  await expect(drawer.getByText("Task 3")).toBeVisible();
+  await expect(drawer.getByText("Label")).toHaveCount(3);
+  await expect(drawer.getByText("State").first()).toBeVisible();
+  await expect(drawer.getByText("Duration")).toHaveCount(3);
+  await expect(drawer).toContainText(/\d+\.\ds/);
+  await expect(drawer.getByText("Partition / offset")).toHaveCount(3);
+  await expect(drawer.getByText("Idempotency key")).toHaveCount(3);
+  await page.getByRole("button", { name: "Close topology inspector" }).click();
 
   await expect(page.getByTestId("run-settings-panel")).toBeVisible();
   await page.getByRole("button", { name: "Crash consumer-1" }).click();
@@ -687,6 +839,22 @@ test("consumer crash remains visible and replays uncommitted work", async ({
     "Active assignment",
   );
   await expect(page.getByText("consumer-2").first()).toBeVisible();
+  await expect
+    .poll(async () => await page.getByText("committed").count())
+    .toBeGreaterThan(0);
+  const committedMessageButtons = page.locator(
+    '[data-testid^="partition-message-"]',
+  );
+  await expect
+    .poll(async () => await committedMessageButtons.count())
+    .toBeGreaterThan(0);
+  const committedMessageButtonCount = await committedMessageButtons.count();
+  await committedMessageButtons.nth(committedMessageButtonCount - 1).click();
+  await expect(page.getByText("Message Inspector")).toBeVisible();
+  await expect(page.locator("#message-inspector-drawer")).toContainText(
+    /Duration (\d+\.\ds|\d+s|\d+:\d{2})/,
+  );
+  await page.getByRole("button", { name: "Close message inspector" }).click();
 
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(
@@ -730,6 +898,118 @@ async function expectTopologyNodeFramed(page: Page, testId: string) {
       }),
     )
     .toBe(true);
+}
+
+async function dragTopologyNode(
+  page: Page,
+  testId: string,
+  delta: { x: number; y: number },
+) {
+  const box = await page.getByTestId(testId).boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) throw new Error(`Missing topology node ${testId}`);
+
+  const start = {
+    x: box.x + box.width / 2,
+    y: box.y + Math.min(28, box.height / 2),
+  };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 8 });
+  await page.mouse.up();
+  return box;
+}
+
+async function expectTopologyOverlaysClearCore(
+  page: Page,
+  overlayIds?: string[],
+) {
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ overlayIds: evaluatedOverlayIds }) => {
+          const coreIds = [
+            "topology-node-producer",
+            "topology-node-topic",
+            "topology-node-consumer-group",
+          ];
+          const gap = 8;
+          const readBox = (testId: string) => {
+            const element = document.querySelector(`[data-testid="${testId}"]`);
+            if (!element) return null;
+            const box = element.getBoundingClientRect();
+            return {
+              bottom: box.bottom,
+              left: box.left,
+              right: box.right,
+              top: box.top,
+            };
+          };
+          const canvasBox = readBox("topology-canvas");
+          const coreBoxes = coreIds.map((id) => [id, readBox(id)] as const);
+          const resolvedOverlayIds =
+            evaluatedOverlayIds ??
+            Array.from(
+              document.querySelectorAll<HTMLElement>(
+                '[data-testid^="topology-scenario-node-"]',
+              ),
+              (element) => element.dataset.testid ?? "",
+            ).filter(Boolean);
+          const overlayBoxes = resolvedOverlayIds.map(
+            (id) => [id, readBox(id)] as const,
+          );
+          const formatBox = (box: {
+            bottom: number;
+            left: number;
+            right: number;
+            top: number;
+          }) =>
+            [
+              Math.round(box.left),
+              Math.round(box.top),
+              Math.round(box.right),
+              Math.round(box.bottom),
+            ].join(",");
+          const missing = [...coreBoxes, ...overlayBoxes]
+            .filter(([, box]) => !box)
+            .map(([id]) => `missing ${id}`);
+          if (!canvasBox) missing.push("missing topology-canvas");
+          if (missing.length > 0) return missing;
+
+          const overlaps: string[] = [];
+          for (const [overlayId, overlayBox] of overlayBoxes) {
+            if (
+              overlayBox &&
+              canvasBox &&
+              (overlayBox.left < canvasBox.left ||
+                overlayBox.right > canvasBox.right ||
+                overlayBox.top < canvasBox.top ||
+                overlayBox.bottom > canvasBox.bottom)
+            ) {
+              overlaps.push(
+                `${overlayId} leaves topology canvas: overlay=${formatBox(overlayBox)} canvas=${formatBox(canvasBox)}`,
+              );
+            }
+            for (const [coreId, coreBox] of coreBoxes) {
+              if (!overlayBox || !coreBox) continue;
+              const hasGap =
+                overlayBox.right + gap <= coreBox.left ||
+                overlayBox.left >= coreBox.right + gap ||
+                overlayBox.bottom + gap <= coreBox.top ||
+                overlayBox.top >= coreBox.bottom + gap;
+              if (!hasGap) {
+                overlaps.push(
+                  `${overlayId} overlaps ${coreId}: overlay=${formatBox(overlayBox)} core=${formatBox(coreBox)}`,
+                );
+              }
+            }
+          }
+          return overlaps;
+        },
+        { overlayIds },
+      ),
+    )
+    .toEqual([]);
 }
 
 async function expectReactFlowStylesLoaded(page: Page) {
@@ -794,4 +1074,17 @@ async function resetActiveRun(page: Page) {
       `Unable to reset active run ${payload.run.runId} before the test (${resetResponse.status()} ${resetResponse.statusText()}).`,
     ).toBe(true);
   }
+}
+
+async function activeRunId(page: Page) {
+  const response = await page.request.get("/api/v1/runs");
+  expect(response.ok()).toBe(true);
+  const payload = (await response.json()) as { run: { runId?: string } | null };
+  expect(payload.run?.runId).toBeTruthy();
+  return payload.run!.runId!;
+}
+
+async function produceOneViaApi(page: Page, runId: string) {
+  const response = await page.request.post(`/api/v1/runs/${runId}/messages`);
+  expect(response.ok()).toBe(true);
 }

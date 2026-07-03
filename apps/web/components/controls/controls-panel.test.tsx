@@ -25,7 +25,7 @@ describe("ControlsPanel", () => {
       target: { value: "no_key" },
     });
     fireEvent.change(screen.getByLabelText("Consumer processing latency"), {
-      target: { value: "1200" },
+      target: { value: "4500" },
     });
 
     expect(onUpdateSettings).toHaveBeenCalledWith({ productionRate: 7 });
@@ -33,7 +33,7 @@ describe("ControlsPanel", () => {
       keyStrategy: { type: "no_key" },
     });
     expect(onUpdateSettings).toHaveBeenCalledWith({
-      processingLatencyMs: 1200,
+      processingLatencyMs: 4500,
     });
   });
 
@@ -49,6 +49,9 @@ describe("ControlsPanel", () => {
     });
     fireEvent.change(screen.getByLabelText("Messages per second"), {
       target: { value: "0" },
+    });
+    fireEvent.change(screen.getByLabelText("Consumer processing latency"), {
+      target: { value: "5001" },
     });
 
     expect(onUpdateSettings).not.toHaveBeenCalled();

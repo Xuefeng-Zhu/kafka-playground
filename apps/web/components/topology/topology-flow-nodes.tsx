@@ -15,6 +15,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import type { ScenarioTopologyNode as ScenarioTopologyNodeModel } from "@/lib/client/scenario-topology";
+import { currentTasksForConsumer } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import {
   ConsumerCard,
@@ -56,6 +57,7 @@ export type ConsumerGroupNodeData = TopologyCallbacks & {
   partitions: number[];
   selectedNode: TopologySelection | null;
   snapshot: RunSnapshot;
+  taskNowMs: number;
 };
 
 export type ScenarioNodeData = TopologyCallbacks & {
@@ -239,6 +241,11 @@ function ConsumerGroupFlowNode({
               ))}
               <ConsumerCard
                 consumer={consumer}
+                currentTasks={currentTasksForConsumer(
+                  data.snapshot,
+                  consumer.consumerId,
+                  data.taskNowMs,
+                )}
                 active={data.activeConsumerId === consumer.consumerId}
                 selected={
                   data.selectedNode?.type === "consumer" &&
@@ -277,7 +284,7 @@ function ScenarioOverlayFlowNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
 
   return (
     <div
-      className="nodrag pointer-events-auto relative"
+      className="pointer-events-auto relative cursor-grab active:cursor-grabbing"
       data-testid={`topology-scenario-node-${model.id}`}
     >
       <button

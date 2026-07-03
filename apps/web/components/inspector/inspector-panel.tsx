@@ -1,3 +1,5 @@
+"use client";
+
 import type {
   PlaygroundMessage,
   RunSnapshot,
@@ -10,7 +12,14 @@ import {
   CircleDot,
   X,
 } from "lucide-react";
+import {
+  formatTaskDuration,
+  hasActiveConsumerTaskDuration,
+  taskDurationForMessage,
+  type TaskDuration,
+} from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { useLiveTaskClock } from "@/lib/client/use-live-task-clock";
 import { TopologyDetails } from "./topology-details";
 
 export function InspectorPanel({
@@ -42,6 +51,13 @@ export function InspectorPanel({
     snapshot !== null &&
     messageIndex >= 0 &&
     messageIndex < snapshot.recentMessages.length - 1;
+  const taskNowMs = useLiveTaskClock(
+    snapshot ? hasActiveConsumerTaskDuration(snapshot) : false,
+  );
+  const messageTaskDuration =
+    snapshot && message
+      ? taskDurationForMessage(snapshot, message, taskNowMs)
+      : null;
 
   return (
     <div className="flex h-full flex-col text-[#123047]">
@@ -76,7 +92,11 @@ export function InspectorPanel({
       )}
 
       {snapshot && selectedNode && (
-        <TopologyDetails snapshot={snapshot} selectedNode={selectedNode} />
+        <TopologyDetails
+          snapshot={snapshot}
+          selectedNode={selectedNode}
+          taskNowMs={taskNowMs}
+        />
       )}
 
       {snapshot && !selectedNode && (
@@ -176,11 +196,11 @@ export function InspectorPanel({
                       "committed",
                     ].includes(message.state)}
                     label="Processing"
-                    detail={
-                      message.state === "processing"
-                        ? "In progress"
-                        : `${snapshot.processingLatencyMs} ms`
-                    }
+                    detail={processingDetail(
+                      message,
+                      snapshot,
+                      messageTaskDuration,
+                    )}
                   />
                   <StateStep
                     done={message.state === "committed"}
@@ -244,6 +264,36 @@ export function InspectorPanel({
       )}
     </div>
   );
+}
+
+function processingDetail(
+  message: PlaygroundMessage,
+  snapshot: RunSnapshot,
+  duration: TaskDuration | null,
+) {
+  if (duration) {
+    if (duration.status === "active") {
+      return `In progress | ${formatTaskDuration(duration)}`;
+    }
+    if (duration.status === "final") {
+      return `Duration ${formatTaskDuration(duration)}`;
+    }
+    if (
+      [
+        "received",
+        "processing",
+        "processed",
+        "commit_requested",
+        "committed",
+        "failed",
+      ].includes(message.state)
+    ) {
+      return formatTaskDuration(duration);
+    }
+  }
+  return message.state === "processing"
+    ? "In progress"
+    : `${snapshot.processingLatencyMs} ms`;
 }
 
 function StateStep({
