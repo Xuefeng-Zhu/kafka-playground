@@ -95,6 +95,13 @@ describe("deriveScenarioTopology", () => {
     });
   });
 
+  it("keeps right-side overlay defaults clear of the spread consumer group", () => {
+    const topology = deriveScenarioTopology(snapshotFor("partitioning"));
+    const rightOverlay = topology.nodes[1];
+
+    expect(rightOverlay.position.x).toBeGreaterThanOrEqual(1260);
+  });
+
   it("surfaces hot partition counts from per-partition message totals", () => {
     const topology = deriveScenarioTopology(
       snapshotFor("hot-partitions-key-skew", {

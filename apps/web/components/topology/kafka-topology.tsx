@@ -117,6 +117,7 @@ function KafkaTopologyFlow({
         null);
   const [layout, setLayout] = useState<TopologyLayout>("auto");
   const [overlayPositionRevision, setOverlayPositionRevision] = useState(0);
+  const [resetFitRevision, setResetFitRevision] = useState(0);
   const hasMountedRef = useRef(false);
   const topologyCanvasRef = useRef<HTMLDivElement | null>(null);
   const isCompact = useCompactTopology();
@@ -205,8 +206,8 @@ function KafkaTopologyFlow({
   const resetOverlayPositions = useCallback(() => {
     removeStoredValue(overlayPositionStorageKey);
     setOverlayPositionRevision((current) => current + 1);
-    setViewportHome();
-  }, [overlayPositionStorageKey, setViewportHome]);
+    setResetFitRevision((current) => current + 1);
+  }, [overlayPositionStorageKey]);
 
   const handleNodeDragStop = useCallback<OnNodeDrag<TopologyNode>>(
     (_event, node) => {
@@ -251,10 +252,24 @@ function KafkaTopologyFlow({
     fitNodeIds,
     isCompact,
     layout,
+    overlayPositionRevision,
     partitions.length,
     snapshot.sequence,
     updateNodeInternals,
   ]);
+
+  useEffect(() => {
+    if (resetFitRevision === 0) return;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      fitNodeIds.forEach((id) => updateNodeInternals(id));
+      secondFrame = requestAnimationFrame(setViewportHome);
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [fitNodeIds, resetFitRevision, setViewportHome, updateNodeInternals]);
 
   const updateZoom = useCallback(
     (nextZoom: number | ((current: number) => number)) => {

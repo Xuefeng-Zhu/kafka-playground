@@ -395,6 +395,7 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
       ),
     )
     .toEqual([]);
+  await expectTopologyNodeFramed(page, "topology-scenario-node-key-router");
   await expect(page.getByTestId("topology-edge-producer-topic")).toHaveCount(1);
   await page.getByRole("button", { name: "Inspect producer" }).click();
   await expect(page.getByText("Topology Inspector")).toBeVisible();

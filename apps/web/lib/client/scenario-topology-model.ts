@@ -74,7 +74,7 @@ type ScenarioNodeInput = Omit<ScenarioTopologyNode, "compactPosition"> & {
 
 const wideScenarioPositions = [
   { x: 92, y: 32 },
-  { x: 1184, y: 372 },
+  { x: 1304, y: 372 },
   { x: 92, y: 460 },
 ] as const;
 
@@ -129,7 +129,7 @@ export function node(input: ScenarioNodeInput): ScenarioTopologyNode {
 function wideScenarioPosition(compactIndex: number) {
   return (
     wideScenarioPositions[compactIndex] ?? {
-      x: 1184,
+      x: 1304,
       y: 372 + (compactIndex - 1) * 176,
     }
   );
