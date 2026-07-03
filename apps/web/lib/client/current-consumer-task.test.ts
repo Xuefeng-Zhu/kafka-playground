@@ -209,6 +209,35 @@ describe("currentTaskForConsumer", () => {
     expect(formatTaskDuration(duration)).toBe("1:08");
   });
 
+  it("derives failed task duration from receipt to commit failure", () => {
+    const snapshot = runSnapshot({
+      recentEvents: [
+        receivedEvent(
+          "commit-failed",
+          "consumer-1",
+          "2026-06-26T00:00:00.000Z",
+          1,
+        ),
+        commitFailedEvent(
+          "commit-failed",
+          "consumer-1",
+          "2026-06-26T00:00:02.400Z",
+          2,
+        ),
+      ],
+    });
+    const duration = taskDurationForMessage(
+      snapshot,
+      taskMessage("commit-failed", { state: "failed" }),
+    );
+
+    expect(duration).toMatchObject({
+      milliseconds: 2400,
+      status: "final",
+    });
+    expect(formatTaskDuration(duration)).toBe("2.4s");
+  });
+
   it("returns unknown duration when the start event is unavailable", () => {
     const duration = taskDurationForMessage(
       runSnapshot(),
@@ -304,5 +333,28 @@ function failedEvent(
     runId: "run-1",
     sequence,
     type: "message.processing_failed",
+  };
+}
+
+function commitFailedEvent(
+  messageId: string,
+  consumerId: string,
+  occurredAt: string,
+  sequence: number,
+): RuntimeEvent {
+  return {
+    actor: consumerId,
+    attemptedOffset: "1",
+    consumerId,
+    errorCode: "COMMIT_FAILED",
+    eventId: `event-${sequence}`,
+    groupId: "kplay.test.workers",
+    messageId,
+    occurredAt,
+    partition: 0,
+    runId: "run-1",
+    sequence,
+    topic: "kplay.test",
+    type: "offset.commit_failed",
   };
 }

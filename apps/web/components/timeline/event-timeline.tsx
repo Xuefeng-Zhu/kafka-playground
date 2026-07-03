@@ -252,6 +252,14 @@ function detailsFor(event: RuntimeEvent, events: RuntimeEvent[]) {
       .filter(Boolean)
       .join(" ");
   }
+  if (event.type === "offset.commit_failed") {
+    return [
+      `failed to commit offset ${event.attemptedOffset} for ${event.topic} partition ${event.partition}`,
+      durationSuffix(events, event),
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
   if (event.type === "consumer.partitions_assigned") {
     return `Assigned ${event.assignments.map((item) => `P${item.partition}`).join(", ")}`;
   }

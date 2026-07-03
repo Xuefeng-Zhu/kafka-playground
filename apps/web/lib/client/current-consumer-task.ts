@@ -100,6 +100,14 @@ export function taskDurationForEvent(
       event.occurredAt,
     );
   }
+  if (event.type === "offset.commit_failed") {
+    return finalDurationForEvent(
+      events,
+      event.messageId,
+      event.consumerId,
+      event.occurredAt,
+    );
+  }
   if (
     event.type === "message.processing_failed" &&
     event.messageId &&
@@ -254,9 +262,12 @@ function endEventFor(
         );
       }
       return (
-        event.type === "message.processing_failed" &&
-        event.messageId === messageId &&
-        event.consumerId === consumerId
+        (event.type === "message.processing_failed" &&
+          event.messageId === messageId &&
+          event.consumerId === consumerId) ||
+        (event.type === "offset.commit_failed" &&
+          event.messageId === messageId &&
+          event.consumerId === consumerId)
       );
     })
     .sort(compareEventsByTime)

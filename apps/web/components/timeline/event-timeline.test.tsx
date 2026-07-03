@@ -34,6 +34,22 @@ describe("EventTimeline", () => {
     expect(screen.queryByText("message.produced")).not.toBeNull();
     expect(screen.queryByText("consumer.partitions_assigned")).not.toBeNull();
   });
+
+  it("shows task duration for commit-failed events", () => {
+    render(
+      <EventTimeline
+        events={[messageReceivedEvent(1), commitFailedEvent(2)]}
+        hasSequenceGap={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByText(
+        "failed to commit offset 1 for topic partition 0 duration 2.4s",
+      ),
+    ).not.toBeNull();
+  });
 });
 
 function eventBase(sequence: number) {
@@ -64,5 +80,33 @@ function rebalanceEvent(sequence: number): RuntimeEvent {
     type: "consumer.partitions_assigned",
     consumerId: "consumer-1",
     assignments: [{ topic: "topic", partition: 0 }],
+  };
+}
+
+function messageReceivedEvent(sequence: number): RuntimeEvent {
+  return {
+    ...eventBase(sequence),
+    occurredAt: "2026-07-02T12:00:00.000Z",
+    type: "message.received",
+    messageId: "message-1",
+    consumerId: "consumer-1",
+    topic: "topic",
+    partition: 0,
+    offset: "0",
+  };
+}
+
+function commitFailedEvent(sequence: number): RuntimeEvent {
+  return {
+    ...eventBase(sequence),
+    occurredAt: "2026-07-02T12:00:02.400Z",
+    type: "offset.commit_failed",
+    messageId: "message-1",
+    consumerId: "consumer-1",
+    groupId: "group",
+    topic: "topic",
+    partition: 0,
+    attemptedOffset: "1",
+    errorCode: "COMMIT_FAILED",
   };
 }

@@ -44,7 +44,7 @@ export function buildFanOutLoadBalancingTopology(
         metricValue: String(idleMembers),
         tone: idleMembers > 0 ? "amber" : "sky",
         icon: "handler",
-        position: { x: 930, y: 404 },
+        position: { x: 1304, y: 404 },
         compactIndex: 1,
         details: [
           ["Consumers", String(snapshot.consumers.length)],
@@ -368,7 +368,7 @@ export function buildDefaultTopology(
         metricValue: keyStrategyLabel(snapshot.keyStrategy),
         tone: "sky",
         icon: "route",
-        position: { x: 222, y: 32 },
+        position: { x: 92, y: 32 },
         compactIndex: 0,
         details: [
           ["Key strategy", keyStrategyLabel(snapshot.keyStrategy)],
@@ -385,7 +385,7 @@ export function buildDefaultTopology(
         metricValue: `${committed}/${produced}`,
         tone: committed >= produced && produced > 0 ? "emerald" : "amber",
         icon: "commit",
-        position: { x: 642, y: 408 },
+        position: { x: 1304, y: 372 },
         compactIndex: 1,
         details: [
           ["Produced", String(produced)],

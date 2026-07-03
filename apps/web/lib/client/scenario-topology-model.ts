@@ -72,12 +72,6 @@ type ScenarioNodeInput = Omit<ScenarioTopologyNode, "compactPosition"> & {
   compactIndex: number;
 };
 
-const wideScenarioPositions = [
-  { x: 92, y: 32 },
-  { x: 1304, y: 372 },
-  { x: 92, y: 460 },
-] as const;
-
 export function createScenarioTopologyContext(
   snapshot: RunSnapshot,
 ): ScenarioTopologyContext {
@@ -118,21 +112,11 @@ export function node(input: ScenarioNodeInput): ScenarioTopologyNode {
   const { compactIndex, ...rest } = input;
   return {
     ...rest,
-    position: wideScenarioPosition(compactIndex),
     compactPosition: {
       x: 390,
       y: 112 + compactIndex * 132,
     },
   };
-}
-
-function wideScenarioPosition(compactIndex: number) {
-  return (
-    wideScenarioPositions[compactIndex] ?? {
-      x: 1304,
-      y: 372 + (compactIndex - 1) * 176,
-    }
-  );
 }
 
 export function edge(
