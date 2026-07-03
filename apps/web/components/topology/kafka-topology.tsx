@@ -18,12 +18,14 @@ import {
   deriveScenarioTopology,
   type ScenarioTopologyEdge,
 } from "@/lib/client/scenario-topology";
+import { hasActiveConsumerTaskDuration } from "@/lib/client/current-consumer-task";
 import {
   getStoredValue,
   removeStoredValue,
   setStoredValue,
 } from "@/lib/client/safe-storage";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { useLiveTaskClock } from "@/lib/client/use-live-task-clock";
 import { partitionAssignments, toneForPartition } from "./topology-cards";
 import {
   topologyNodeTypes,
@@ -131,6 +133,7 @@ function KafkaTopologyFlow({
     () => deriveScenarioTopology(snapshot),
     [snapshot],
   );
+  const taskNowMs = useLiveTaskClock(hasActiveConsumerTaskDuration(snapshot));
   const scenarioTopologyMembership = scenarioTopology.nodes
     .map((node) => node.id)
     .join(",");
@@ -347,6 +350,7 @@ function KafkaTopologyFlow({
           partitions,
           selectedNode,
           snapshot,
+          taskNowMs,
         },
         style: { width: metrics.consumerGroupWidth },
       },
@@ -389,6 +393,7 @@ function KafkaTopologyFlow({
     selectedNode,
     savedScenarioPositions,
     snapshot,
+    taskNowMs,
   ]);
 
   const edges = useMemo<TopologyEdge[]>(() => {

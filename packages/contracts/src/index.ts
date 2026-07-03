@@ -354,7 +354,7 @@ export const createRunRequestSchema = z
 export const settingsRequestSchema = z.object({
   productionRate: z.number().int().min(1).max(10).optional(),
   keyStrategy: keyStrategySchema.optional(),
-  processingLatencyMs: z.number().int().min(0).max(3000).optional(),
+  processingLatencyMs: z.number().int().min(0).max(5000).optional(),
 });
 export const produceMessageRequestSchema = z.object({
   keyStrategy: keyStrategySchema.optional(),

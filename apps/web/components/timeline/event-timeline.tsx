@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeEvent } from "@kplay/contracts";
 import { Trash2 } from "lucide-react";
+import {
+  formatTaskDuration,
+  taskDurationForEvent,
+} from "@/lib/client/current-consumer-task";
 
 const filters = [
   "Messages",
@@ -41,19 +45,28 @@ export function EventTimeline({
   const [autoScroll, setAutoScroll] = useState(true);
   const [clearedThroughSequence, setClearedThroughSequence] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const unclearedEvents = useMemo(
+    () => events.filter((event) => event.sequence > clearedThroughSequence),
+    [clearedThroughSequence, events],
+  );
   const visibleEvents = useMemo(
     () =>
-      events
-        .filter((event) => event.sequence > clearedThroughSequence)
+      unclearedEvents
         .filter((event) => activeFilters.has(categoryFor(event)))
         .slice()
         .reverse(),
-    [activeFilters, clearedThroughSequence, events],
+    [activeFilters, unclearedEvents],
   );
   const allFiltersSelected = activeFilters.size === filters.length;
+  const emptyTimelineMessage =
+    unclearedEvents.length === 0
+      ? "Events will appear here after the run starts."
+      : activeFilters.size === 0
+        ? "Choose a filter to show timeline events."
+        : "No events match the selected filters.";
 
   useEffect(() => {
-    if (autoScroll) scrollRef.current?.scrollTo({ top: 0 });
+    if (autoScroll) scrollRef.current?.scrollTo?.({ top: 0 });
   }, [autoScroll, visibleEvents.length]);
 
   function toggleFilter(filter: TimelineFilter) {
@@ -68,8 +81,10 @@ export function EventTimeline({
     });
   }
 
-  function selectAllFilters() {
-    setActiveFilters(new Set(filters));
+  function toggleAllFilters() {
+    setActiveFilters((current) =>
+      current.size === filters.length ? new Set() : new Set(filters),
+    );
   }
 
   function clearVisibleEvents() {
@@ -87,7 +102,7 @@ export function EventTimeline({
           <button
             type="button"
             aria-pressed={allFiltersSelected}
-            onClick={selectAllFilters}
+            onClick={toggleAllFilters}
             className={
               allFiltersSelected
                 ? "rounded-full border-2 border-sky-500 bg-sky-100 px-3 py-1 text-xs font-extrabold text-sky-800"
@@ -161,8 +176,8 @@ export function EventTimeline({
           <span>Details</span>
         </div>
         {visibleEvents.length === 0 ? (
-          <div className="p-4 text-sm text-[#466778]">
-            Events will appear here after the run starts.
+          <div className="p-4 text-sm text-[#466778]" role="status">
+            {emptyTimelineMessage}
           </div>
         ) : (
           visibleEvents.map((event) => {
@@ -186,7 +201,7 @@ export function EventTimeline({
                   {componentFor(event)}
                 </span>
                 <span className="truncate text-[#31566a]">
-                  {detailsFor(event)}
+                  {detailsFor(event, events)}
                 </span>
               </button>
             );
@@ -222,7 +237,7 @@ function componentFor(event: RuntimeEvent) {
   return "Coordinator";
 }
 
-function detailsFor(event: RuntimeEvent) {
+function detailsFor(event: RuntimeEvent, events: RuntimeEvent[]) {
   if (event.type === "message.produced") {
     return `Produced message to ${event.topic} partition ${event.partition} offset ${event.offset}`;
   }
@@ -230,7 +245,12 @@ function detailsFor(event: RuntimeEvent) {
     return `Received message from ${event.topic} partition ${event.partition} offset ${event.offset}`;
   }
   if (event.type === "offset.committed") {
-    return `committed offset ${event.committedOffset} for ${event.topic} partition ${event.partition}`;
+    return [
+      `committed offset ${event.committedOffset} for ${event.topic} partition ${event.partition}`,
+      durationSuffix(events, event),
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
   if (event.type === "consumer.partitions_assigned") {
     return `Assigned ${event.assignments.map((item) => `P${item.partition}`).join(", ")}`;
@@ -241,6 +261,16 @@ function detailsFor(event: RuntimeEvent) {
   if (event.type === "consumer.crashed") {
     return `${event.consumerId ?? "Consumer"} crashed; uncommitted work can replay`;
   }
+  if (event.type === "message.processing_failed" && "message" in event) {
+    return [event.message, durationSuffix(events, event)]
+      .filter(Boolean)
+      .join(" ");
+  }
   if ("message" in event && event.message) return event.message;
   return `sequence #${event.sequence}`;
+}
+
+function durationSuffix(events: RuntimeEvent[], event: RuntimeEvent) {
+  const duration = taskDurationForEvent(events, event);
+  return duration ? `duration ${formatTaskDuration(duration)}` : "";
 }

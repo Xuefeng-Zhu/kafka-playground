@@ -142,7 +142,7 @@ export const serverEnvSchema = z.object({
     .default("SCRAM-SHA-256"),
   AIVEN_KAFKA_CA_PATH: z.string().optional().default("./certs/ca.pem"),
   KAFKA_TOPIC_PREFIX: z.string().default("kplay"),
-  MAX_CONSUMERS_PER_RUN: z.coerce.number().int().positive().max(3).default(3),
+  MAX_CONSUMERS_PER_RUN: z.coerce.number().int().positive().max(10).default(10),
   MAX_PRODUCE_RATE: z.coerce.number().int().positive().max(10).default(10),
   EVENT_HISTORY_LIMIT: z.coerce
     .number()

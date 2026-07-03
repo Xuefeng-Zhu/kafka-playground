@@ -84,7 +84,7 @@ function scenario(
       maxConsumers: 3,
       maxProduceRate: 10,
       minProcessingLatencyMs: 0,
-      maxProcessingLatencyMs: 3000,
+      maxProcessingLatencyMs: 5000,
     },
     ...override,
   };

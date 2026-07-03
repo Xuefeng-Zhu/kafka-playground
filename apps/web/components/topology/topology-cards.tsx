@@ -3,6 +3,10 @@ import type {
   PlaygroundMessage,
   RunSnapshot,
 } from "@kplay/contracts";
+import {
+  formatConsumerTaskSummary,
+  type ConsumerTask,
+} from "@/lib/client/current-consumer-task";
 import { Code2, Users } from "lucide-react";
 
 const partitionTones = [
@@ -92,6 +96,7 @@ export function PartitionLane({
   onSelectMessage: (messageId: string) => void;
 }) {
   const placeholders = messages.length > 0 ? [] : offsetsAround(latestOffset);
+  const showEmptyState = messages.length === 0 && placeholders.length === 0;
   const tone = toneForPartition(partition);
   return (
     <div
@@ -132,6 +137,9 @@ export function PartitionLane({
         {messages.map((message) => (
           <button
             key={message.messageId}
+            title={messageChipTitle(message)}
+            aria-label={messageChipTitle(message)}
+            data-testid={`partition-message-${message.messageId}`}
             onClick={() => onSelectMessage(message.messageId)}
             className={`min-w-9 rounded-xl border-2 px-2 py-1 font-mono text-xs font-extrabold ${
               selectedMessageId === message.messageId
@@ -139,17 +147,26 @@ export function PartitionLane({
                 : tone.chip
             }`}
           >
-            {message.offset ?? "?"}
+            {messageChipLabel(message)}
           </button>
         ))}
         {placeholders.map((offset) => (
           <span
             key={offset}
+            data-testid={`partition-placeholder-offset-${partition}`}
             className="min-w-9 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-center font-mono text-xs font-extrabold text-teal-800"
           >
             {offset}
           </span>
         ))}
+        {showEmptyState ? (
+          <span
+            data-testid={`partition-empty-state-${partition}`}
+            className="rounded-xl border-2 border-dashed border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-[#466778]"
+          >
+            No messages yet
+          </span>
+        ) : null}
         <span
           className={`ml-auto size-2.5 rounded-full ${active ? "bg-emerald-500" : partition === 0 ? "bg-sky-500" : "bg-violet-500"}`}
         />
@@ -163,17 +180,24 @@ export function PartitionLane({
 
 export function ConsumerCard({
   consumer,
+  currentTasks,
   selected,
   active,
   onSelect,
 }: {
   consumer: ConsumerSnapshot;
+  currentTasks: ConsumerTask[];
   selected: boolean;
   active: boolean;
   onSelect: () => void;
 }) {
   const hasAssignments = consumer.assignments.length > 0;
   const isCrashed = consumer.status === "crashed";
+  const visibleTasks = currentTasks.slice(0, 2);
+  const hiddenTaskCount = Math.max(
+    0,
+    currentTasks.length - visibleTasks.length,
+  );
   return (
     <button
       type="button"
@@ -203,13 +227,7 @@ export function ConsumerCard({
           <div className="text-xs text-[#466778]">{consumer.consumerId}</div>
         </div>
         <span className="rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 font-mono text-xs font-extrabold text-teal-800">
-          {isCrashed
-            ? "crashed"
-            : hasAssignments
-              ? consumer.assignments
-                  .map((item) => `P${item.partition}`)
-                  .join(",")
-              : "idle"}
+          {isCrashed ? "crashed" : hasAssignments ? "active" : "idle"}
         </span>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -232,6 +250,28 @@ export function ConsumerCard({
           </span>
         ))}
       </div>
+      {currentTasks.length === 1 ? (
+        <div className="mt-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-[11px] font-extrabold text-[#31566a]">
+          <span className="text-teal-800">Working: </span>
+          <span>{formatConsumerTaskSummary(currentTasks[0])}</span>
+        </div>
+      ) : currentTasks.length > 1 ? (
+        <div className="mt-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-[11px] font-extrabold text-[#31566a]">
+          <div className="text-teal-800">
+            Working: {currentTasks.length} tasks
+          </div>
+          <div className="mt-1 space-y-1">
+            {visibleTasks.map((task) => (
+              <div key={task.messageId} className="truncate">
+                {formatConsumerTaskSummary(task)}
+              </div>
+            ))}
+            {hiddenTaskCount > 0 ? (
+              <div className="text-[#466778]">+{hiddenTaskCount} more</div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </button>
   );
 }
@@ -263,8 +303,42 @@ export function messagesForPartition(
 
 function offsetsAround(latestOffset?: string) {
   const latest = Number(latestOffset);
-  const end = Number.isFinite(latest) ? latest : 104;
+  if (!Number.isFinite(latest)) return [];
   return Array.from({ length: 7 }, (_, index) =>
-    String(Math.max(0, end - 6 + index)),
+    String(Math.max(0, latest - 6 + index)),
   );
+}
+
+function messageChipLabel(message: PlaygroundMessage) {
+  const sequence = sequenceForMessage(message);
+  if (sequence) {
+    return message.offset === null
+      ? `m${sequence}`
+      : `m${sequence}@${message.offset}`;
+  }
+  return shortMessageId(message.messageId);
+}
+
+function messageChipTitle(message: PlaygroundMessage) {
+  const location =
+    message.partition === null
+      ? "pending delivery"
+      : `P${message.partition}@${message.offset ?? "?"}`;
+  return `${messageChipLabel(message)} | ${location} | ${message.messageId}`;
+}
+
+function sequenceForMessage(message: PlaygroundMessage) {
+  const valueSequence = message.value.sequence;
+  if (typeof valueSequence === "number" && Number.isFinite(valueSequence)) {
+    return String(valueSequence);
+  }
+  if (typeof valueSequence === "string" && valueSequence.trim()) {
+    return valueSequence.trim();
+  }
+  const headerSequence = message.headers["x-playground-sequence"];
+  return headerSequence?.trim() || null;
+}
+
+function shortMessageId(messageId: string) {
+  return messageId.length > 6 ? messageId.slice(0, 6) : messageId;
 }

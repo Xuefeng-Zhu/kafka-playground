@@ -112,7 +112,7 @@ Connection tests return only sanitized status, masked broker host, broker count,
 | `AIVEN_KAFKA_SASL_MECHANISM` | `SCRAM-SHA-256`  | One of `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`.                                                                    |
 | `AIVEN_KAFKA_CA_PATH`        | `./certs/ca.pem` | CA certificate path used by the Aiven adapter.                                                                          |
 | `KAFKA_TOPIC_PREFIX`         | `kplay`          | Prefix for run topics and consumer groups. Use lowercase letters, numbers, dots, dashes, or underscores; max length 32. |
-| `MAX_CONSUMERS_PER_RUN`      | `3`              | Caps active consumers per run. Values above 3 are rejected.                                                             |
+| `MAX_CONSUMERS_PER_RUN`      | `10`             | Caps active consumers per run before scenario-specific limits apply. Values above 10 are rejected.                      |
 | `MAX_PRODUCE_RATE`           | `10`             | Caps producer rate per run. Values above 10 are rejected.                                                               |
 | `EVENT_HISTORY_LIMIT`        | `2000`           | Max server-side SSE/runtime event history. Values above 5000 are rejected.                                              |
 | `TIMELINE_DISPLAY_LIMIT`     | `1000`           | Max events included in run snapshots for the timeline. Values above 2000 are rejected.                                  |

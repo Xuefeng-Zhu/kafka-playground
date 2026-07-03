@@ -202,6 +202,12 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   ).toBeVisible();
   await page.getByRole("button", { name: "Start scenario run" }).click();
   await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+  await expect(page.getByTestId("partition-empty-state-0")).toContainText(
+    "No messages yet",
+  );
+  await expect(page.getByTestId("partition-placeholder-offset-0")).toHaveCount(
+    0,
+  );
   await expect(page.getByTestId("lower-panel-tab-controls")).toHaveAttribute(
     "aria-selected",
     "true",
@@ -631,6 +637,46 @@ test("non-primary scenarios are routable and startable", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("fan-out scenario can show an idle consumer beyond the partition count", async ({
+  page,
+}) => {
+  await resetActiveRun(page);
+  await page.goto("/scenarios/fan-out-load-balancing");
+  await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+
+  const addConsumerButton = page.getByRole("button", { name: /^Consumer$/ });
+  for (let index = 1; index <= 4; index += 1) {
+    await addConsumerButton.click();
+    await expect(
+      page.getByTestId(`consumer-node-consumer-${index}`),
+    ).toBeVisible();
+    if (index === 1) {
+      await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+        "active",
+      );
+      await expect(
+        page.getByTestId("consumer-node-consumer-1"),
+      ).not.toContainText("P0,P1,P2");
+    }
+  }
+
+  await expect(addConsumerButton).toBeDisabled();
+  await expect(page.getByTestId("run-settings-panel")).toContainText("C4");
+  await expect(page.getByTestId("consumer-node-consumer-4")).toContainText(
+    idleConsumerLabel,
+  );
+  await expect(
+    page.locator("span", { hasText: idleConsumerLabel }),
+  ).toBeVisible();
+  const idleMembersOverlay = page.getByTestId(
+    "topology-scenario-node-idle-members",
+  );
+  await expect(idleMembersOverlay).toBeVisible();
+  await expect(idleMembersOverlay).toContainText("Idle");
+  await expect(idleMembersOverlay).toContainText("1");
+});
+
 test("sidebar scenario navigation retires the active run", async ({ page }) => {
   await resetActiveRun(page);
   await page.goto("/scenarios/partitioning");
@@ -745,9 +791,38 @@ test("consumer crash remains visible and replays uncommitted work", async ({
   await page.getByRole("button", { name: "Slow commit window" }).click();
   await page.getByRole("tab", { name: "Controls" }).click();
   await page.getByRole("button", { name: /^Consumer$/ }).click();
-  await page.getByRole("button", { name: "Produce one" }).click();
-  await expect(page.getByText("Message Inspector")).toBeVisible();
-  await page.getByRole("button", { name: "Close message inspector" }).click();
+  await expect(page.getByTestId("consumer-node-consumer-1")).toBeVisible();
+  const runId = await activeRunId(page);
+  await produceOneViaApi(page, runId);
+  await produceOneViaApi(page, runId);
+  await produceOneViaApi(page, runId);
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    "Working: 3 tasks",
+  );
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    "payment-1",
+  );
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    /\+1 more/,
+  );
+  await expect(page.getByTestId("consumer-node-consumer-1")).toContainText(
+    /payment-\d+ \| P\d+@\d+ \| (received|processing|processed|commit_requested) \| \d+\.\ds/,
+  );
+  await page.getByRole("button", { name: "Inspect consumer-1" }).click();
+  const drawer = page.locator("#message-inspector-drawer");
+  await expect(drawer.getByText("Consumer Metrics")).toBeVisible();
+  await expect(drawer.getByText("Active tasks")).toBeVisible();
+  await expect(drawer).toContainText("payment-1");
+  await expect(drawer.getByText("Task 1")).toBeVisible();
+  await expect(drawer.getByText("Task 2")).toBeVisible();
+  await expect(drawer.getByText("Task 3")).toBeVisible();
+  await expect(drawer.getByText("Label")).toHaveCount(3);
+  await expect(drawer.getByText("State").first()).toBeVisible();
+  await expect(drawer.getByText("Duration")).toHaveCount(3);
+  await expect(drawer).toContainText(/\d+\.\ds/);
+  await expect(drawer.getByText("Partition / offset")).toHaveCount(3);
+  await expect(drawer.getByText("Idempotency key")).toHaveCount(3);
+  await page.getByRole("button", { name: "Close topology inspector" }).click();
 
   await expect(page.getByTestId("run-settings-panel")).toBeVisible();
   await page.getByRole("button", { name: "Crash consumer-1" }).click();
@@ -763,6 +838,22 @@ test("consumer crash remains visible and replays uncommitted work", async ({
     "Active assignment",
   );
   await expect(page.getByText("consumer-2").first()).toBeVisible();
+  await expect
+    .poll(async () => await page.getByText("committed").count())
+    .toBeGreaterThan(0);
+  const committedMessageButtons = page.locator(
+    '[data-testid^="partition-message-"]',
+  );
+  await expect
+    .poll(async () => await committedMessageButtons.count())
+    .toBeGreaterThan(0);
+  const committedMessageButtonCount = await committedMessageButtons.count();
+  await committedMessageButtons.nth(committedMessageButtonCount - 1).click();
+  await expect(page.getByText("Message Inspector")).toBeVisible();
+  await expect(page.locator("#message-inspector-drawer")).toContainText(
+    /Duration (\d+\.\ds|\d+s|\d+:\d{2})/,
+  );
+  await page.getByRole("button", { name: "Close message inspector" }).click();
 
   await page.getByRole("button", { name: "Reset run" }).click();
   await expect(
@@ -982,4 +1073,17 @@ async function resetActiveRun(page: Page) {
       `Unable to reset active run ${payload.run.runId} before the test (${resetResponse.status()} ${resetResponse.statusText()}).`,
     ).toBe(true);
   }
+}
+
+async function activeRunId(page: Page) {
+  const response = await page.request.get("/api/v1/runs");
+  expect(response.ok()).toBe(true);
+  const payload = (await response.json()) as { run: { runId?: string } | null };
+  expect(payload.run?.runId).toBeTruthy();
+  return payload.run!.runId!;
+}
+
+async function produceOneViaApi(page: Page, runId: string) {
+  const response = await page.request.post(`/api/v1/runs/${runId}/messages`);
+  expect(response.ok()).toBe(true);
 }

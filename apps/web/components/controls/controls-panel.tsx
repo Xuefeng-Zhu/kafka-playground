@@ -157,7 +157,7 @@ export function ControlsPanel({
             aria-label="Consumer processing latency"
             className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
             min={0}
-            max={3000}
+            max={5000}
             step={100}
             type="number"
             value={snapshot.processingLatencyMs}
@@ -165,7 +165,7 @@ export function ControlsPanel({
             onChange={(event) => {
               const processingLatencyMs = parseNumberInput(event.target.value, {
                 min: 0,
-                max: 3000,
+                max: 5000,
               });
               if (processingLatencyMs !== null) {
                 onUpdateSettings({ processingLatencyMs });
@@ -176,7 +176,7 @@ export function ControlsPanel({
             aria-label="Processing latency slider"
             className="h-3 w-full accent-amber-500"
             min={0}
-            max={3000}
+            max={5000}
             step={100}
             type="range"
             value={snapshot.processingLatencyMs}
@@ -184,7 +184,7 @@ export function ControlsPanel({
             onChange={(event) => {
               const processingLatencyMs = parseNumberInput(event.target.value, {
                 min: 0,
-                max: 3000,
+                max: 5000,
               });
               if (processingLatencyMs !== null) {
                 onUpdateSettings({ processingLatencyMs });

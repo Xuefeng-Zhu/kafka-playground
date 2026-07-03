@@ -43,7 +43,7 @@ describe("route validation problem details", () => {
       parseJson(
         requestBody({
           productionRate: 11,
-          processingLatencyMs: 3001,
+          processingLatencyMs: 5001,
           keyStrategy: { type: "fixed", value: "" },
         }),
         settingsRequestSchema,
@@ -57,7 +57,7 @@ describe("route validation problem details", () => {
         status: 400,
         messages: [
           "Production rate must be between 1 and 10 messages per second.",
-          "Processing latency must be between 0 and 3000 ms.",
+          "Processing latency must be between 0 and 5000 ms.",
           "Fixed keys must be between 1 and 80 characters.",
         ],
       },

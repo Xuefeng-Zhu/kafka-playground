@@ -100,6 +100,11 @@ describe("scenario engine", () => {
     });
     expect(scenario?.description).toContain("one group");
     expect(scenario?.description).not.toContain("independent consumer groups");
+    expect(scenario?.topic.partitions).toBe(3);
+    expect(scenario?.limits.maxConsumers).toBe(4);
+    expect(scenario?.learningObjectives).toContain(
+      "Extra members in the same group become idle when partitions are exhausted.",
+    );
   });
 
   it("creates distinct scenario payloads for specialized scenarios", () => {

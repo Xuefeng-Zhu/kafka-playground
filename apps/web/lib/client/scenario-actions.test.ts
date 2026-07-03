@@ -83,4 +83,17 @@ describe("deriveScenarioActions", () => {
       }),
     );
   });
+
+  it("uses a five-second slow commit window for at-least-once demos", () => {
+    expect(
+      deriveScenarioActions(
+        runSnapshot({ scenarioId: "at-least-once-duplicates" }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        id: "slow-commit-window",
+        settings: { processingLatencyMs: 5000 },
+      }),
+    );
+  });
 });

@@ -1,14 +1,21 @@
-import type { RunSnapshot } from "@kplay/contracts";
+import type { ConsumerSnapshot, RunSnapshot } from "@kplay/contracts";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import {
+  currentTasksForConsumer,
+  formatTaskDuration,
+  type ConsumerTask,
+} from "@/lib/client/current-consumer-task";
 import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
 import { keyStrategyLabel } from "@/lib/client/key-strategy-label";
 
 export function TopologyDetails({
   snapshot,
   selectedNode,
+  taskNowMs,
 }: {
   snapshot: RunSnapshot;
   selectedNode: TopologySelection;
+  taskNowMs: number;
 }) {
   if (selectedNode.type === "producer") {
     return (
@@ -160,31 +167,103 @@ export function TopologyDetails({
         }
       />
       {consumer ? (
-        <DetailSection
-          title="Consumer Metrics"
-          rows={[
-            ["Status", consumer.status],
-            [
-              "Assignments",
-              consumer.status === "crashed"
-                ? "Crashed"
-                : consumer.assignments.length
-                  ? consumer.assignments
-                      .map((assignment) => `P${assignment.partition}`)
-                      .join(", ")
-                  : "Idle",
-            ],
-            ["Processed", String(consumer.processedCount)],
-            ["Committed", String(consumer.committedCount)],
-            ["Group", snapshot.consumerGroupId],
-          ]}
-        />
+        <>
+          <DetailSection
+            title="Consumer Metrics"
+            rows={consumerMetricRows(snapshot, consumer)}
+          />
+          <ActiveTasksSection
+            tasks={currentTasksForConsumer(
+              snapshot,
+              consumer.consumerId,
+              taskNowMs,
+            )}
+          />
+        </>
       ) : (
         <div className="p-5 text-sm text-[#466778]">
           This consumer is no longer active in the current snapshot.
         </div>
       )}
     </>
+  );
+}
+
+function consumerMetricRows(
+  snapshot: RunSnapshot,
+  consumer: ConsumerSnapshot,
+): Array<[string, string]> {
+  const rows: Array<[string, string]> = [
+    ["Status", consumer.status],
+    [
+      "Assignments",
+      consumer.status === "crashed"
+        ? "Crashed"
+        : consumer.assignments.length
+          ? consumer.assignments
+              .map((assignment) => `P${assignment.partition}`)
+              .join(", ")
+          : "Idle",
+    ],
+  ];
+  rows.push(
+    ["Processed", String(consumer.processedCount)],
+    ["Committed", String(consumer.committedCount)],
+    ["Group", snapshot.consumerGroupId],
+  );
+  return rows;
+}
+
+function ActiveTasksSection({ tasks }: { tasks: ConsumerTask[] }) {
+  return (
+    <section className="border-t-[3px] border-teal-700 p-5">
+      <h3 className="mb-3 kplay-section-title">Active tasks</h3>
+      {tasks.length === 0 ? (
+        <p className="text-sm font-semibold text-[#466778]">None</p>
+      ) : (
+        <div className="space-y-3">
+          {tasks.map((task, index) => (
+            <div
+              key={task.messageId}
+              className="rounded-2xl border-[3px] border-teal-700 bg-[#fffdf5] p-3 shadow-[5px_5px_0_rgba(15,118,110,0.12)]"
+            >
+              <div className="mb-2 text-xs font-extrabold uppercase tracking-[0.12em] text-teal-700">
+                Task {index + 1}
+              </div>
+              <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
+                <TaskRow label="Label" value={task.label} />
+                <TaskRow label="State" value={task.state} />
+                <TaskRow
+                  label="Duration"
+                  value={formatTaskDuration(task.duration)}
+                />
+                <TaskRow
+                  label="Partition / offset"
+                  value={task.partitionOffset}
+                />
+                {task.idempotencyKey ? (
+                  <TaskRow
+                    label="Idempotency key"
+                    value={task.idempotencyKey}
+                  />
+                ) : null}
+              </dl>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="contents">
+      <dt className="text-[#466778]">{label}</dt>
+      <dd className="min-w-0 break-words font-semibold text-[#123047]">
+        {value}
+      </dd>
+    </div>
   );
 }
 
