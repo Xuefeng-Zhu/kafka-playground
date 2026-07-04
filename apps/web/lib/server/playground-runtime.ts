@@ -27,6 +27,11 @@ import {
 import { ApiError } from "./api-errors";
 import { getServerEnv } from "./env";
 import { logger } from "./logger";
+import {
+  boundMessages,
+  requeueMessagesForConsumer,
+  scheduleMessageProcessing,
+} from "./playground-message-lifecycle";
 import { clearProducerTimer, restartProducerTimer } from "./producer-scheduler";
 import {
   emitRuntimeEvent,
@@ -299,7 +304,7 @@ export class PlaygroundRuntime {
       updatedAt: now,
     };
     run.messages.push(message);
-    this.boundMessages(run);
+    boundMessages(run);
     this.emit(run, "message.producing", {
       messageId: eventId,
       actor: "producer",
@@ -460,7 +465,7 @@ export class PlaygroundRuntime {
     );
     this.emit(run, "consumer.stopped", { consumerId, actor: consumerId });
     if (run.mode === "demo") {
-      this.requeueMessagesForConsumer(run, consumerId);
+      requeueMessagesForConsumer(run, consumerId);
       this.rebalance(run);
       for (const message of run.messages.filter(
         (item) => item.state === "produced",
@@ -513,7 +518,7 @@ export class PlaygroundRuntime {
     }
     consumer.assignments = [];
     consumer.status = "crashed";
-    this.requeueMessagesForConsumer(run, consumerId);
+    requeueMessagesForConsumer(run, consumerId);
     this.emit(run, "consumer.crashed", {
       consumerId,
       actor: consumerId,
@@ -591,10 +596,6 @@ export class PlaygroundRuntime {
 
   private findRun(runId: string) {
     return this.runs.findRun(runId);
-  }
-
-  runStateForTest(sessionId = DEFAULT_SESSION_ID) {
-    return this.runs.getSessionRun(sessionId);
   }
 
   private emit(
@@ -709,49 +710,13 @@ export class PlaygroundRuntime {
       offset: message.offset,
       actor: consumer.consumerId,
     });
-    const timer = setTimeout(() => {
-      if (run.processingTimers.get(message.messageId) === timer) {
-        run.processingTimers.delete(message.messageId);
-      }
-      void this.processMessage(
-        run.runId,
-        message.messageId,
-        consumer.consumerId,
-      ).catch((error) => {
-        logger.error(
-          {
-            err: error,
-            runId: run.runId,
-            messageId: message.messageId,
-            consumerId: consumer.consumerId,
-          },
-          "Scheduled message processing failed",
-        );
-      });
-    }, run.processingLatencyMs);
-    const previousTimer = run.processingTimers.get(message.messageId);
-    if (previousTimer) clearTimeout(previousTimer);
-    run.processingTimers.set(message.messageId, timer);
-  }
-
-  private requeueMessagesForConsumer(run: InternalRun, consumerId: string) {
-    for (const message of run.messages) {
-      if (
-        message.assignedConsumerId === consumerId &&
-        ["received", "processing", "processed", "commit_requested"].includes(
-          message.state,
-        )
-      ) {
-        const timer = run.processingTimers.get(message.messageId);
-        if (timer) {
-          clearTimeout(timer);
-          run.processingTimers.delete(message.messageId);
-        }
-        message.state = "produced";
-        message.assignedConsumerId = null;
-        message.updatedAt = new Date().toISOString();
-      }
-    }
+    scheduleMessageProcessing(
+      run,
+      message,
+      consumer.consumerId,
+      (runId, messageId, expectedConsumerId) =>
+        this.processMessage(runId, messageId, expectedConsumerId),
+    );
   }
 
   private async handleConsumedMessage(
@@ -783,7 +748,7 @@ export class PlaygroundRuntime {
         updatedAt: now,
       };
       run.messages.push(message);
-      this.boundMessages(run);
+      boundMessages(run);
     }
     if (message.state !== "produced") return;
     message.partition = consumed.partition;
@@ -957,16 +922,6 @@ export class PlaygroundRuntime {
     );
     this.emit(run, "run.stopped", { message: "Run stopped." });
     run.subscribers.clear();
-  }
-
-  private boundMessages(run: InternalRun) {
-    if (run.messages.length <= 500) return;
-    const removedMessages = run.messages.splice(0, run.messages.length - 500);
-    for (const message of removedMessages) {
-      const timer = run.processingTimers.get(message.messageId);
-      if (timer) clearTimeout(timer);
-      run.processingTimers.delete(message.messageId);
-    }
   }
 
   private applyConsumerAssignment(

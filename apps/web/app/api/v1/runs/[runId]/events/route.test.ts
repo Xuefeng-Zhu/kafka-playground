@@ -42,17 +42,38 @@ describe("run events stream route", () => {
 
     const firstChunk = await reader?.read();
     await reader?.cancel();
+    const sessionId = extractSessionId(response.headers.get("set-cookie"));
 
     expect(runtime.subscribe).toHaveBeenCalledWith(
       "run-1",
       7,
       expect.objectContaining({ enqueue: expect.any(Function) }),
-      expect.any(String),
+      sessionId,
     );
+    expect(sessionId).toBeTruthy();
     expect(new TextDecoder().decode(firstChunk?.value)).toContain(
       "event: snapshot",
     );
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses an existing session cookie for subscriptions", async () => {
+    runtime.subscribe.mockReturnValue(vi.fn());
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+
+    const response = await GET(
+      request({ headers: { cookie: `kplay.session=${sessionId}` } }),
+      context(),
+    );
+    await response.body?.cancel();
+
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(runtime.subscribe).toHaveBeenCalledWith(
+      "run-1",
+      null,
+      expect.objectContaining({ enqueue: expect.any(Function) }),
+      sessionId,
+    );
   });
 
   it("ignores malformed Last-Event-ID values", async () => {
@@ -75,4 +96,8 @@ function request(init: RequestInit = {}) {
 
 function context() {
   return { params: Promise.resolve({ runId: "run-1" }) };
+}
+
+function extractSessionId(cookie: string | null) {
+  return cookie?.match(/(?:^|;\s*)kplay\.session=([^;]+)/)?.[1] ?? null;
 }

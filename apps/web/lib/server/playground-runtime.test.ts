@@ -603,21 +603,11 @@ describe("PlaygroundRuntime demo integration", () => {
       snapshot = await runtime.produceOne(snapshot.runId);
     }
 
-    const activeRun = runtime.runStateForTest();
-    expect(activeRun).toBeDefined();
-    const retainedMessageIds = new Set(
-      activeRun?.messages.map((message) => message.messageId),
-    );
-
-    expect(activeRun?.messages).toHaveLength(500);
-    expect(activeRun?.processingTimers.size).toBe(500);
-    expect(
-      [...(activeRun?.processingTimers.keys() ?? [])].every((messageId) =>
-        retainedMessageIds.has(messageId),
-      ),
-    ).toBe(true);
+    expect(runtime.snapshot(snapshot.runId).messageCounts.produced).toBe(501);
+    expect(vi.getTimerCount()).toBe(500);
 
     await runtime.reset(snapshot.runId);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("requeues demo messages assigned to a stopped consumer before processing completes", async () => {
@@ -760,22 +750,45 @@ describe("PlaygroundRuntime demo integration", () => {
 
   it("disconnects the consumer handle during crash cleanup", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
-    const runtime = new PlaygroundRuntime();
-    let snapshot = await runtime.createRun("partitioning");
-    snapshot = await runtime.addConsumer(snapshot.runId);
+    const { UserConfiguredKafkaRuntimeAdapter } =
+      await import("@kplay/kafka-runtime");
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "createRun",
+    ).mockResolvedValue(undefined);
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "deleteRunResources",
+    ).mockResolvedValue({
+      status: "requested",
+      steps: [],
+    });
     const disconnect = vi.fn().mockResolvedValue(undefined);
-    const activeRun = runtime.runStateForTest();
-    expect(activeRun).toBeDefined();
-    activeRun?.consumerHandles.set("consumer-1", {
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "createConsumer",
+    ).mockResolvedValue({
       consumerId: "consumer-1",
       commit: vi.fn().mockResolvedValue(undefined),
       disconnect,
     });
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("partitioning", {
+      mode: "remote",
+      remoteKafkaConfig: {
+        brokers: "broker.example.com:9092",
+        username: "service-user",
+        password: "service-password",
+        saslMechanism: "SCRAM-SHA-256",
+        useTls: true,
+        caCertificate: "",
+      },
+    });
+    snapshot = await runtime.addConsumer(snapshot.runId);
 
     snapshot = await runtime.crashConsumer(snapshot.runId, "consumer-1");
 
     expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(activeRun?.consumerHandles.has("consumer-1")).toBe(false);
     expect(
       snapshot.consumers.find(
         (consumer) => consumer.consumerId === "consumer-1",

@@ -57,15 +57,6 @@ export function currentTasksForConsumer(
     .map((message) => toConsumerTask(message, snapshot.recentEvents, nowMs));
 }
 
-export function formatConsumerTaskSummary(task: ConsumerTask) {
-  return [
-    task.label,
-    task.partitionOffset,
-    task.state,
-    formatTaskDuration(task.duration),
-  ].join(" | ");
-}
-
 export function hasActiveConsumerTaskDuration(snapshot: RunSnapshot) {
   return snapshot.consumers.some((consumer) => {
     const tasks = currentTasksForConsumer(snapshot, consumer.consumerId);

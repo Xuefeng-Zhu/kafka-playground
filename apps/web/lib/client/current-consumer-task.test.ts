@@ -5,7 +5,6 @@ import {
   currentTaskForConsumer,
   currentTasksForConsumer,
   formatDurationMs,
-  formatConsumerTaskSummary,
   formatTaskDuration,
   taskDurationForMessage,
 } from "./current-consumer-task";
@@ -78,9 +77,12 @@ describe("currentTaskForConsumer", () => {
       "P0@2",
       "P1@1",
     ]);
-    expect(formatConsumerTaskSummary(tasks[0])).toBe(
-      "payment-p0-first | P0@1 | received | 1.5s",
-    );
+    expect(tasks[0]).toMatchObject({
+      label: "payment-p0-first",
+      partitionOffset: "P0@1",
+      state: "received",
+    });
+    expect(formatTaskDuration(tasks[0].duration)).toBe("1.5s");
   });
 
   it("shows the latest active assigned message for a consumer", () => {
@@ -116,9 +118,7 @@ describe("currentTaskForConsumer", () => {
       partitionOffset: "P0@4",
       state: "received",
     });
-    expect(task ? formatConsumerTaskSummary(task) : "").toBe(
-      "payment-newer | P0@4 | received | 1.5s",
-    );
+    expect(task ? formatTaskDuration(task.duration) : "").toBe("1.5s");
   });
 
   it("ignores terminal and other-consumer messages", () => {
