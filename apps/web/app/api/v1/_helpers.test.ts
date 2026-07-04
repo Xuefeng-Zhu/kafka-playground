@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { parseJson, safe } from "./_helpers";
+import {
+  parseJson,
+  playgroundSession,
+  safe,
+  safeWithSession,
+} from "./_helpers";
 
 describe("parseJson", () => {
   const schema = z.object({
@@ -142,5 +147,52 @@ describe("safe", () => {
       async () => Response.json({ ok: true }),
     );
     expect(response.status).toBe(200);
+  });
+});
+
+describe("playgroundSession", () => {
+  it("sets an http-only session cookie when one is missing", () => {
+    const session = playgroundSession(new Request("http://test.local"));
+    const response = session.commit(Response.json({ ok: true }));
+
+    expect(session.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      `kplay.session=${session.id}`,
+    );
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    expect(response.headers.get("set-cookie")).toContain("SameSite=Lax");
+  });
+
+  it("reuses a valid session cookie without setting it again", () => {
+    const existingId = "11111111-1111-4111-8111-111111111111";
+    const session = playgroundSession(
+      new Request("http://test.local", {
+        headers: { cookie: `kplay.session=${existingId}` },
+      }),
+    );
+    const response = session.commit(Response.json({ ok: true }));
+
+    expect(session.id).toBe(existingId);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+});
+
+describe("safeWithSession", () => {
+  it("passes the session to the handler and commits new session cookies", async () => {
+    const response = await safeWithSession(
+      new Request("http://test.local/api/v1/runs", { method: "POST" }),
+      async ({ session }) => Response.json({ sessionId: session.id }),
+    );
+    const body = await response.json();
+
+    expect(body.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      `kplay.session=${body.sessionId}`,
+    );
+    expect(response.headers.get("x-request-id")).toBeTruthy();
   });
 });

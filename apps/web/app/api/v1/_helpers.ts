@@ -8,14 +8,46 @@ const MUTATION_LIMIT = 80;
 const MUTATION_BUCKET_PRUNE_INTERVAL_MS = MUTATION_WINDOW_MS;
 const MUTATION_BUCKET_MAX_SIZE = 1_000;
 let lastMutationBucketPrune = 0;
+const PLAYGROUND_SESSION_COOKIE = "kplay.session";
+const PLAYGROUND_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type ParseJsonOptions = {
   code?: string;
   describeIssue?: (issue: ZodIssue) => string;
 };
 
+type PlaygroundSession = ReturnType<typeof playgroundSession>;
+
 export function json<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
+}
+
+export function playgroundSession(request: Request) {
+  const existingId = parseCookieHeader(request.headers.get("cookie"))[
+    PLAYGROUND_SESSION_COOKIE
+  ];
+  const sessionId = isValidSessionId(existingId)
+    ? existingId
+    : crypto.randomUUID();
+  return {
+    id: sessionId,
+    commit(response: Response) {
+      if (existingId === sessionId) return response;
+      response.headers.append(
+        "Set-Cookie",
+        [
+          `${PLAYGROUND_SESSION_COOKIE}=${sessionId}`,
+          "Path=/",
+          `Max-Age=${PLAYGROUND_SESSION_MAX_AGE_SECONDS}`,
+          "HttpOnly",
+          "SameSite=Lax",
+        ].join("; "),
+      );
+      return response;
+    },
+  };
 }
 
 export async function safe(
@@ -31,6 +63,19 @@ export async function safe(
   } catch (error) {
     return problem(error, id);
   }
+}
+
+export async function safeWithSession(
+  request: Request,
+  handler: (context: {
+    requestId: string;
+    session: PlaygroundSession;
+  }) => Promise<Response>,
+) {
+  const session = playgroundSession(request);
+  return safe(request, async (id) =>
+    session.commit(await handler({ requestId: id, session })),
+  );
 }
 
 function enforceMutationRateLimit(request: Request) {
@@ -82,6 +127,21 @@ function trimMutationBuckets() {
     if (oldestKey === undefined) return;
     mutationBuckets.delete(oldestKey);
   }
+}
+
+function parseCookieHeader(header: string | null) {
+  const cookies: Record<string, string> = {};
+  if (!header) return cookies;
+  for (const entry of header.split(";")) {
+    const [rawName, ...rawValue] = entry.trim().split("=");
+    if (!rawName) continue;
+    cookies[rawName] = rawValue.join("=");
+  }
+  return cookies;
+}
+
+function isValidSessionId(value: string | undefined) {
+  return value !== undefined && SESSION_ID_PATTERN.test(value);
 }
 
 export async function parseJson<T extends z.ZodType>(

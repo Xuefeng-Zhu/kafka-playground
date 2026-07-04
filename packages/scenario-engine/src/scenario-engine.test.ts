@@ -90,6 +90,10 @@ describe("scenario engine", () => {
     }
   });
 
+  it("uses 3000 ms as the standard processing latency default", () => {
+    expect(defaultProcessingLatencyForScenario("partitioning")).toBe(3000);
+  });
+
   it("describes the load-balancing scenario without promising extra groups", () => {
     const scenario = SCENARIOS.find(
       (item) => item.id === "fan-out-load-balancing",

@@ -38,6 +38,10 @@ import {
   createRunSnapshot,
   type InternalRun,
 } from "./playground-runtime-state";
+import {
+  DEFAULT_SESSION_ID,
+  PlaygroundRunRegistry,
+} from "./playground-run-registry";
 
 export class PlaygroundRuntime {
   private readonly env = getServerEnv();
@@ -66,7 +70,7 @@ export class PlaygroundRuntime {
     this.env,
     this.diagnostics,
   );
-  private activeRun: InternalRun | null = null;
+  private readonly runs = new PlaygroundRunRegistry();
   private shutdownStarted = false;
 
   scenarios() {
@@ -96,13 +100,18 @@ export class PlaygroundRuntime {
       mode?: UserSelectableKafkaMode;
       remoteKafkaConfig?: RemoteKafkaConfig;
     } = {},
+    sessionId = DEFAULT_SESSION_ID,
   ) {
-    if (this.activeRun && this.activeRun.status !== "stopped") {
+    const activeRun = this.runs.getSessionRun(sessionId);
+    if (activeRun && activeRun.status !== "stopped") {
       throw new ApiError(
         "RUN_ALREADY_ACTIVE",
         "Only one scenario run can be active.",
         409,
       );
+    }
+    if (activeRun?.status === "stopped") {
+      this.runs.deleteSessionRun(sessionId);
     }
     const scenario = findScenario(scenarioId);
     if (!scenario || scenario.disabled) {
@@ -125,23 +134,25 @@ export class PlaygroundRuntime {
       scenario,
       names,
     });
-    this.activeRun = run;
-    this.emit("topic.creating", { message: `Creating topic ${run.topicName}` });
+    this.runs.setSessionRun(sessionId, run);
+    this.emit(run, "topic.creating", {
+      message: `Creating topic ${run.topicName}`,
+    });
     try {
       await run.adapter.createRun(run);
       run.status = "running";
-      this.emit("topic.created", {
+      this.emit(run, "topic.created", {
         message: `Topic created with ${scenario.topic.partitions} partitions.`,
       });
-      this.emit("run.started", { message: `${scenario.title} started.` });
-      return this.snapshot(run.runId);
+      this.emit(run, "run.started", { message: `${scenario.title} started.` });
+      return this.snapshot(run.runId, sessionId);
     } catch (error) {
       if (isConfigurationError(error)) {
         logger.warn(
           { err: error, runId: run.runId },
           "Scenario run blocked by incomplete Kafka configuration",
         );
-        this.activeRun = null;
+        this.runs.deleteSessionRun(sessionId);
         throw error;
       }
       logger.error(
@@ -149,14 +160,14 @@ export class PlaygroundRuntime {
         "Failed to start scenario run",
       );
       run.status = "error";
-      this.emit("run.error", { message: "Failed to start run." });
+      this.emit(run, "run.error", { message: "Failed to start run." });
       await this.cleanup(run);
       throw error;
     }
   }
 
-  snapshot(runId: string) {
-    const run = this.requireRun(runId);
+  snapshot(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.requireRun(runId, sessionId);
     return createRunSnapshot(
       run,
       this.consumerLimit(run),
@@ -164,9 +175,10 @@ export class PlaygroundRuntime {
     );
   }
 
-  activeSnapshot() {
-    if (!this.activeRun || this.activeRun.status === "stopped") return null;
-    return this.snapshot(this.activeRun.runId);
+  activeSnapshot(sessionId = DEFAULT_SESSION_ID) {
+    const run = this.runs.getSessionRun(sessionId);
+    if (!run || run.status === "stopped") return null;
+    return this.snapshot(run.runId, sessionId);
   }
 
   async updateSettings(
@@ -177,8 +189,9 @@ export class PlaygroundRuntime {
         "productionRate" | "keyStrategy" | "processingLatencyMs"
       >
     >,
+    sessionId = DEFAULT_SESSION_ID,
   ) {
-    const run = this.requireRun(runId);
+    const run = this.requireRun(runId, sessionId);
     const scenario = this.scenarioForRun(run);
     if (settings.productionRate !== undefined) {
       if (
@@ -193,7 +206,9 @@ export class PlaygroundRuntime {
       }
       run.productionRate = settings.productionRate;
       if (run.producerStatus === "running") {
-        restartProducerTimer(run, (id) => this.produceOne(id));
+        restartProducerTimer(run, (id) =>
+          this.produceOne(id, undefined, sessionId),
+        );
       }
     }
     if (settings.keyStrategy) run.keyStrategy = settings.keyStrategy;
@@ -210,38 +225,45 @@ export class PlaygroundRuntime {
       }
       run.processingLatencyMs = settings.processingLatencyMs;
     }
-    return this.snapshot(runId);
+    return this.snapshot(runId, sessionId);
   }
 
-  async startProducer(runId: string) {
-    const run = this.requireRun(runId);
-    if (run.producerStatus === "running") return this.snapshot(runId);
+  async startProducer(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.requireRun(runId, sessionId);
+    if (run.producerStatus === "running")
+      return this.snapshot(runId, sessionId);
     run.producerStatus = "starting";
-    this.emit("producer.starting", { actor: "producer" });
+    this.emit(run, "producer.starting", { actor: "producer" });
     run.producerStatus = "running";
-    this.emit("producer.started", { actor: "producer" });
-    restartProducerTimer(run, (id) => this.produceOne(id));
-    return this.snapshot(runId);
+    this.emit(run, "producer.started", { actor: "producer" });
+    restartProducerTimer(run, (id) =>
+      this.produceOne(id, undefined, sessionId),
+    );
+    return this.snapshot(runId, sessionId);
   }
 
-  async pauseProducer(runId: string) {
-    const run = this.requireRun(runId);
+  async pauseProducer(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.requireRun(runId, sessionId);
     clearProducerTimer(run);
     run.producerStatus = "paused";
-    this.emit("producer.paused", { actor: "producer" });
-    return this.snapshot(runId);
+    this.emit(run, "producer.paused", { actor: "producer" });
+    return this.snapshot(runId, sessionId);
   }
 
-  async stopProducer(runId: string) {
-    const run = this.requireRun(runId);
+  async stopProducer(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.requireRun(runId, sessionId);
     clearProducerTimer(run);
     run.producerStatus = "stopped";
-    this.emit("producer.stopped", { actor: "producer" });
-    return this.snapshot(runId);
+    this.emit(run, "producer.stopped", { actor: "producer" });
+    return this.snapshot(runId, sessionId);
   }
 
-  async produceOne(runId: string, override?: KeyStrategy) {
-    const run = this.requireRun(runId);
+  async produceOne(
+    runId: string,
+    override?: KeyStrategy,
+    sessionId = DEFAULT_SESSION_ID,
+  ) {
+    const run = this.requireRun(runId, sessionId);
     const keyStrategy = override ?? run.keyStrategy;
     const eventId = crypto.randomUUID();
     const messageKey = run.keyState.next(keyStrategy);
@@ -278,7 +300,10 @@ export class PlaygroundRuntime {
     };
     run.messages.push(message);
     this.boundMessages(run);
-    this.emit("message.producing", { messageId: eventId, actor: "producer" });
+    this.emit(run, "message.producing", {
+      messageId: eventId,
+      actor: "producer",
+    });
     let delivery;
     try {
       delivery = await run.adapter.produce({
@@ -293,7 +318,7 @@ export class PlaygroundRuntime {
       message.state = "failed";
       message.updatedAt = new Date().toISOString();
       run.messageCounts.failed += 1;
-      this.emit("run.error", {
+      this.emit(run, "run.error", {
         messageId: eventId,
         actor: "producer",
         message: "Message production failed.",
@@ -309,7 +334,7 @@ export class PlaygroundRuntime {
     run.messageCounts[String(delivery.partition)] =
       (run.messageCounts[String(delivery.partition)] ?? 0) + 1;
     run.messageCounts.produced += 1;
-    this.emit("message.produced", {
+    this.emit(run, "message.produced", {
       messageId: eventId,
       topic: delivery.topic,
       partition: delivery.partition,
@@ -319,11 +344,11 @@ export class PlaygroundRuntime {
       actor: "producer",
     });
     if (run.mode === "demo") this.maybeDeliverMessage(run, message);
-    return this.snapshot(runId);
+    return this.snapshot(runId, sessionId);
   }
 
-  async addConsumer(runId: string) {
-    const run = this.requireRun(runId);
+  async addConsumer(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.requireRun(runId, sessionId);
     const consumerLimit = this.consumerLimit(run);
     if (this.activeConsumers(run).length >= consumerLimit) {
       throw new ApiError(
@@ -333,7 +358,7 @@ export class PlaygroundRuntime {
       );
     }
     const consumerId = this.nextConsumerId(run);
-    this.emit("consumer.starting", { consumerId, actor: consumerId });
+    this.emit(run, "consumer.starting", { consumerId, actor: consumerId });
     run.consumers.push({
       consumerId,
       status: "starting",
@@ -355,7 +380,7 @@ export class PlaygroundRuntime {
               { runId: run.runId, consumerId, error },
               "Kafka consumer error",
             );
-            this.emit("run.error", {
+            this.emit(run, "run.error", {
               message: error.message,
               actor: consumerId,
             });
@@ -366,7 +391,7 @@ export class PlaygroundRuntime {
         run.consumers = run.consumers.filter(
           (consumer) => consumer.consumerId !== consumerId,
         );
-        this.emit("run.error", {
+        this.emit(run, "run.error", {
           actor: consumerId,
           message: "Consumer failed to start.",
         });
@@ -377,7 +402,7 @@ export class PlaygroundRuntime {
       (item) => item.consumerId === consumerId,
     );
     if (consumer) consumer.status = "running";
-    this.emit("consumer.started", { consumerId, actor: consumerId });
+    this.emit(run, "consumer.started", { consumerId, actor: consumerId });
     if (run.mode === "demo") {
       this.rebalance(run);
       for (const message of run.messages.filter(
@@ -386,11 +411,15 @@ export class PlaygroundRuntime {
         this.maybeDeliverMessage(run, message);
       }
     }
-    return this.snapshot(runId);
+    return this.snapshot(runId, sessionId);
   }
 
-  async stopConsumer(runId: string, consumerId: string) {
-    const run = this.requireRun(runId);
+  async stopConsumer(
+    runId: string,
+    consumerId: string,
+    sessionId = DEFAULT_SESSION_ID,
+  ) {
+    const run = this.requireRun(runId, sessionId);
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,
     );
@@ -408,7 +437,7 @@ export class PlaygroundRuntime {
       );
     }
     consumer.status = "stopping";
-    this.emit("consumer.stopping", { consumerId, actor: consumerId });
+    this.emit(run, "consumer.stopping", { consumerId, actor: consumerId });
     const handle = run.consumerHandles.get(consumerId);
     if (handle) {
       await handle.disconnect().catch((error) => {
@@ -420,7 +449,7 @@ export class PlaygroundRuntime {
       run.consumerHandles.delete(consumerId);
     }
     if (run.mode === "demo" && consumer.assignments.length > 0) {
-      this.emit("consumer.partitions_revoked", {
+      this.emit(run, "consumer.partitions_revoked", {
         consumerId,
         assignments: consumer.assignments,
         actor: consumerId,
@@ -429,7 +458,7 @@ export class PlaygroundRuntime {
     run.consumers = run.consumers.filter(
       (item) => item.consumerId !== consumerId,
     );
-    this.emit("consumer.stopped", { consumerId, actor: consumerId });
+    this.emit(run, "consumer.stopped", { consumerId, actor: consumerId });
     if (run.mode === "demo") {
       this.requeueMessagesForConsumer(run, consumerId);
       this.rebalance(run);
@@ -439,11 +468,15 @@ export class PlaygroundRuntime {
         this.maybeDeliverMessage(run, message);
       }
     }
-    return this.snapshot(runId);
+    return this.snapshot(runId, sessionId);
   }
 
-  async crashConsumer(runId: string, consumerId: string) {
-    const run = this.requireRun(runId);
+  async crashConsumer(
+    runId: string,
+    consumerId: string,
+    sessionId = DEFAULT_SESSION_ID,
+  ) {
+    const run = this.requireRun(runId, sessionId);
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,
     );
@@ -453,9 +486,9 @@ export class PlaygroundRuntime {
         "The consumer does not exist.",
         404,
       );
-    if (consumer.status === "crashed") return this.snapshot(runId);
+    if (consumer.status === "crashed") return this.snapshot(runId, sessionId);
 
-    this.emit("consumer.crashing", {
+    this.emit(run, "consumer.crashing", {
       consumerId,
       actor: consumerId,
       message: `${consumerId} is crashing.`,
@@ -472,7 +505,7 @@ export class PlaygroundRuntime {
     }
     const assignments = consumer.assignments;
     if (assignments.length > 0) {
-      this.emit("consumer.partitions_revoked", {
+      this.emit(run, "consumer.partitions_revoked", {
         consumerId,
         assignments,
         actor: consumerId,
@@ -481,7 +514,7 @@ export class PlaygroundRuntime {
     consumer.assignments = [];
     consumer.status = "crashed";
     this.requeueMessagesForConsumer(run, consumerId);
-    this.emit("consumer.crashed", {
+    this.emit(run, "consumer.crashed", {
       consumerId,
       actor: consumerId,
       message: `${consumerId} crashed before a graceful shutdown.`,
@@ -495,66 +528,81 @@ export class PlaygroundRuntime {
         this.maybeDeliverMessage(run, message);
       }
     }
-    return this.snapshot(runId);
+    return this.snapshot(runId, sessionId);
   }
 
-  async reset(runId: string) {
-    const run = this.requireRun(runId);
+  async reset(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.requireRun(runId, sessionId);
     await this.cleanup(run);
-    this.activeRun = null;
+    this.runs.deleteSessionRun(sessionId);
     return { cleanupStatus: run.cleanupStatus };
   }
 
-  async deleteRun(runId: string) {
-    if (!this.activeRun || this.activeRun.runId !== runId) {
+  async deleteRun(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.runs.getSessionRun(sessionId);
+    if (!run || run.runId !== runId) {
       return { cleanupStatus: "completed" as const };
     }
-    return this.reset(runId);
+    return this.reset(runId, sessionId);
   }
 
   subscribe(
     runId: string,
     lastEventId: number | null,
     subscriber: RuntimeSubscriber,
+    sessionId = DEFAULT_SESSION_ID,
   ) {
-    const run = this.requireRun(runId);
-    return subscribeToRun(run, this.snapshot(runId), lastEventId, subscriber);
+    const run = this.requireRun(runId, sessionId);
+    return subscribeToRun(
+      run,
+      this.snapshot(runId, sessionId),
+      lastEventId,
+      subscriber,
+    );
   }
 
   async shutdown() {
     if (this.shutdownStarted) return;
     this.shutdownStarted = true;
-    if (this.activeRun) {
-      await this.cleanup(this.activeRun).catch((error) =>
-        logger.error({ err: error }, "Runtime shutdown cleanup failed"),
+    for (const run of this.runs.values()) {
+      await this.cleanup(run).catch((error) =>
+        logger.error(
+          { err: error, runId: run.runId },
+          "Runtime shutdown cleanup failed",
+        ),
       );
     }
+    this.runs.clear();
     await this.adapter.shutdown();
     await this.envAdapter.shutdown();
   }
 
-  private requireRun(runId: string) {
-    if (!this.activeRun || this.activeRun.runId !== runId) {
+  private requireRun(runId: string, sessionId = DEFAULT_SESSION_ID) {
+    const run = this.runs.getOwnedRun(runId, sessionId);
+    if (!run) {
       throw new ApiError(
         "RUN_NOT_FOUND",
         "The scenario run does not exist.",
         404,
       );
     }
-    return this.activeRun;
+    return run;
+  }
+
+  private findRun(runId: string) {
+    return this.runs.findRun(runId);
+  }
+
+  runStateForTest(sessionId = DEFAULT_SESSION_ID) {
+    return this.runs.getSessionRun(sessionId);
   }
 
   private emit(
+    run: InternalRun,
     type: RuntimeEvent["type"],
     payload: Record<string, unknown> = {},
   ) {
-    if (!this.activeRun) return;
-    emitRuntimeEvent(
-      this.activeRun,
-      type,
-      payload,
-      this.env.EVENT_HISTORY_LIMIT,
-    );
+    emitRuntimeEvent(run, type, payload, this.env.EVENT_HISTORY_LIMIT);
   }
 
   private nextConsumerId(run: InternalRun) {
@@ -604,7 +652,7 @@ export class PlaygroundRuntime {
     const active = this.activeConsumers(run);
     active.forEach((consumer) => {
       if (consumer.assignments.length > 0) {
-        this.emit("consumer.partitions_revoked", {
+        this.emit(run, "consumer.partitions_revoked", {
           consumerId: consumer.consumerId,
           assignments: consumer.assignments,
           actor: consumer.consumerId,
@@ -620,14 +668,14 @@ export class PlaygroundRuntime {
     }
     active.forEach((consumer) => {
       if (consumer.assignments.length > 0) {
-        this.emit("consumer.partitions_assigned", {
+        this.emit(run, "consumer.partitions_assigned", {
           consumerId: consumer.consumerId,
           assignments: consumer.assignments,
           actor: consumer.consumerId,
         });
       } else {
         consumer.status = "idle";
-        this.emit("consumer.idle", {
+        this.emit(run, "consumer.idle", {
           consumerId: consumer.consumerId,
           message: "No partition assignment is available for this consumer.",
           actor: consumer.consumerId,
@@ -653,7 +701,7 @@ export class PlaygroundRuntime {
     message.assignedConsumerId = consumer.consumerId;
     message.updatedAt = new Date().toISOString();
     run.messageCounts.received += 1;
-    this.emit("message.received", {
+    this.emit(run, "message.received", {
       messageId: message.messageId,
       consumerId: consumer.consumerId,
       topic: run.topicName,
@@ -711,8 +759,8 @@ export class PlaygroundRuntime {
     consumerId: string,
     consumed: ConsumedMessage,
   ) {
-    const run = this.activeRun;
-    if (!run || run.runId !== runId) return;
+    const run = this.findRun(runId);
+    if (!run) return;
     const messageId =
       consumed.headers["x-playground-event-id"] ?? crypto.randomUUID();
     let message = run.messages.find((item) => item.messageId === messageId);
@@ -746,7 +794,7 @@ export class PlaygroundRuntime {
     message.state = "received";
     message.updatedAt = new Date().toISOString();
     run.messageCounts.received += 1;
-    this.emit("message.received", {
+    this.emit(run, "message.received", {
       messageId: message.messageId,
       consumerId,
       topic: consumed.topic,
@@ -765,8 +813,8 @@ export class PlaygroundRuntime {
     messageId: string,
     expectedConsumerId?: string,
   ) {
-    const run = this.activeRun;
-    if (!run || run.runId !== runId) return;
+    const run = this.findRun(runId);
+    if (!run) return;
     const message = run.messages.find((item) => item.messageId === messageId);
     if (
       !message ||
@@ -784,7 +832,7 @@ export class PlaygroundRuntime {
     if (!consumer) return;
     message.state = "processing";
     message.updatedAt = new Date().toISOString();
-    this.emit("message.processing_started", {
+    this.emit(run, "message.processing_started", {
       messageId,
       consumerId: consumer.consumerId,
       actor: consumer.consumerId,
@@ -798,7 +846,7 @@ export class PlaygroundRuntime {
       message.state = "failed";
       message.updatedAt = new Date().toISOString();
       run.messageCounts.failed += 1;
-      this.emit("message.processing_failed", {
+      this.emit(run, "message.processing_failed", {
         messageId,
         consumerId: consumer.consumerId,
         message: scenarioOutcome.message,
@@ -809,14 +857,14 @@ export class PlaygroundRuntime {
     message.state = "processed";
     consumer.processedCount += 1;
     run.messageCounts.processed += 1;
-    this.emit("message.processing_completed", {
+    this.emit(run, "message.processing_completed", {
       messageId,
       consumerId: consumer.consumerId,
       actor: consumer.consumerId,
     });
     const committedOffset = String(Number(message.offset) + 1);
     message.state = "commit_requested";
-    this.emit("offset.commit_requested", {
+    this.emit(run, "offset.commit_requested", {
       consumerId: consumer.consumerId,
       groupId: run.consumerGroupId,
       topic: run.topicName,
@@ -840,7 +888,7 @@ export class PlaygroundRuntime {
       consumer.committedCount += 1;
       run.messageCounts.committed += 1;
       run.latestCommittedOffsets[String(message.partition)] = committedOffset;
-      this.emit("offset.committed", {
+      this.emit(run, "offset.committed", {
         consumerId: consumer.consumerId,
         groupId: run.consumerGroupId,
         topic: run.topicName,
@@ -852,7 +900,7 @@ export class PlaygroundRuntime {
     } catch (error) {
       message.state = "failed";
       run.messageCounts.failed += 1;
-      this.emit("offset.commit_failed", {
+      this.emit(run, "offset.commit_failed", {
         consumerId: consumer.consumerId,
         groupId: run.consumerGroupId,
         topic: run.topicName,
@@ -881,7 +929,7 @@ export class PlaygroundRuntime {
     run.consumerHandles.clear();
     run.status = "cleaning";
     run.cleanupStatus = "requested";
-    this.emit("resource.cleanup_started", {
+    this.emit(run, "resource.cleanup_started", {
       message: "Runtime cleanup started.",
     });
     const result = await run.adapter.deleteRunResources(run).catch((error) => {
@@ -901,12 +949,13 @@ export class PlaygroundRuntime {
     run.consumers = [];
     run.status = "stopped";
     this.emit(
+      run,
       result.status === "failed"
         ? "resource.cleanup_failed"
         : "resource.cleanup_completed",
       { message: `Cleanup ${result.status}.` },
     );
-    this.emit("run.stopped", { message: "Run stopped." });
+    this.emit(run, "run.stopped", { message: "Run stopped." });
     run.subscribers.clear();
   }
 
@@ -925,8 +974,8 @@ export class PlaygroundRuntime {
     consumerId: string,
     assignments: Array<{ topic: string; partition: number }>,
   ) {
-    const run = this.activeRun;
-    if (!run || run.runId !== runId) return;
+    const run = this.findRun(runId);
+    if (!run) return;
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,
     );
@@ -934,13 +983,13 @@ export class PlaygroundRuntime {
     consumer.assignments = assignments;
     consumer.status = assignments.length > 0 ? "running" : "idle";
     if (assignments.length > 0) {
-      this.emit("consumer.partitions_assigned", {
+      this.emit(run, "consumer.partitions_assigned", {
         consumerId,
         assignments,
         actor: consumerId,
       });
     } else {
-      this.emit("consumer.idle", {
+      this.emit(run, "consumer.idle", {
         consumerId,
         message: "Kafka assigned no partitions to this consumer.",
         actor: consumerId,
@@ -953,15 +1002,15 @@ export class PlaygroundRuntime {
     consumerId: string,
     assignments: Array<{ topic: string; partition: number }>,
   ) {
-    const run = this.activeRun;
-    if (!run || run.runId !== runId) return;
+    const run = this.findRun(runId);
+    if (!run) return;
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,
     );
     if (!consumer) return;
     consumer.assignments = [];
     consumer.status = "running";
-    this.emit("consumer.partitions_revoked", {
+    this.emit(run, "consumer.partitions_revoked", {
       consumerId,
       assignments,
       actor: consumerId,

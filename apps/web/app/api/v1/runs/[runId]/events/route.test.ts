@@ -47,6 +47,7 @@ describe("run events stream route", () => {
       "run-1",
       7,
       expect.objectContaining({ enqueue: expect.any(Function) }),
+      expect.any(String),
     );
     expect(new TextDecoder().decode(firstChunk?.value)).toContain(
       "event: snapshot",
@@ -63,6 +64,7 @@ describe("run events stream route", () => {
       "run-1",
       null,
       expect.objectContaining({ enqueue: expect.any(Function) }),
+      expect.any(String),
     );
   });
 });

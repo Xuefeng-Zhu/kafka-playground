@@ -28,6 +28,9 @@ describe("PlaygroundRuntime demo integration", () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
     let snapshot = await runtime.createRun("partitioning");
+    snapshot = await runtime.updateSettings(snapshot.runId, {
+      processingLatencyMs: 25,
+    });
     expect(snapshot.partitionCount).toBe(2);
     expect(runtime.activeSnapshot()?.runId).toBe(snapshot.runId);
 
@@ -45,7 +48,7 @@ describe("PlaygroundRuntime demo integration", () => {
     expect(snapshot.recentMessages.at(-1)?.partition).not.toBeNull();
     expect(snapshot.recentMessages.at(-1)?.offset).not.toBeNull();
 
-    await vi.advanceTimersByTimeAsync(550);
+    await vi.advanceTimersByTimeAsync(25);
     snapshot = runtime.snapshot(snapshot.runId);
     expect(snapshot.messageCounts.committed).toBeGreaterThanOrEqual(1);
 
@@ -54,6 +57,72 @@ describe("PlaygroundRuntime demo integration", () => {
     await expect(runtime.deleteRun(snapshot.runId)).resolves.toEqual({
       cleanupStatus: "completed",
     });
+  });
+
+  it("keeps active runs isolated by browser session", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+
+    const sessionOneRun = await runtime.createRun(
+      "partitioning",
+      {},
+      "session-one",
+    );
+    const sessionTwoRun = await runtime.createRun(
+      "fan-out-load-balancing",
+      {},
+      "session-two",
+    );
+
+    expect(runtime.activeSnapshot("session-one")?.runId).toBe(
+      sessionOneRun.runId,
+    );
+    expect(runtime.activeSnapshot("session-two")?.runId).toBe(
+      sessionTwoRun.runId,
+    );
+    expect(runtime.activeSnapshot("session-one")?.scenarioId).toBe(
+      "partitioning",
+    );
+    expect(runtime.activeSnapshot("session-two")?.scenarioId).toBe(
+      "fan-out-load-balancing",
+    );
+    try {
+      runtime.snapshot(sessionOneRun.runId, "session-two");
+      throw new Error("Expected cross-session snapshot to fail.");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "RUN_NOT_FOUND" });
+    }
+
+    await runtime.reset(sessionOneRun.runId, "session-one");
+    expect(runtime.activeSnapshot("session-one")).toBeNull();
+    expect(runtime.activeSnapshot("session-two")?.runId).toBe(
+      sessionTwoRun.runId,
+    );
+
+    await runtime.reset(sessionTwoRun.runId, "session-two");
+  });
+
+  it("keeps automatic producer ticks scoped to the browser session", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let snapshot = await runtime.createRun("partitioning", {}, "session-one");
+    snapshot = await runtime.updateSettings(
+      snapshot.runId,
+      {
+        productionRate: 10,
+      },
+      "session-one",
+    );
+
+    await runtime.startProducer(snapshot.runId, "session-one");
+    await vi.advanceTimersByTimeAsync(120);
+
+    expect(
+      runtime.snapshot(snapshot.runId, "session-one").messageCounts.produced,
+    ).toBeGreaterThanOrEqual(1);
+
+    await runtime.reset(snapshot.runId, "session-one");
   });
 
   it("replays missed SSE events from bounded history", async () => {
@@ -534,20 +603,16 @@ describe("PlaygroundRuntime demo integration", () => {
       snapshot = await runtime.produceOne(snapshot.runId);
     }
 
-    const internal = runtime as unknown as {
-      activeRun: {
-        messages: Array<{ messageId: string }>;
-        processingTimers: Map<string, NodeJS.Timeout>;
-      };
-    };
+    const activeRun = runtime.runStateForTest();
+    expect(activeRun).toBeDefined();
     const retainedMessageIds = new Set(
-      internal.activeRun.messages.map((message) => message.messageId),
+      activeRun?.messages.map((message) => message.messageId),
     );
 
-    expect(internal.activeRun.messages).toHaveLength(500);
-    expect(internal.activeRun.processingTimers.size).toBe(500);
+    expect(activeRun?.messages).toHaveLength(500);
+    expect(activeRun?.processingTimers.size).toBe(500);
     expect(
-      [...internal.activeRun.processingTimers.keys()].every((messageId) =>
+      [...(activeRun?.processingTimers.keys() ?? [])].every((messageId) =>
         retainedMessageIds.has(messageId),
       ),
     ).toBe(true);
@@ -699,19 +764,9 @@ describe("PlaygroundRuntime demo integration", () => {
     let snapshot = await runtime.createRun("partitioning");
     snapshot = await runtime.addConsumer(snapshot.runId);
     const disconnect = vi.fn().mockResolvedValue(undefined);
-    const internal = runtime as unknown as {
-      activeRun: {
-        consumerHandles: Map<
-          string,
-          {
-            consumerId: string;
-            commit: () => Promise<void>;
-            disconnect: () => Promise<void>;
-          }
-        >;
-      };
-    };
-    internal.activeRun.consumerHandles.set("consumer-1", {
+    const activeRun = runtime.runStateForTest();
+    expect(activeRun).toBeDefined();
+    activeRun?.consumerHandles.set("consumer-1", {
       consumerId: "consumer-1",
       commit: vi.fn().mockResolvedValue(undefined),
       disconnect,
@@ -720,7 +775,7 @@ describe("PlaygroundRuntime demo integration", () => {
     snapshot = await runtime.crashConsumer(snapshot.runId, "consumer-1");
 
     expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(internal.activeRun.consumerHandles.has("consumer-1")).toBe(false);
+    expect(activeRun?.consumerHandles.has("consumer-1")).toBe(false);
     expect(
       snapshot.consumers.find(
         (consumer) => consumer.consumerId === "consumer-1",

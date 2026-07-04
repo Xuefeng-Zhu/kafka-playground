@@ -253,7 +253,7 @@ export function defaultProcessingLatencyForScenario(scenarioId: string) {
   if (scenarioId === "consumer-lag-backpressure") return 1200;
   if (scenarioId === "retry-dead-letter-queues") return 800;
   if (scenarioId === "streams-joins-windows") return 900;
-  return 500;
+  return 3000;
 }
 
 export type ScenarioProcessingOutcome = {

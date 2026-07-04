@@ -3,10 +3,7 @@ import type {
   PlaygroundMessage,
   RunSnapshot,
 } from "@kplay/contracts";
-import {
-  formatConsumerTaskSummary,
-  type ConsumerTask,
-} from "@/lib/client/current-consumer-task";
+import type { ConsumerTask } from "@/lib/client/current-consumer-task";
 import { Code2, Users } from "lucide-react";
 
 const partitionTones = [
@@ -141,7 +138,7 @@ export function PartitionLane({
             aria-label={messageChipTitle(message)}
             data-testid={`partition-message-${message.messageId}`}
             onClick={() => onSelectMessage(message.messageId)}
-            className={`min-w-9 rounded-xl border-2 px-2 py-1 font-mono text-xs font-extrabold ${
+            className={`min-w-9 shrink-0 whitespace-nowrap rounded-xl border-2 px-2 py-1 font-mono text-xs font-extrabold ${
               selectedMessageId === message.messageId
                 ? "border-rose-700 bg-rose-400 text-white shadow-[0_0_0_5px_rgba(251,113,133,0.16)]"
                 : tone.chip
@@ -193,11 +190,6 @@ export function ConsumerCard({
 }) {
   const hasAssignments = consumer.assignments.length > 0;
   const isCrashed = consumer.status === "crashed";
-  const visibleTasks = currentTasks.slice(0, 2);
-  const hiddenTaskCount = Math.max(
-    0,
-    currentTasks.length - visibleTasks.length,
-  );
   return (
     <button
       type="button"
@@ -250,26 +242,12 @@ export function ConsumerCard({
           </span>
         ))}
       </div>
-      {currentTasks.length === 1 ? (
+      {currentTasks.length > 0 ? (
         <div className="mt-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-[11px] font-extrabold text-[#31566a]">
           <span className="text-teal-800">Working: </span>
-          <span>{formatConsumerTaskSummary(currentTasks[0])}</span>
-        </div>
-      ) : currentTasks.length > 1 ? (
-        <div className="mt-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-[11px] font-extrabold text-[#31566a]">
-          <div className="text-teal-800">
-            Working: {currentTasks.length} tasks
-          </div>
-          <div className="mt-1 space-y-1">
-            {visibleTasks.map((task) => (
-              <div key={task.messageId} className="truncate">
-                {formatConsumerTaskSummary(task)}
-              </div>
-            ))}
-            {hiddenTaskCount > 0 ? (
-              <div className="text-[#466778]">+{hiddenTaskCount} more</div>
-            ) : null}
-          </div>
+          {currentTasks.length === 1
+            ? "1 task"
+            : `${currentTasks.length} tasks`}
         </div>
       ) : null}
     </button>

@@ -1,5 +1,6 @@
 import { playgroundRuntime } from "@/lib/server/runtime-singleton";
 import { problem, requestId } from "@/lib/server/api-errors";
+import { playgroundSession } from "../../../_helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ type Context = { params: Promise<{ runId: string }> };
 
 export async function GET(request: Request, context: Context) {
   const id = requestId(request);
+  const session = playgroundSession(request);
   try {
     const { runId } = await context.params;
     const encoder = new TextEncoder();
@@ -66,10 +68,15 @@ export async function GET(request: Request, context: Context) {
         const lastEventId = parseLastEventId(
           request.headers.get("last-event-id"),
         );
-        unsubscribe = playgroundRuntime.subscribe(runId, lastEventId, {
-          id: crypto.randomUUID(),
-          enqueue,
-        });
+        unsubscribe = playgroundRuntime.subscribe(
+          runId,
+          lastEventId,
+          {
+            id: crypto.randomUUID(),
+            enqueue,
+          },
+          session.id,
+        );
         if (closed) {
           unsubscribe();
           unsubscribe = null;
@@ -84,15 +91,17 @@ export async function GET(request: Request, context: Context) {
         cleanupStream();
       },
     });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-        "x-request-id": id,
-      },
-    });
+    return session.commit(
+      new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+          "x-request-id": id,
+        },
+      }),
+    );
   } catch (error) {
     return problem(error, id);
   }
