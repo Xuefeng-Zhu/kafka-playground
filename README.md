@@ -209,6 +209,8 @@ npm test
 npm run test:e2e
 ```
 
+The web workspace intentionally builds with `next build --webpack` and pins the current Next canary exactly. Keep both choices paired until the Vercel build issue that required the webpack path is retired, and run `npm run build` before changing either value.
+
 `npm run start` delegates to `next start` and may print a warning when `output: "standalone"` is enabled. Prefer the standalone server command from the setup section after `npm run build`.
 
 To run the optional live Aiven smoke test after configuring `.env.local` and `certs/ca.pem`:

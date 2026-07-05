@@ -415,6 +415,49 @@ describe("PlaygroundRuntime demo integration", () => {
     );
   });
 
+  it("removes failed startup runs from the registry after cleanup", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { logger } = await import("./logger");
+    const runtime = new PlaygroundRuntime();
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    let failedRunId = "";
+    const createRun = vi.fn(async (run: { runId: string }) => {
+      failedRunId = run.runId;
+      throw new Error("topic creation failed");
+    });
+    const deleteRunResources = vi.fn().mockResolvedValue({
+      status: "completed" as const,
+      steps: [],
+    });
+    (
+      runtime as unknown as {
+        adapter: {
+          createRun: typeof createRun;
+          deleteRunResources: typeof deleteRunResources;
+        };
+      }
+    ).adapter.createRun = createRun;
+    (
+      runtime as unknown as {
+        adapter: {
+          createRun: typeof createRun;
+          deleteRunResources: typeof deleteRunResources;
+        };
+      }
+    ).adapter.deleteRunResources = deleteRunResources;
+
+    await expect(runtime.createRun("partitioning")).rejects.toThrow(
+      "topic creation failed",
+    );
+
+    expect(runtime.activeSnapshot()).toBeNull();
+    expect(deleteRunResources).toHaveBeenCalledTimes(1);
+    expect(failedRunId).toBeTruthy();
+    expect(() => runtime.snapshot(failedRunId)).toThrow(
+      "The scenario run does not exist.",
+    );
+  });
+
   it("reports cleanup adapter rejections as failed cleanup", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();

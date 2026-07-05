@@ -167,6 +167,7 @@ export class PlaygroundRuntime {
       run.status = "error";
       this.emit(run, "run.error", { message: "Failed to start run." });
       await this.cleanup(run);
+      this.runs.deleteSessionRun(sessionId);
       throw error;
     }
   }
