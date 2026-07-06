@@ -40,6 +40,7 @@ import { EventTimeline } from "@/components/timeline/event-timeline";
 import { EducationPanel } from "@/components/education/education-panel";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
 import { StartRunPanel } from "@/components/playground/start-run-panel";
+import { useRunAction } from "@/components/playground/use-run-action";
 import { WorkspaceHeader } from "@/components/playground/workspace-header";
 import { useRunLiveUpdates } from "@/components/playground/use-run-live-updates";
 import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
@@ -98,13 +99,10 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   const [state, dispatch] = useReducer(reducer, initialVisualizationState);
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [isActionPending, setActionPending] = useState(false);
   const [isInspectorOpen, setInspectorOpen] = useState(false);
   const [shouldFrameTopology, setShouldFrameTopology] = useState(false);
   const [selectedTopologyNode, setSelectedTopologyNode] =
     useState<TopologySelection | null>(null);
-  const actionInFlightRef = useRef(false);
   const workspaceGridRef = useRef<HTMLDivElement | null>(null);
   const topologySectionRef = useRef<HTMLElement | null>(null);
   const timelineResizeRef = useRef<TimelineResizeState | null>(null);
@@ -123,6 +121,8 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     setSelectedEventSequence,
     resetSelection,
   } = usePlaygroundUiStore();
+  const { actionError, isActionPending, runAction, setActionError } =
+    useRunAction();
   const run = state.snapshot;
   const closeLiveUpdates = useRunLiveUpdates({
     dispatch,
@@ -163,7 +163,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setActionError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,7 +205,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [router, scenarioId, clearRunSelection]);
+  }, [router, scenarioId, clearRunSelection, setActionError]);
 
   useEffect(() => {
     if (!shouldFrameTopology || !run) return;
@@ -483,21 +483,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     const nextTab = lowerPanelTabs[nextIndex].id;
     selectLowerPanelTab(nextTab);
     lowerPanelTabRefs.current[nextTab]?.focus();
-  }
-
-  async function runAction(action: () => Promise<void>) {
-    if (actionInFlightRef.current) return;
-    actionInFlightRef.current = true;
-    setActionPending(true);
-    setActionError(null);
-    try {
-      await action();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Action failed.");
-    } finally {
-      actionInFlightRef.current = false;
-      setActionPending(false);
-    }
   }
 
   const workspaceStyle = {

@@ -410,12 +410,7 @@ export class PlaygroundRuntime {
     if (consumer) consumer.status = "running";
     this.emit(run, "consumer.started", { consumerId, actor: consumerId });
     if (run.mode === "demo") {
-      this.rebalance(run);
-      for (const message of run.messages.filter(
-        (item) => item.state === "produced",
-      )) {
-        this.maybeDeliverMessage(run, message);
-      }
+      this.rebalanceAndDeliverProducedMessages(run);
     }
     return this.snapshot(runId, sessionId);
   }
@@ -444,22 +439,13 @@ export class PlaygroundRuntime {
     }
     consumer.status = "stopping";
     this.emit(run, "consumer.stopping", { consumerId, actor: consumerId });
-    const handle = run.consumerHandles.get(consumerId);
-    if (handle) {
-      await handle.disconnect().catch((error) => {
-        logger.warn(
-          { err: error, runId, consumerId },
-          "Consumer disconnect failed",
-        );
-      });
-      run.consumerHandles.delete(consumerId);
-    }
+    await this.disconnectConsumerHandle(
+      run,
+      consumerId,
+      "Consumer disconnect failed",
+    );
     if (run.mode === "demo" && consumer.assignments.length > 0) {
-      this.emit(run, "consumer.partitions_revoked", {
-        consumerId,
-        assignments: consumer.assignments,
-        actor: consumerId,
-      });
+      this.emitConsumerRevocation(run, consumerId, consumer.assignments);
     }
     run.consumers = run.consumers.filter(
       (item) => item.consumerId !== consumerId,
@@ -467,12 +453,7 @@ export class PlaygroundRuntime {
     this.emit(run, "consumer.stopped", { consumerId, actor: consumerId });
     if (run.mode === "demo") {
       requeueMessagesForConsumer(run, consumerId);
-      this.rebalance(run);
-      for (const message of run.messages.filter(
-        (item) => item.state === "produced",
-      )) {
-        this.maybeDeliverMessage(run, message);
-      }
+      this.rebalanceAndDeliverProducedMessages(run);
     }
     return this.snapshot(runId, sessionId);
   }
@@ -499,23 +480,14 @@ export class PlaygroundRuntime {
       actor: consumerId,
       message: `${consumerId} is crashing.`,
     });
-    const handle = run.consumerHandles.get(consumerId);
-    if (handle) {
-      await handle.disconnect().catch((error) => {
-        logger.warn(
-          { err: error, runId, consumerId },
-          "Consumer crash disconnect failed",
-        );
-      });
-      run.consumerHandles.delete(consumerId);
-    }
+    await this.disconnectConsumerHandle(
+      run,
+      consumerId,
+      "Consumer crash disconnect failed",
+    );
     const assignments = consumer.assignments;
     if (assignments.length > 0) {
-      this.emit(run, "consumer.partitions_revoked", {
-        consumerId,
-        assignments,
-        actor: consumerId,
-      });
+      this.emitConsumerRevocation(run, consumerId, assignments);
     }
     consumer.assignments = [];
     consumer.status = "crashed";
@@ -527,12 +499,7 @@ export class PlaygroundRuntime {
     });
 
     if (run.mode === "demo") {
-      this.rebalance(run);
-      for (const message of run.messages.filter(
-        (item) => item.state === "produced",
-      )) {
-        this.maybeDeliverMessage(run, message);
-      }
+      this.rebalanceAndDeliverProducedMessages(run);
     }
     return this.snapshot(runId, sessionId);
   }
@@ -684,6 +651,40 @@ export class PlaygroundRuntime {
         });
       }
     });
+  }
+
+  private async disconnectConsumerHandle(
+    run: InternalRun,
+    consumerId: string,
+    failureMessage: string,
+  ) {
+    const handle = run.consumerHandles.get(consumerId);
+    if (!handle) return;
+    await handle.disconnect().catch((error) => {
+      logger.warn({ err: error, runId: run.runId, consumerId }, failureMessage);
+    });
+    run.consumerHandles.delete(consumerId);
+  }
+
+  private emitConsumerRevocation(
+    run: InternalRun,
+    consumerId: string,
+    assignments: Array<{ topic: string; partition: number }>,
+  ) {
+    this.emit(run, "consumer.partitions_revoked", {
+      consumerId,
+      assignments,
+      actor: consumerId,
+    });
+  }
+
+  private rebalanceAndDeliverProducedMessages(run: InternalRun) {
+    this.rebalance(run);
+    for (const message of run.messages.filter(
+      (item) => item.state === "produced",
+    )) {
+      this.maybeDeliverMessage(run, message);
+    }
   }
 
   private maybeDeliverMessage(run: InternalRun, message: PlaygroundMessage) {

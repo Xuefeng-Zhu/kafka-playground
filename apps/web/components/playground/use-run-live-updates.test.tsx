@@ -83,7 +83,7 @@ describe("useRunLiveUpdates", () => {
     expect(setActionError).not.toHaveBeenCalled();
   });
 
-  it("ignores stale snapshot refreshes that resolve after newer events", async () => {
+  it("coalesces overlapping refreshes and skips stale snapshots", async () => {
     const firstRefresh = deferred<{
       ok: true;
       data: RunSnapshot;
@@ -114,16 +114,20 @@ describe("useRunLiveUpdates", () => {
         type: "producer.started",
       });
     });
+    expect(fetchRunSnapshot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      firstRefresh.resolve({ ok: true, data: snapshotFixture });
+      await firstRefresh.promise;
+    });
+    await waitFor(() => expect(fetchRunSnapshot).toHaveBeenCalledTimes(2));
+
     await act(async () => {
       secondRefresh.resolve({
         ok: true,
         data: { ...snapshotFixture, sequence: 2 },
       });
       await secondRefresh.promise;
-    });
-    await act(async () => {
-      firstRefresh.resolve({ ok: true, data: snapshotFixture });
-      await firstRefresh.promise;
     });
 
     expect(dispatch).toHaveBeenCalledWith({

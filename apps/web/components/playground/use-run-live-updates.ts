@@ -33,27 +33,54 @@ export function useRunLiveUpdates({
   useEffect(() => {
     if (!runId) return;
     let active = true;
-    let refreshRequestId = 0;
+    let refreshGeneration = 0;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+    let queuedFallback = "Unable to refresh the latest run snapshot.";
     const source = new EventSource(`/api/v1/runs/${runId}/events`);
     eventSourceRef.current = source;
     const closeSource = () => {
       active = false;
-      refreshRequestId += 1;
+      refreshGeneration += 1;
       source.close();
       if (eventSourceRef.current === source) eventSourceRef.current = null;
     };
     closeLiveUpdatesRef.current = closeSource;
     const refreshActiveSnapshot = (fallback: string) => {
-      refreshRequestId += 1;
-      const requestId = refreshRequestId;
+      queuedFallback = fallback;
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+      refreshInFlight = true;
+      const requestGeneration = refreshGeneration;
       void refreshSnapshot(runId)
         .then((snapshot) => {
-          if (!active || requestId !== refreshRequestId || !snapshot) return;
+          if (
+            !active ||
+            requestGeneration !== refreshGeneration ||
+            refreshQueued ||
+            !snapshot
+          )
+            return;
           dispatch({ type: "snapshot", snapshot });
         })
         .catch((error) => {
-          if (!active || requestId !== refreshRequestId) return;
+          if (
+            !active ||
+            requestGeneration !== refreshGeneration ||
+            refreshQueued
+          )
+            return;
           setActionError(error instanceof Error ? error.message : fallback);
+        })
+        .finally(() => {
+          if (!active || requestGeneration !== refreshGeneration) return;
+          refreshInFlight = false;
+          if (refreshQueued) {
+            refreshQueued = false;
+            refreshActiveSnapshot(queuedFallback);
+          }
         });
     };
     source.addEventListener("snapshot", (message) => {
