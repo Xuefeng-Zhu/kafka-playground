@@ -57,6 +57,38 @@ describe("playground shell components", () => {
     expect(onTestRemoteConnection).not.toHaveBeenCalled();
   });
 
+  it("blocks remote starts when the broker list has no usable entries", () => {
+    const onStartRun = vi.fn();
+    const onTestRemoteConnection = vi.fn();
+    render(
+      <StartRunPanel
+        connection={connectionStatus()}
+        disabled={false}
+        onStartRun={onStartRun}
+        onTestRemoteConnection={onTestRemoteConnection}
+        scenario={scenarioFixture}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Remote Kafka/ }));
+    fireEvent.change(screen.getByLabelText("Brokers"), {
+      target: { value: " , " },
+    });
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "service-user" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "service-password" },
+    });
+
+    expect(screen.queryByText(/Add brokers before starting/)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start scenario run" }));
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    expect(onStartRun).not.toHaveBeenCalled();
+    expect(onTestRemoteConnection).not.toHaveBeenCalled();
+  });
+
   it("shows selected scenario details before starting a run", () => {
     render(
       <StartRunPanel

@@ -25,6 +25,23 @@ export const remoteKafkaConfigSchema = z.object({
 });
 export type RemoteKafkaConfig = z.infer<typeof remoteKafkaConfigSchema>;
 
+export function parseRemoteKafkaBrokerList(value: string) {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+export function getMissingRemoteKafkaConfigFields(config: RemoteKafkaConfig) {
+  const missing = [];
+  if (parseRemoteKafkaBrokerList(config.brokers).length === 0) {
+    missing.push("brokers");
+  }
+  if (!config.username) missing.push("username");
+  if (!config.password) missing.push("password");
+  return missing;
+}
+
 export const runStatusSchema = z.enum([
   "idle",
   "starting",

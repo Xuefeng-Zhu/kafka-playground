@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ApiRequestError,
   api,
   fetchRunSnapshot,
   loadActiveRunSnapshot,
@@ -17,13 +18,19 @@ describe("playground api client", () => {
     mockFetch(
       { ok: false, status: 409, statusText: "Conflict" },
       {
+        code: "RUN_ALREADY_ACTIVE",
         message: "Only one scenario run can be active.",
       },
     );
 
-    await expect(api("/api/v1/runs")).rejects.toThrow(
-      "Only one scenario run can be active.",
-    );
+    const error = await api("/api/v1/runs").catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect(error).toMatchObject({
+      code: "RUN_ALREADY_ACTIVE",
+      message: "Only one scenario run can be active.",
+      status: 409,
+    });
   });
 
   it("returns typed connection load errors for non-OK responses", async () => {

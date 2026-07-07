@@ -25,7 +25,7 @@ import type {
 
 export type TopologyLayout = "auto" | "spread";
 
-type LayoutMetrics = {
+export type TopologyLayoutMetrics = {
   producer: { x: number; y: number };
   producerWidth: number;
   topic: { x: number; y: number };
@@ -102,7 +102,7 @@ export const scenarioIconMap: Record<ScenarioTopologyIcon, LucideIcon> = {
 export function topologyMetrics(
   layout: TopologyLayout,
   compact: boolean,
-): LayoutMetrics {
+): TopologyLayoutMetrics {
   if (compact) {
     return {
       producer: { x: 26, y: 116 },

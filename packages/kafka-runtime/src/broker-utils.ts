@@ -1,9 +1,6 @@
-export function parseBrokerList(value: string) {
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
+import { parseRemoteKafkaBrokerList } from "@kplay/contracts";
+
+export const parseBrokerList = parseRemoteKafkaBrokerList;
 
 export function brokerHost(value: string) {
   const trimmed = value.trim();

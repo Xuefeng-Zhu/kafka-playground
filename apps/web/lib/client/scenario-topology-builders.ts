@@ -1,4 +1,5 @@
 import type { RunSnapshot } from "@kplay/contracts";
+import type { ScenarioId } from "@kplay/scenario-engine";
 import {
   buildAtLeastOnceDuplicatesTopology,
   buildConsumerLagBackpressureTopology,
@@ -29,8 +30,12 @@ import {
 type ScenarioTopologyBuilder = (
   context: ScenarioTopologyContext,
 ) => ScenarioTopologyModel;
+type CustomTopologyScenarioId = Exclude<ScenarioId, "partitioning">;
 
-const scenarioTopologyBuilders: Record<string, ScenarioTopologyBuilder> = {
+const scenarioTopologyBuilders: Record<
+  CustomTopologyScenarioId,
+  ScenarioTopologyBuilder
+> = {
   "fan-out-load-balancing": buildFanOutLoadBalancingTopology,
   "at-least-once-duplicates": buildAtLeastOnceDuplicatesTopology,
   "retry-dead-letter-queues": buildRetryDeadLetterQueuesTopology,
@@ -51,6 +56,14 @@ export function buildScenarioTopology(
   snapshot: RunSnapshot,
 ): ScenarioTopologyModel {
   const context = createScenarioTopologyContext(snapshot);
-  const builder = scenarioTopologyBuilders[snapshot.scenarioId];
+  const builder = hasCustomScenarioTopology(snapshot.scenarioId)
+    ? scenarioTopologyBuilders[snapshot.scenarioId]
+    : null;
   return (builder ?? buildDefaultTopology)(context);
+}
+
+function hasCustomScenarioTopology(
+  scenarioId: string,
+): scenarioId is CustomTopologyScenarioId {
+  return scenarioId in scenarioTopologyBuilders;
 }

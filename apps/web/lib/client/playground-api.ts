@@ -12,10 +12,11 @@ export type ClientLoadResult<T> =
   | { ok: true; data: T }
   | { ok: false; message: string };
 
-class ApiRequestError extends Error {
+export class ApiRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code: string | null = null,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -32,7 +33,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const error = await readErrorBody(response);
-    throw new Error(error.message ?? response.statusText);
+    throw new ApiRequestError(
+      error.message ?? response.statusText,
+      response.status,
+      error.code,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -44,6 +49,7 @@ export async function fetchJson(path: string) {
     throw new ApiRequestError(
       error.message ?? response.statusText,
       response.status,
+      error.code,
     );
   }
   return response.json() as Promise<unknown>;
@@ -130,6 +136,7 @@ export async function retireRun(runId: string) {
     throw new ApiRequestError(
       error.message ?? response.statusText,
       response.status,
+      error.code,
     );
   }
   await response.json().catch(() => null);
@@ -146,6 +153,7 @@ export async function fetchRunSnapshot(
       throw new ApiRequestError(
         error.message ?? response.statusText,
         response.status,
+        error.code,
       );
     }
     return { ok: true, data: runSnapshotSchema.parse(await response.json()) };
@@ -168,9 +176,15 @@ async function readErrorBody(response: Response) {
     "message" in payload &&
     typeof payload.message === "string"
   ) {
-    return { message: payload.message };
+    return {
+      code:
+        "code" in payload && typeof payload.code === "string"
+          ? payload.code
+          : null,
+      message: payload.message,
+    };
   }
-  return { message: response.statusText };
+  return { code: null, message: response.statusText };
 }
 
 function describeClientLoadError(error: unknown, fallback: string) {

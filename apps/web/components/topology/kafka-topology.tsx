@@ -3,21 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RunSnapshot } from "@kplay/contracts";
 import {
-  MarkerType,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
   useUpdateNodeInternals,
   useViewport,
-  type Edge,
-  type Node,
   type OnNodeDrag,
 } from "@xyflow/react";
 import { Maximize2, Minus, Network, Plus, RotateCcw } from "lucide-react";
-import {
-  deriveScenarioTopology,
-  type ScenarioTopologyEdge,
-} from "@/lib/client/scenario-topology";
+import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
 import { hasActiveConsumerTaskDuration } from "@/lib/client/current-consumer-task";
 import {
   getStoredValue,
@@ -26,18 +20,17 @@ import {
 } from "@/lib/client/safe-storage";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { useLiveTaskClock } from "@/lib/client/use-live-task-clock";
-import { partitionAssignments, toneForPartition } from "./topology-cards";
+import { partitionAssignments } from "./topology-cards";
 import {
-  topologyNodeTypes,
-  type ConsumerGroupNodeData,
-  type ProducerNodeData,
-  type ScenarioNodeData,
-  type TopicNodeData,
-} from "./topology-flow-nodes";
+  buildTopologyEdges,
+  buildTopologyNodes,
+  parseSavedScenarioPositions,
+  type TopologyEdge,
+  type TopologyNode,
+} from "./topology-flow-elements";
+import { topologyNodeTypes } from "./topology-flow-nodes";
 import {
   scenarioFlowNodeId,
-  scenarioToneColor,
-  topologyEndpointId,
   topologyMetrics,
   type TopologyLayout,
 } from "./topology-flow-helpers";
@@ -46,15 +39,6 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 1.35;
 const ZOOM_STEP = 0.15;
 const OVERLAY_POSITION_STORAGE_PREFIX = "kplay.topology.overlayPositions";
-
-type TopologyNode =
-  | Node<ProducerNodeData, "producer">
-  | Node<TopicNodeData, "topic">
-  | Node<ConsumerGroupNodeData, "consumerGroup">
-  | Node<ScenarioNodeData, "scenarioNode">;
-type TopologyEdge = Edge<Record<string, never>, "smoothstep">;
-type Position = { x: number; y: number };
-type SavedScenarioPositions = Record<string, Position>;
 
 export function KafkaTopology({
   snapshot,
@@ -315,178 +299,67 @@ function KafkaTopologyFlow({
     setLayout((current) => (current === "auto" ? "spread" : "auto"));
   }, []);
 
-  const nodes = useMemo<TopologyNode[]>(() => {
-    const coreNodes: TopologyNode[] = [
-      {
-        id: "producer",
-        type: "producer",
-        position: metrics.producer,
-        draggable: false,
-        selectable: false,
-        data: {
-          status: snapshot.producerStatus,
-          selected: selectedNode?.type === "producer",
-          onSelectMessage,
-          onSelectNode,
-        },
-        style: { width: metrics.producerWidth },
-      },
-      {
-        id: "topic",
-        type: "topic",
-        position: metrics.topic,
-        draggable: false,
-        selectable: false,
-        data: {
-          activePartition,
-          assignmentByPartition,
-          messageCounts: snapshot.messageCounts,
-          onSelectMessage,
-          onSelectNode,
-          partitions,
-          recentMessages: snapshot.recentMessages,
-          selectedMessageId,
-          selectedNode,
-          snapshot,
-        },
-        style: { width: metrics.topicWidth },
-      },
-      {
-        id: "consumerGroup",
-        type: "consumerGroup",
-        position: metrics.consumerGroup,
-        draggable: false,
-        selectable: false,
-        data: {
-          activeConsumerId,
-          consumers,
-          onSelectMessage,
-          onSelectNode,
-          partitions,
-          selectedNode,
-          snapshot,
-          taskNowMs,
-        },
-        style: { width: metrics.consumerGroupWidth },
-      },
-    ];
-
-    const overlayNodes: TopologyNode[] = scenarioTopology.nodes.map(
-      (model) => ({
-        id: scenarioFlowNodeId(model.id),
-        type: "scenarioNode",
-        position: isCompact
-          ? model.compactPosition
-          : (savedScenarioPositions[model.id] ?? model.position),
-        draggable: !isCompact,
-        selectable: false,
-        data: {
-          model,
-          selected:
-            selectedNode?.type === "scenarioNode" &&
-            selectedNode.nodeId === model.id,
-          onSelectMessage,
-          onSelectNode,
-        },
-        style: { width: isCompact ? 180 : 190 },
+  const nodes = useMemo<TopologyNode[]>(
+    () =>
+      buildTopologyNodes({
+        activeConsumerId,
+        activePartition,
+        assignmentByPartition,
+        consumers,
+        isCompact,
+        metrics,
+        onSelectMessage,
+        onSelectNode,
+        partitions,
+        savedScenarioPositions,
+        scenarioTopology,
+        selectedMessageId,
+        selectedNode,
+        snapshot,
+        taskNowMs,
       }),
-    );
+    [
+      activeConsumerId,
+      activePartition,
+      assignmentByPartition,
+      consumers,
+      isCompact,
+      metrics,
+      onSelectMessage,
+      onSelectNode,
+      partitions,
+      scenarioTopology,
+      selectedMessageId,
+      selectedNode,
+      savedScenarioPositions,
+      snapshot,
+      taskNowMs,
+    ],
+  );
 
-    return [...coreNodes, ...overlayNodes];
-  }, [
-    activeConsumerId,
-    activePartition,
-    assignmentByPartition,
-    consumers,
-    isCompact,
-    metrics,
-    onSelectMessage,
-    onSelectNode,
-    partitions,
-    scenarioTopology.nodes,
-    selectedMessageId,
-    selectedNode,
-    savedScenarioPositions,
-    snapshot,
-    taskNowMs,
-  ]);
-
-  const edges = useMemo<TopologyEdge[]>(() => {
-    const nextEdges: TopologyEdge[] = [
-      {
-        id: "edge-producer-topic",
-        type: "smoothstep",
-        source: "producer",
-        sourceHandle: "producer-out",
-        target: "topic",
-        targetHandle: "topic-in",
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#0f766e" },
-        className: latestMessage ? "kplay-flow-line" : undefined,
-        style: {
-          opacity: latestMessage ? 1 : 0.72,
-          stroke: "#0f766e",
-          strokeWidth: 2,
-        },
-        domAttributes: edgeTestId("topology-edge-producer-topic"),
-      },
-    ];
-
-    if (consumers.length === 0) {
-      nextEdges.push({
-        id: "edge-empty-ownership",
-        type: "smoothstep",
-        source: "topic",
-        sourceHandle: "topic-empty-out",
-        target: "consumerGroup",
-        targetHandle: "empty-in",
-        style: {
-          opacity: 0.75,
-          stroke: "#94a3b8",
-          strokeDasharray: "5 6",
-          strokeWidth: 1.8,
-        },
-        domAttributes: edgeTestId("topology-edge-empty-ownership"),
-      });
-    } else {
-      partitions.forEach((partition) => {
-        const assignment = assignmentByPartition.get(partition);
-        if (!assignment) return;
-        const tone = toneForPartition(partition);
-        const isActive =
-          activePartition === partition ||
-          activeConsumerId === assignment.consumerId;
-        nextEdges.push({
-          id: `edge-partition-${partition}-owner`,
-          type: "smoothstep",
-          source: "topic",
-          sourceHandle: `partition-${partition}-out`,
-          target: "consumerGroup",
-          targetHandle: `partition-${partition}-in`,
-          markerEnd: { type: MarkerType.ArrowClosed, color: tone.stroke },
-          className: isActive ? "kplay-flow-line" : undefined,
-          style: {
-            opacity: isActive ? 1 : 0.78,
-            stroke: tone.stroke,
-            strokeWidth: isActive ? 2.3 : 1.9,
-          },
-          domAttributes: edgeTestId(`topology-edge-partition-${partition}`),
-        });
-      });
-    }
-    scenarioTopology.edges.forEach((scenarioEdge) => {
-      nextEdges.push(toReactFlowScenarioEdge(scenarioEdge, scenarioNodeIds));
-    });
-    return nextEdges;
-  }, [
-    activeConsumerId,
-    activePartition,
-    assignmentByPartition,
-    consumers.length,
-    latestMessage,
-    partitions,
-    scenarioNodeIds,
-    scenarioTopology.edges,
-  ]);
+  const edges = useMemo<TopologyEdge[]>(
+    () =>
+      buildTopologyEdges({
+        activeConsumerId,
+        activePartition,
+        assignmentByPartition,
+        consumersLength: consumers.length,
+        latestMessage,
+        partitions,
+        scenarioNodeIds,
+        scenarioTopologyEdges: scenarioTopology.edges,
+      }),
+    [
+      activeConsumerId,
+      activePartition,
+      assignmentByPartition,
+      consumers.length,
+      latestMessage,
+      partitions,
+      scenarioNodeIds,
+      scenarioTopology.edges,
+    ],
+  );
 
   return (
     <div
@@ -585,63 +458,9 @@ function clampZoom(nextZoom: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(nextZoom.toFixed(2))));
 }
 
-function edgeTestId(value: string): TopologyEdge["domAttributes"] {
-  return { "data-testid": value } as TopologyEdge["domAttributes"];
-}
-
-function parseSavedScenarioPositions(
-  value: string | null,
-): SavedScenarioPositions {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, Position] => {
-        const [, position] = entry;
-        return (
-          !!position &&
-          typeof position === "object" &&
-          !Array.isArray(position) &&
-          Number.isFinite((position as Position).x) &&
-          Number.isFinite((position as Position).y)
-        );
-      }),
-    );
-  } catch {
-    return {};
-  }
-}
-
 function handleReactFlowError(code: string, message: string) {
   if (code === "013") return;
   console.warn(`[React Flow ${code}] ${message}`);
-}
-
-function toReactFlowScenarioEdge(
-  edge: ScenarioTopologyEdge,
-  scenarioNodeIds: Set<string>,
-): TopologyEdge {
-  const color = scenarioToneColor[edge.tone];
-  return {
-    id: `scenario-edge-${edge.id}`,
-    type: "smoothstep",
-    source: topologyEndpointId(edge.source, scenarioNodeIds),
-    sourceHandle: edge.sourceHandle,
-    target: topologyEndpointId(edge.target, scenarioNodeIds),
-    targetHandle: edge.targetHandle,
-    markerEnd: { type: MarkerType.ArrowClosed, color },
-    className: edge.active ? "kplay-flow-line" : undefined,
-    style: {
-      opacity: edge.active ? 0.95 : 0.62,
-      stroke: color,
-      strokeDasharray: edge.dashed ? "6 7" : undefined,
-      strokeWidth: edge.active ? 2.2 : 1.7,
-    },
-    domAttributes: edgeTestId(`topology-scenario-edge-${edge.id}`),
-  };
 }
 
 function useCompactTopology() {

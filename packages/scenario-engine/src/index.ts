@@ -13,7 +13,7 @@ const fanOutLoadBalancingLimits = {
   maxConsumers: 4,
 };
 
-export const SCENARIOS: ScenarioDefinition[] = [
+export const SCENARIOS = [
   {
     id: "partitioning",
     title: "Partitioning, Ordering, and Consumer Rebalancing",
@@ -225,7 +225,9 @@ export const SCENARIOS: ScenarioDefinition[] = [
     topic: { partitions: 2 },
     limits: standardLimits,
   },
-];
+] satisfies ScenarioDefinition[];
+
+export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 
 export const PRIMARY_SCENARIO = SCENARIOS[0];
 

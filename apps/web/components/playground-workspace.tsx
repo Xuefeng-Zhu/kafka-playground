@@ -8,9 +8,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent,
 } from "react";
 import {
   type ConnectionStatus,
@@ -26,6 +23,7 @@ import {
   List,
   PanelRightOpen,
   SlidersHorizontal,
+  type LucideIcon,
 } from "lucide-react";
 import {
   initializeFromSnapshot,
@@ -41,8 +39,17 @@ import { EducationPanel } from "@/components/education/education-panel";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
 import { StartRunPanel } from "@/components/playground/start-run-panel";
 import { useRunAction } from "@/components/playground/use-run-action";
+import {
+  useLowerPanelTabs,
+  type LowerPanelTab,
+} from "@/components/playground/use-lower-panel-tabs";
 import { WorkspaceHeader } from "@/components/playground/workspace-header";
 import { useRunLiveUpdates } from "@/components/playground/use-run-live-updates";
+import {
+  MAX_TIMELINE_HEIGHT,
+  MIN_TIMELINE_HEIGHT,
+  useTimelineResize,
+} from "@/components/playground/use-timeline-resize";
 import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
 import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
 import {
@@ -54,7 +61,6 @@ import {
   retireRun,
 } from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
-import { getStoredValue, setStoredValue } from "@/lib/client/safe-storage";
 import type { ScenarioAction } from "@/lib/client/scenario-actions";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 
@@ -63,26 +69,15 @@ type Action =
   | { type: "event"; event: RuntimeEvent }
   | { type: "clear" };
 
-const COLLAPSED_TIMELINE_HEIGHT = 210;
-const MIN_TIMELINE_HEIGHT = 160;
-const MAX_TIMELINE_HEIGHT = 720;
-const MIN_TOPOLOGY_HEIGHT = 220;
-const TIMELINE_RESIZE_STEP = 24;
-const LOWER_PANEL_TAB_STORAGE_KEY = "kplay.lowerPanel.activeTab";
-
 const lowerPanelTabs = [
   { id: "controls", label: "Controls", Icon: SlidersHorizontal },
   { id: "insights", label: "Insights", Icon: Lightbulb },
   { id: "timeline", label: "Timeline", Icon: List },
-] as const;
-
-type LowerPanelTab = (typeof lowerPanelTabs)[number]["id"];
-
-type TimelineResizeState = {
-  pointerId: number;
-  startHeight: number;
-  startY: number;
-};
+] as const satisfies ReadonlyArray<{
+  id: LowerPanelTab;
+  label: string;
+  Icon: LucideIcon;
+}>;
 
 function reducer(state: typeof initialVisualizationState, action: Action) {
   if (action.type === "snapshot") {
@@ -105,15 +100,20 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     useState<TopologySelection | null>(null);
   const workspaceGridRef = useRef<HTMLDivElement | null>(null);
   const topologySectionRef = useRef<HTMLElement | null>(null);
-  const timelineResizeRef = useRef<TimelineResizeState | null>(null);
-  const lowerPanelTabRefs = useRef<
-    Partial<Record<LowerPanelTab, HTMLButtonElement | null>>
-  >({});
-  const [timelineHeight, setTimelineHeight] = useState(
-    COLLAPSED_TIMELINE_HEIGHT,
-  );
-  const [activeLowerPanelTab, setActiveLowerPanelTab] =
-    useState<LowerPanelTab>("controls");
+  const {
+    activeLowerPanelTab,
+    lowerPanelTabRefs,
+    navigateLowerPanelTabs,
+    selectLowerPanelTab,
+  } = useLowerPanelTabs();
+  const {
+    adjustTimelineHeightWithKeyboard,
+    moveTimelineResize,
+    startTimelineResize,
+    stopTimelineResize,
+    timelineHeight,
+    workspaceStyle,
+  } = useTimelineResize(workspaceGridRef);
   const {
     selectedMessageId,
     selectedEventSequence,
@@ -164,18 +164,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       cancelled = true;
     };
   }, [setActionError]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      const savedTab = getStoredValue(LOWER_PANEL_TAB_STORAGE_KEY);
-      if (isLowerPanelTab(savedTab)) setActiveLowerPanelTab(savedTab);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,100 +385,9 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     setInspectorOpen(true);
   }
 
-  function maxTimelineHeight() {
-    const workspaceHeight =
-      workspaceGridRef.current?.getBoundingClientRect().height ?? 780;
-    return Math.min(
-      MAX_TIMELINE_HEIGHT,
-      Math.max(MIN_TIMELINE_HEIGHT, workspaceHeight - MIN_TOPOLOGY_HEIGHT),
-    );
-  }
-
-  function clampTimelineHeight(nextHeight: number) {
-    return Math.min(
-      maxTimelineHeight(),
-      Math.max(MIN_TIMELINE_HEIGHT, Math.round(nextHeight)),
-    );
-  }
-
-  function updateTimelineHeight(nextHeight: number) {
-    setTimelineHeight(clampTimelineHeight(nextHeight));
-  }
-
-  function startTimelineResize(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    timelineResizeRef.current = {
-      pointerId: event.pointerId,
-      startHeight: timelineHeight,
-      startY: event.clientY,
-    };
-  }
-
-  function moveTimelineResize(event: PointerEvent<HTMLDivElement>) {
-    const resize = timelineResizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    updateTimelineHeight(resize.startHeight + resize.startY - event.clientY);
-  }
-
-  function stopTimelineResize(event: PointerEvent<HTMLDivElement>) {
-    const resize = timelineResizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    timelineResizeRef.current = null;
-  }
-
-  function adjustTimelineHeightWithKeyboard(
-    event: KeyboardEvent<HTMLDivElement>,
-  ) {
-    if (event.key === "ArrowUp" || event.key === "PageUp") {
-      event.preventDefault();
-      updateTimelineHeight(timelineHeight + TIMELINE_RESIZE_STEP);
-    }
-    if (event.key === "ArrowDown" || event.key === "PageDown") {
-      event.preventDefault();
-      updateTimelineHeight(timelineHeight - TIMELINE_RESIZE_STEP);
-    }
-  }
-
-  function selectLowerPanelTab(tab: LowerPanelTab) {
-    setActiveLowerPanelTab(tab);
-    setStoredValue(LOWER_PANEL_TAB_STORAGE_KEY, tab);
-  }
-
-  function navigateLowerPanelTabs(
-    event: KeyboardEvent<HTMLButtonElement>,
-    currentTab: LowerPanelTab,
-  ) {
-    const currentIndex = lowerPanelTabs.findIndex(
-      (tab) => tab.id === currentTab,
-    );
-    const lastIndex = lowerPanelTabs.length - 1;
-    let nextIndex = currentIndex;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
-    }
-    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
-    }
-    if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = lastIndex;
-    if (nextIndex === currentIndex) return;
-
-    event.preventDefault();
-    const nextTab = lowerPanelTabs[nextIndex].id;
-    selectLowerPanelTab(nextTab);
-    lowerPanelTabRefs.current[nextTab]?.focus();
-  }
-
-  const workspaceStyle = {
-    "--timeline-height": `${timelineHeight}px`,
-  } as CSSProperties;
   const inspectorButtonStyle = {
     bottom: run ? `${timelineHeight + 20}px` : "1.25rem",
-  } as CSSProperties;
+  };
 
   return (
     <main className="min-h-screen overflow-auto bg-[var(--kplay-bg)] text-[var(--kplay-text)] lg:h-screen lg:overflow-hidden">
@@ -724,8 +621,4 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       )}
     </main>
   );
-}
-
-function isLowerPanelTab(value: string | null): value is LowerPanelTab {
-  return lowerPanelTabs.some((tab) => tab.id === value);
 }

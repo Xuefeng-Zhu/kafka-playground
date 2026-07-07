@@ -3,6 +3,8 @@ import {
   connectionTestRequestSchema,
   consumerSnapshotSchema,
   createRunRequestSchema,
+  getMissingRemoteKafkaConfigFields,
+  parseRemoteKafkaBrokerList,
   remoteKafkaConfigSchema,
   runtimeEventTypes,
   runtimeEventSchema,
@@ -112,6 +114,22 @@ describe("contracts", () => {
         useTls: true,
       },
     });
+  });
+
+  it("shares remote Kafka missing-field detection across clients and runtime", () => {
+    expect(parseRemoteKafkaBrokerList(" one:9092, , two:9092 ")).toEqual([
+      "one:9092",
+      "two:9092",
+    ]);
+    expect(
+      getMissingRemoteKafkaConfigFields(
+        remoteKafkaConfigSchema.parse({
+          brokers: " , ",
+          username: "service-user",
+          password: "service-password",
+        }),
+      ),
+    ).toEqual(["brokers"]);
   });
 
   it("exports every runtime event type for client listeners", () => {

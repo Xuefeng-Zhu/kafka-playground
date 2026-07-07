@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  getMissingRemoteKafkaConfigFields,
   remoteKafkaConfigSchema,
   type ConnectionStatus,
   type RemoteKafkaConfig,
@@ -55,7 +56,7 @@ export function StartRunPanel({
   const [isTestingRemote, setTestingRemote] = useState(false);
   const remoteTestRequestRef = useRef(0);
   const isMountedRef = useRef(false);
-  const missingRemoteFields = requiredRemoteFields(remoteConfig);
+  const missingRemoteFields = getMissingRemoteKafkaConfigFields(remoteConfig);
   const isRemoteMode = mode === "remote";
   const isStartDisabled =
     disabled || !scenario || (isRemoteMode && missingRemoteFields.length > 0);
@@ -477,14 +478,6 @@ function remoteStatusLabel(
       disconnected: "Ready",
     },
   });
-}
-
-function requiredRemoteFields(config: RemoteKafkaConfig) {
-  const missing = [];
-  if (!config.brokers.trim()) missing.push("brokers");
-  if (!config.username.trim()) missing.push("username");
-  if (!config.password) missing.push("password");
-  return missing;
 }
 
 function loadSavedRemoteConfig() {
