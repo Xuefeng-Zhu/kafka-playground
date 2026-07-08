@@ -1,9 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
-  dragTopologyNode,
   expectReactFlowStylesLoaded,
   expectTopologyNodeFramed,
-  expectTopologyOverlaysClearCore,
   idleConsumerLabel,
   installConsoleFailureChecks,
   pageScrollPosition,
@@ -21,9 +19,6 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await page.goto("/scenarios/partitioning");
   await page.evaluate(() => {
     window.localStorage.removeItem("kplay.lowerPanel.activeTab");
-    Object.keys(window.localStorage)
-      .filter((key) => key.startsWith("kplay.topology.overlayPositions."))
-      .forEach((key) => window.localStorage.removeItem(key));
   });
   await page.reload();
   await expect(page.getByTestId("lower-panel-tabs")).toHaveCount(0);
@@ -234,57 +229,18 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(
     page.getByTestId("topology-scenario-node-commit-progress"),
   ).toBeVisible();
-  await expectTopologyOverlaysClearCore(page, [
-    "topology-scenario-node-key-router",
-    "topology-scenario-node-commit-progress",
-  ]);
-  const keyRouterBeforeDrag = await dragTopologyNode(
-    page,
-    "topology-scenario-node-key-router",
-    { x: -48, y: 52 },
-  );
-  await expect
-    .poll(async () => {
-      const box = await page
-        .getByTestId("topology-scenario-node-key-router")
-        .boundingBox();
-      return box ? Math.round(box.x - keyRouterBeforeDrag.x) : 0;
-    })
-    .toBeLessThanOrEqual(-20);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Object.entries(window.localStorage)
-          .filter(([key]) =>
-            key.startsWith("kplay.topology.overlayPositions.partitioning."),
-          )
-          .map(([, value]) => value)
-          .join("\n"),
-      ),
-    )
-    .toContain("key-router");
+  await expect(page.getByTestId("topology-scenario-visual")).toBeVisible();
+  await expect(page.getByTestId("topology-node-scenario-visual")).toBeVisible();
+  await expect(
+    page.getByTestId("topology-edge-topic-scenario-visual"),
+  ).toHaveCount(1);
   await page.reload();
   await expect(
     page.getByTestId("topology-scenario-node-key-router"),
   ).toBeVisible();
-  await expect
-    .poll(async () => {
-      const box = await page
-        .getByTestId("topology-scenario-node-key-router")
-        .boundingBox();
-      return box ? Math.round(box.x - keyRouterBeforeDrag.x) : 0;
-    })
-    .toBeLessThanOrEqual(-20);
-  await page.getByRole("button", { name: "Reset overlay positions" }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Object.keys(window.localStorage).filter((key) =>
-          key.startsWith("kplay.topology.overlayPositions.partitioning."),
-        ),
-      ),
-    )
-    .toEqual([]);
+  await expect(
+    page.getByRole("button", { name: "Reset overlay positions" }),
+  ).toHaveCount(0);
   await expectTopologyNodeFramed(page, "topology-scenario-node-key-router");
   await expect(page.getByTestId("topology-edge-producer-topic")).toHaveCount(1);
   await page.getByRole("button", { name: "Inspect producer" }).click();
@@ -467,6 +423,10 @@ test("demo scenario visualizes assignments, idle consumer, message details, and 
   await expect(page.getByText("Message Inspector")).toBeVisible();
   await page.getByRole("button", { name: "Close message inspector" }).click();
   await expect(page.getByTestId("partition-owner-0")).toBeVisible();
+  await expect(page.getByTestId("topology-scenario-visual")).toBeVisible();
+  await expect(
+    page.getByTestId("topology-scenario-node-key-router"),
+  ).toBeVisible();
   await expect
     .poll(async () =>
       page

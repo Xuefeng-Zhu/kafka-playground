@@ -1,16 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
+import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { runSnapshot } from "@/lib/client/run-snapshot-test-fixtures";
 import { partitionAssignments } from "./topology-cards";
 import {
   buildTopologyEdges,
   buildTopologyNodes,
-  parseSavedScenarioPositions,
 } from "./topology-flow-elements";
 import { topologyMetrics } from "./topology-flow-helpers";
 
 describe("topology flow elements", () => {
-  it("builds core and scenario nodes with persisted wide overlay positions", () => {
+  it("builds core nodes plus the custom scenario visual node", () => {
     const snapshot = runSnapshot({
       consumers: [
         {
@@ -22,7 +21,7 @@ describe("topology flow elements", () => {
         },
       ],
     });
-    const scenarioTopology = deriveScenarioTopology(snapshot);
+    const scenarioVisualization = deriveScenarioVisualization(snapshot);
 
     const nodes = buildTopologyNodes({
       activeConsumerId: "consumer-1",
@@ -34,8 +33,7 @@ describe("topology flow elements", () => {
       onSelectMessage: vi.fn(),
       onSelectNode: vi.fn(),
       partitions: [0, 1],
-      savedScenarioPositions: { "key-router": { x: 111, y: 222 } },
-      scenarioTopology,
+      scenarioVisualization,
       selectedMessageId: null,
       selectedNode: null,
       snapshot,
@@ -47,18 +45,16 @@ describe("topology flow elements", () => {
         "producer",
         "topic",
         "consumerGroup",
-        "scenario-key-router",
+        "scenarioVisual",
       ]),
     );
-    expect(
-      nodes.find((node) => node.id === "scenario-key-router"),
-    ).toMatchObject({
-      draggable: true,
-      position: { x: 111, y: 222 },
+    expect(nodes.find((node) => node.id === "scenarioVisual")).toMatchObject({
+      draggable: false,
+      type: "scenarioVisual",
     });
   });
 
-  it("builds ownership and scenario edges with stable test ids", () => {
+  it("builds ownership and custom visual edges with stable test ids", () => {
     const snapshot = runSnapshot({
       consumers: [
         {
@@ -70,7 +66,6 @@ describe("topology flow elements", () => {
         },
       ],
     });
-    const scenarioTopology = deriveScenarioTopology(snapshot);
 
     const edges = buildTopologyEdges({
       activeConsumerId: "consumer-1",
@@ -79,32 +74,21 @@ describe("topology flow elements", () => {
       consumersLength: snapshot.consumers.length,
       latestMessage: snapshot.recentMessages.at(-1) ?? null,
       partitions: [0, 1],
-      scenarioNodeIds: new Set(scenarioTopology.nodes.map((node) => node.id)),
-      scenarioTopologyEdges: scenarioTopology.edges,
     });
 
     expect(edges.map((edge) => edge.id)).toEqual(
       expect.arrayContaining([
         "edge-producer-topic",
         "edge-partition-0-owner",
-        "scenario-edge-producer-to-key-router",
+        "edge-topic-scenario-visual",
       ]),
     );
     expect(
       edges.find((edge) => edge.id === "edge-partition-0-owner")?.domAttributes,
     ).toMatchObject({ "data-testid": "topology-edge-partition-0" });
-  });
-
-  it("ignores invalid saved scenario positions", () => {
-    expect(parseSavedScenarioPositions("not json")).toEqual({});
     expect(
-      parseSavedScenarioPositions(
-        JSON.stringify({
-          good: { x: 1, y: 2 },
-          bad: { x: Number.NaN, y: 2 },
-          alsoBad: ["x", "y"],
-        }),
-      ),
-    ).toEqual({ good: { x: 1, y: 2 } });
+      edges.find((edge) => edge.id === "edge-topic-scenario-visual")
+        ?.domAttributes,
+    ).toMatchObject({ "data-testid": "topology-edge-topic-scenario-visual" });
   });
 });

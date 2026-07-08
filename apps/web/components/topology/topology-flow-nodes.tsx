@@ -14,9 +14,10 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import type { ScenarioTopologyNode as ScenarioTopologyNodeModel } from "@/lib/client/scenario-topology";
+import type { ScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { currentTasksForConsumer } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { ScenarioVisualStage } from "./scenario-visual-stage";
 import {
   ConsumerCard,
   PartitionLane,
@@ -24,11 +25,7 @@ import {
   messagesForPartition,
   toneForPartition,
 } from "./topology-cards";
-import {
-  assignmentHandleTop,
-  scenarioIconMap,
-  scenarioToneClass,
-} from "./topology-flow-helpers";
+import { assignmentHandleTop } from "./topology-flow-helpers";
 
 type TopologyCallbacks = {
   onSelectMessage: (messageId: string) => void;
@@ -60,9 +57,9 @@ export type ConsumerGroupNodeData = TopologyCallbacks & {
   taskNowMs: number;
 };
 
-export type ScenarioNodeData = TopologyCallbacks & {
-  model: ScenarioTopologyNodeModel;
-  selected: boolean;
+export type ScenarioVisualNodeData = TopologyCallbacks & {
+  selectedNode: TopologySelection | null;
+  visualization: ScenarioVisualization;
 };
 
 const handleClass =
@@ -72,7 +69,7 @@ export const topologyNodeTypes = {
   producer: ProducerFlowNode,
   topic: TopicFlowNode,
   consumerGroup: ConsumerGroupFlowNode,
-  scenarioNode: ScenarioOverlayFlowNode,
+  scenarioVisual: ScenarioVisualFlowNode,
 } satisfies NodeTypes;
 
 function ProducerFlowNode({ data }: NodeProps<Node<ProducerNodeData>>) {
@@ -277,105 +274,29 @@ function ConsumerGroupFlowNode({
   );
 }
 
-function ScenarioOverlayFlowNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
-  const { model } = data;
-  const Icon = scenarioIconMap[model.icon];
-  const tone = scenarioToneClass[model.tone];
-
+function ScenarioVisualFlowNode({
+  data,
+}: NodeProps<Node<ScenarioVisualNodeData>>) {
   return (
     <div
-      className="pointer-events-auto relative cursor-grab active:cursor-grabbing"
-      data-testid={`topology-scenario-node-${model.id}`}
+      className="nodrag pointer-events-auto relative"
+      data-testid="topology-node-scenario-visual"
     >
-      <button
-        type="button"
-        onClick={() =>
-          data.onSelectNode({ type: "scenarioNode", nodeId: model.id })
-        }
-        aria-label={`Inspect ${model.title}`}
-        className={`min-h-24 w-full rounded-xl border-[3px] bg-[#fffdf5]/95 p-3 text-left shadow-[6px_6px_0_rgba(15,118,110,0.13)] focus:outline-none focus:ring-4 focus:ring-sky-200 ${
-          data.selected ? "ring-4 ring-sky-200" : ""
-        } ${tone.border}`}
-      >
-        <div className="flex items-start gap-3">
-          <div
-            className={`grid size-9 shrink-0 place-items-center rounded-xl border-2 bg-white ${tone.border} ${tone.text}`}
-          >
-            <Icon size={18} aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#466778]">
-              {model.eyebrow}
-            </div>
-            <div className="mt-0.5 text-sm font-extrabold leading-tight text-[#123047]">
-              {model.title}
-            </div>
-          </div>
-        </div>
-        <div className="mt-2 line-clamp-2 text-xs font-semibold leading-snug text-[#466778]">
-          {model.description}
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="truncate text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#466778]">
-            {model.metricLabel}
-          </span>
-          <span
-            className={`max-w-24 truncate rounded-full border-2 px-2 py-0.5 text-xs font-extrabold ${tone.chip}`}
-          >
-            {model.metricValue}
-          </span>
-        </div>
-      </button>
+      <ScenarioVisualStage
+        visualization={data.visualization}
+        selectedNode={data.selectedNode}
+        onSelectNode={data.onSelectNode}
+      />
       <Handle
-        id="left-in"
+        id="visual-in"
         type="target"
         position={Position.Left}
         className={handleClass}
       />
       <Handle
-        id="left-out"
-        type="source"
-        position={Position.Left}
-        className={handleClass}
-        style={{ top: "68%" }}
-      />
-      <Handle
-        id="right-in"
-        type="target"
-        position={Position.Right}
-        className={handleClass}
-        style={{ top: "32%" }}
-      />
-      <Handle
-        id="right-out"
+        id="visual-out"
         type="source"
         position={Position.Right}
-        className={handleClass}
-      />
-      <Handle
-        id="top-in"
-        type="target"
-        position={Position.Top}
-        className={handleClass}
-      />
-      <Handle
-        id="top-out"
-        type="source"
-        position={Position.Top}
-        className={handleClass}
-        style={{ left: "64%" }}
-      />
-      <Handle
-        id="bottom-in"
-        type="target"
-        position={Position.Bottom}
-        className={handleClass}
-        style={{ left: "36%" }}
-      />
-      <Handle
-        id="bottom-out"
-        type="source"
-        position={Position.Bottom}
         className={handleClass}
       />
     </div>

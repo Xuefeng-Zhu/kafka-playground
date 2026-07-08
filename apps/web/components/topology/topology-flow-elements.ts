@@ -1,32 +1,22 @@
 import type { RunSnapshot } from "@kplay/contracts";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
-import type {
-  ScenarioTopologyEdge,
-  ScenarioTopologyModel,
-} from "@/lib/client/scenario-topology";
+import type { ScenarioVisualization } from "@/lib/client/scenario-visualization";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { toneForPartition } from "./topology-cards";
 import type {
   ConsumerGroupNodeData,
   ProducerNodeData,
-  ScenarioNodeData,
+  ScenarioVisualNodeData,
   TopicNodeData,
 } from "./topology-flow-nodes";
-import {
-  scenarioFlowNodeId,
-  scenarioToneColor,
-  topologyEndpointId,
-  type TopologyLayoutMetrics,
-} from "./topology-flow-helpers";
+import { type TopologyLayoutMetrics } from "./topology-flow-helpers";
 
 export type TopologyNode =
   | Node<ProducerNodeData, "producer">
   | Node<TopicNodeData, "topic">
   | Node<ConsumerGroupNodeData, "consumerGroup">
-  | Node<ScenarioNodeData, "scenarioNode">;
+  | Node<ScenarioVisualNodeData, "scenarioVisual">;
 export type TopologyEdge = Edge<Record<string, never>, "smoothstep">;
-export type Position = { x: number; y: number };
-export type SavedScenarioPositions = Record<string, Position>;
 
 export function buildTopologyNodes({
   activeConsumerId,
@@ -38,8 +28,7 @@ export function buildTopologyNodes({
   onSelectMessage,
   onSelectNode,
   partitions,
-  savedScenarioPositions,
-  scenarioTopology,
+  scenarioVisualization,
   selectedMessageId,
   selectedNode,
   snapshot,
@@ -54,8 +43,7 @@ export function buildTopologyNodes({
   onSelectMessage: (messageId: string) => void;
   onSelectNode: (selection: TopologySelection) => void;
   partitions: number[];
-  savedScenarioPositions: SavedScenarioPositions;
-  scenarioTopology: ScenarioTopologyModel;
+  scenarioVisualization: ScenarioVisualization;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   snapshot: RunSnapshot;
@@ -116,26 +104,22 @@ export function buildTopologyNodes({
     },
   ];
 
-  const overlayNodes: TopologyNode[] = scenarioTopology.nodes.map((model) => ({
-    id: scenarioFlowNodeId(model.id),
-    type: "scenarioNode",
-    position: isCompact
-      ? model.compactPosition
-      : (savedScenarioPositions[model.id] ?? model.position),
-    draggable: !isCompact,
+  const visualNode: TopologyNode = {
+    id: "scenarioVisual",
+    type: "scenarioVisual",
+    position: scenarioVisualPosition(metrics, isCompact),
+    draggable: false,
     selectable: false,
     data: {
-      model,
-      selected:
-        selectedNode?.type === "scenarioNode" &&
-        selectedNode.nodeId === model.id,
+      visualization: scenarioVisualization,
+      selectedNode,
       onSelectMessage,
       onSelectNode,
     },
-    style: { width: isCompact ? 180 : 190 },
-  }));
+    style: { width: isCompact ? 332 : 660 },
+  };
 
-  return [...coreNodes, ...overlayNodes];
+  return [...coreNodes, visualNode];
 }
 
 export function buildTopologyEdges({
@@ -145,8 +129,6 @@ export function buildTopologyEdges({
   consumersLength,
   latestMessage,
   partitions,
-  scenarioNodeIds,
-  scenarioTopologyEdges,
 }: {
   activeConsumerId: string | null;
   activePartition: number | null;
@@ -154,8 +136,6 @@ export function buildTopologyEdges({
   consumersLength: number;
   latestMessage: RunSnapshot["recentMessages"][number] | null;
   partitions: number[];
-  scenarioNodeIds: Set<string>;
-  scenarioTopologyEdges: ScenarioTopologyEdge[];
 }): TopologyEdge[] {
   const nextEdges: TopologyEdge[] = [
     {
@@ -219,62 +199,37 @@ export function buildTopologyEdges({
     });
   }
 
-  scenarioTopologyEdges.forEach((scenarioEdge) => {
-    nextEdges.push(toReactFlowScenarioEdge(scenarioEdge, scenarioNodeIds));
+  nextEdges.push({
+    id: "edge-topic-scenario-visual",
+    type: "smoothstep",
+    source: "topic",
+    sourceHandle: "topic-empty-out",
+    target: "scenarioVisual",
+    targetHandle: "visual-in",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#0f766e" },
+    className: latestMessage ? "kplay-flow-line" : undefined,
+    style: {
+      opacity: latestMessage ? 0.95 : 0.68,
+      stroke: "#0f766e",
+      strokeDasharray: "6 7",
+      strokeWidth: latestMessage ? 2.1 : 1.7,
+    },
+    domAttributes: edgeTestId("topology-edge-topic-scenario-visual"),
   });
   return nextEdges;
 }
 
-export function parseSavedScenarioPositions(
-  value: string | null,
-): SavedScenarioPositions {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, Position] => {
-        const [, position] = entry;
-        return (
-          !!position &&
-          typeof position === "object" &&
-          !Array.isArray(position) &&
-          Number.isFinite((position as Position).x) &&
-          Number.isFinite((position as Position).y)
-        );
-      }),
-    );
-  } catch {
-    return {};
-  }
+function scenarioVisualPosition(
+  metrics: TopologyLayoutMetrics,
+  isCompact: boolean,
+) {
+  if (isCompact) return { x: 390, y: 112 };
+  return {
+    x: metrics.consumerGroup.x + metrics.consumerGroupWidth + 56,
+    y: 72,
+  };
 }
 
 function edgeTestId(value: string): TopologyEdge["domAttributes"] {
   return { "data-testid": value } as TopologyEdge["domAttributes"];
-}
-
-function toReactFlowScenarioEdge(
-  edge: ScenarioTopologyEdge,
-  scenarioNodeIds: Set<string>,
-): TopologyEdge {
-  const color = scenarioToneColor[edge.tone];
-  return {
-    id: `scenario-edge-${edge.id}`,
-    type: "smoothstep",
-    source: topologyEndpointId(edge.source, scenarioNodeIds),
-    sourceHandle: edge.sourceHandle,
-    target: topologyEndpointId(edge.target, scenarioNodeIds),
-    targetHandle: edge.targetHandle,
-    markerEnd: { type: MarkerType.ArrowClosed, color },
-    className: edge.active ? "kplay-flow-line" : undefined,
-    style: {
-      opacity: edge.active ? 0.95 : 0.62,
-      stroke: color,
-      strokeDasharray: edge.dashed ? "6 7" : undefined,
-      strokeWidth: edge.active ? 2.2 : 1.7,
-    },
-    domAttributes: edgeTestId(`topology-scenario-edge-${edge.id}`),
-  };
 }

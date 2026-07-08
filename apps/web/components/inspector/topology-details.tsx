@@ -5,7 +5,7 @@ import {
   formatTaskDuration,
   type ConsumerTask,
 } from "@/lib/client/current-consumer-task";
-import { deriveScenarioTopology } from "@/lib/client/scenario-topology";
+import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { keyStrategyLabel } from "@/lib/client/key-strategy-label";
 
 export function TopologyDetails({
@@ -114,10 +114,10 @@ export function TopologyDetails({
   }
 
   if (selectedNode.type === "scenarioNode") {
-    const scenarioNode = deriveScenarioTopology(snapshot).nodes.find(
-      (node) => node.id === selectedNode.nodeId,
+    const hotspot = deriveScenarioVisualization(snapshot).hotspots.find(
+      (item) => item.id === selectedNode.nodeId,
     );
-    if (!scenarioNode) {
+    if (!hotspot) {
       return (
         <>
           <TopologyHeader
@@ -135,15 +135,15 @@ export function TopologyDetails({
     return (
       <>
         <TopologyHeader
-          title={scenarioNode.title}
-          detail={scenarioNode.description}
-          tone={scenarioNode.tone}
+          title={hotspot.title}
+          detail={hotspot.description}
+          tone={hotspot.tone}
         />
         <DetailSection
-          title={scenarioNode.eyebrow}
+          title={hotspot.eyebrow}
           rows={[
-            [scenarioNode.metricLabel, scenarioNode.metricValue],
-            ...scenarioNode.details,
+            [hotspot.metricLabel, hotspot.metricValue],
+            ...hotspot.details,
           ]}
         />
       </>
