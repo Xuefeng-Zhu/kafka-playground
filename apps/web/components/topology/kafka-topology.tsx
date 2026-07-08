@@ -276,7 +276,7 @@ function KafkaTopologyFlow({
   return (
     <div
       ref={topologyCanvasRef}
-      className="kplay-grid-bg relative min-h-[620px] overflow-hidden lg:h-full lg:min-h-0"
+      className="kplay-grid-bg relative min-h-[760px] overflow-hidden md:min-h-[620px] lg:h-full lg:min-h-0"
       data-testid="topology-canvas"
     >
       <div className="pointer-events-none absolute left-4 right-4 top-5 z-20 flex flex-wrap items-center justify-end gap-3 lg:left-6 lg:right-6">
