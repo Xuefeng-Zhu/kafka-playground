@@ -321,6 +321,7 @@ function PipelineBoard({ visualization, icon: Icon, caption }: BoardProps) {
         {visualization.steps.map((step, index) => (
           <Fragment key={step.id}>
             <div
+              data-testid={`scenario-visual-step-${step.id}`}
               className={`rounded-xl border-2 bg-white p-3 ${scenarioToneClass[step.tone].border}`}
             >
               <div className="mb-3 flex items-center gap-2">
@@ -526,6 +527,7 @@ function StepRail({ visualization, icon: Icon, caption }: BoardProps) {
       {visualization.steps.map((step) => (
         <div
           key={step.id}
+          data-testid={`scenario-visual-step-${step.id}`}
           className={`rounded-xl border-2 bg-white p-3 ${scenarioToneClass[step.tone].border} ${
             step.active ? "shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" : ""
           }`}

@@ -90,6 +90,7 @@ function KafkaTopologyFlow({
   const [layout, setLayout] = useState<TopologyLayout>("auto");
   const hasMountedRef = useRef(false);
   const topologyCanvasRef = useRef<HTMLDivElement | null>(null);
+  const canvasSizeRef = useRef({ height: 0, width: 0 });
   const isCompact = useCompactTopology();
   const flow = useReactFlow<TopologyNode, TopologyEdge>();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -149,6 +150,33 @@ function KafkaTopologyFlow({
     }
     setViewportHome();
   }, [isCompact, layout, setViewportHome]);
+
+  useEffect(() => {
+    const canvas = topologyCanvasRef.current;
+    if (!canvas || typeof ResizeObserver === "undefined") return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const next = {
+        height: Math.round(entry.contentRect.height),
+        width: Math.round(entry.contentRect.width),
+      };
+      const previous = canvasSizeRef.current;
+      if (next.height === previous.height && next.width === previous.width) {
+        return;
+      }
+      canvasSizeRef.current = next;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(setViewportHome);
+    });
+
+    observer.observe(canvas);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [setViewportHome]);
 
   useEffect(() => {
     let secondFrame = 0;

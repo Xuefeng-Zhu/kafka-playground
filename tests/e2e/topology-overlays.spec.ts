@@ -81,6 +81,26 @@ test("scenario topology overlays react to scenario actions", async ({
   }
 });
 
+test("ACL principal card stays fully visible in a short desktop viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 576 });
+  await resetActiveRun(page);
+  await page.goto("/scenarios/acl-least-privilege");
+  await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(page.getByRole("button", { name: "Produce one" })).toBeVisible();
+
+  await expectElementFramedInTopologyCanvas(page, "topology-scenario-visual", {
+    bottomInset: 12,
+    tolerance: 12,
+  });
+  await expectElementFramedInTopologyCanvas(
+    page,
+    "scenario-visual-step-principal",
+    { bottomInset: 16 },
+  );
+});
+
 test("tall scenario visuals stay framed on mobile after guided actions", async ({
   page,
 }) => {
@@ -176,4 +196,46 @@ async function expectScenarioVisualFramedOnMobile(
       }, overlayId),
     )
     .toEqual([]);
+}
+
+async function expectElementFramedInTopologyCanvas(
+  page: Page,
+  testId: string,
+  options: { bottomInset?: number; tolerance?: number } = {},
+) {
+  const { bottomInset = 0, tolerance = 3 } = options;
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ evaluatedTestId, evaluatedBottomInset, evaluatedTolerance }) => {
+          const readBox = (id: string) => {
+            const element = document.querySelector(`[data-testid="${id}"]`);
+            if (!element) return null;
+            const box = element.getBoundingClientRect();
+            return {
+              bottom: box.bottom,
+              left: box.left,
+              right: box.right,
+              top: box.top,
+            };
+          };
+          const canvas = readBox("topology-canvas");
+          const element = readBox(evaluatedTestId);
+          if (!canvas || !element) return false;
+          return (
+            element.left >= canvas.left - evaluatedTolerance &&
+            element.top >= canvas.top - evaluatedTolerance &&
+            element.right <= canvas.right + evaluatedTolerance &&
+            element.bottom <=
+              canvas.bottom - evaluatedBottomInset + evaluatedTolerance
+          );
+        },
+        {
+          evaluatedBottomInset: bottomInset,
+          evaluatedTestId: testId,
+          evaluatedTolerance: tolerance,
+        },
+      ),
+    )
+    .toBe(true);
 }

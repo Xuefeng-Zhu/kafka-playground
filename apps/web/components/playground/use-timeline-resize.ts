@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -13,6 +15,7 @@ const COLLAPSED_TIMELINE_HEIGHT = 210;
 export const MIN_TIMELINE_HEIGHT = 160;
 export const MAX_TIMELINE_HEIGHT = 720;
 const MIN_TOPOLOGY_HEIGHT = 220;
+const SHORT_WORKSPACE_HEIGHT = 620;
 const TIMELINE_RESIZE_STEP = 24;
 
 type TimelineResizeState = {
@@ -32,21 +35,55 @@ export function useTimelineResize(
     "--timeline-height": `${timelineHeight}px`,
   } as CSSProperties;
 
-  function maxTimelineHeight() {
+  const maxTimelineHeight = useCallback(() => {
     const workspaceHeight =
       workspaceGridRef.current?.getBoundingClientRect().height ?? 780;
     return Math.min(
       MAX_TIMELINE_HEIGHT,
       Math.max(MIN_TIMELINE_HEIGHT, workspaceHeight - MIN_TOPOLOGY_HEIGHT),
     );
-  }
+  }, [workspaceGridRef]);
 
-  function clampTimelineHeight(nextHeight: number) {
-    return Math.min(
-      maxTimelineHeight(),
-      Math.max(MIN_TIMELINE_HEIGHT, Math.round(nextHeight)),
-    );
-  }
+  const clampTimelineHeight = useCallback(
+    (nextHeight: number) => {
+      return Math.min(
+        maxTimelineHeight(),
+        Math.max(MIN_TIMELINE_HEIGHT, Math.round(nextHeight)),
+      );
+    },
+    [maxTimelineHeight],
+  );
+
+  useEffect(() => {
+    const syncTimelineHeight = () => {
+      setTimelineHeight((current) => {
+        const clamped = clampTimelineHeight(current);
+        const workspaceHeight =
+          workspaceGridRef.current?.getBoundingClientRect().height ?? 780;
+        if (
+          current === COLLAPSED_TIMELINE_HEIGHT &&
+          workspaceHeight < SHORT_WORKSPACE_HEIGHT
+        ) {
+          return Math.min(clamped, MIN_TIMELINE_HEIGHT);
+        }
+        return clamped;
+      });
+    };
+    syncTimelineHeight();
+
+    window.addEventListener("resize", syncTimelineHeight);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(syncTimelineHeight);
+    const workspaceGrid = workspaceGridRef.current;
+    if (workspaceGrid) observer?.observe(workspaceGrid);
+
+    return () => {
+      window.removeEventListener("resize", syncTimelineHeight);
+      observer?.disconnect();
+    };
+  }, [clampTimelineHeight, workspaceGridRef]);
 
   function updateTimelineHeight(nextHeight: number) {
     setTimelineHeight(clampTimelineHeight(nextHeight));
