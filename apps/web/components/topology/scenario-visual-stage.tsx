@@ -359,8 +359,12 @@ function PipelineBoard({ visualization, icon: Icon, caption }: BoardProps) {
 function GateBoard({ visualization, icon: Icon, caption }: BoardProps) {
   return (
     <div className="grid gap-3 md:grid-cols-[1fr_1.2fr]">
-      <StepRail visualization={visualization} icon={Icon} caption={caption} />
-      <RowsTable visualization={visualization} />
+      <div className="md:col-span-2">
+        <StepRail visualization={visualization} icon={Icon} caption={caption} />
+      </div>
+      <div className="md:col-span-2">
+        <RowsTable visualization={visualization} />
+      </div>
       <div className="grid gap-2 md:col-span-2 md:grid-cols-2">
         {visualization.lanes.map((lane) => (
           <LaneColumn key={lane.id} lane={lane} />
@@ -539,15 +543,15 @@ function StepRail({ visualization, icon: Icon, caption }: BoardProps) {
               <Icon size={15} aria-hidden />
             </div>
             <div className="min-w-0">
-              <div className="truncate text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#466778]">
+              <div className="break-words text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#466778]">
                 {caption}
               </div>
-              <div className="truncate text-sm font-extrabold text-[#123047]">
+              <div className="break-words text-sm font-extrabold leading-tight text-[#123047]">
                 {step.label}
               </div>
             </div>
           </div>
-          <div className="mt-2 truncate text-xl font-extrabold text-[#123047]">
+          <div className="mt-2 break-words text-xl font-extrabold leading-tight text-[#123047]">
             {step.value}
           </div>
         </div>

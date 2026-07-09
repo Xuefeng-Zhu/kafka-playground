@@ -99,6 +99,7 @@ test("ACL principal card stays fully visible in a short desktop viewport", async
     "scenario-visual-step-principal",
     { bottomInset: 16 },
   );
+  await expectScenarioStepCardsReadable(page, ["principal", "acl", "resource"]);
 });
 
 test("tall scenario visuals stay framed on mobile after guided actions", async ({
@@ -238,4 +239,41 @@ async function expectElementFramedInTopologyCanvas(
       ),
     )
     .toBe(true);
+}
+
+async function expectScenarioStepCardsReadable(page: Page, stepIds: string[]) {
+  await expect
+    .poll(async () =>
+      page.evaluate((evaluatedStepIds) => {
+        const problems: string[] = [];
+        for (const stepId of evaluatedStepIds) {
+          const card = document.querySelector(
+            `[data-testid="scenario-visual-step-${stepId}"]`,
+          );
+          if (!card) {
+            problems.push(`${stepId}: missing`);
+            continue;
+          }
+          const cardBox = card.getBoundingClientRect();
+          if (cardBox.width < 90) {
+            problems.push(`${stepId}: too narrow ${Math.round(cardBox.width)}`);
+          }
+          const overflowingText = Array.from(
+            card.querySelectorAll<HTMLElement>("div,span"),
+          )
+            .filter((element) => {
+              const box = element.getBoundingClientRect();
+              if (box.width === 0 || box.height === 0) return false;
+              return element.scrollWidth > element.clientWidth + 2;
+            })
+            .map((element) => element.textContent?.trim() ?? "")
+            .filter(Boolean);
+          if (overflowingText.length > 0) {
+            problems.push(`${stepId}: clipped ${overflowingText.join(" / ")}`);
+          }
+        }
+        return problems;
+      }, stepIds),
+    )
+    .toEqual([]);
 }
