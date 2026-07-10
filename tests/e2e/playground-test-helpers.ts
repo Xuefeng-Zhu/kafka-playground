@@ -1,4 +1,5 @@
 import { expect, type ConsoleMessage, type Page, test } from "@playwright/test";
+import { source as axeSource } from "axe-core";
 
 export const idleConsumerLabel = "idle - no partition available";
 const consoleFailures = new WeakMap<Page, string[]>();
@@ -297,6 +298,46 @@ export async function pageScrollPosition(page: Page) {
     x: window.scrollX,
     y: window.scrollY,
   }));
+}
+
+export async function expectNoSeriousOrCriticalAxeViolations(
+  page: Page,
+  selector = "main",
+) {
+  await page.addScriptTag({ content: axeSource });
+  const violations = await page.evaluate(async (contextSelector) => {
+    type AxeViolation = {
+      id: string;
+      impact: string | null;
+      help: string;
+      nodes: Array<{ target: string[] }>;
+    };
+    const axe = (
+      window as typeof window & {
+        axe: {
+          run(
+            context: Element,
+            options: { resultTypes: string[] },
+          ): Promise<{ violations: AxeViolation[] }>;
+        };
+      }
+    ).axe;
+    const context = document.querySelector(contextSelector);
+    if (!context) throw new Error(`Missing axe context: ${contextSelector}`);
+    const result = await axe.run(context, { resultTypes: ["violations"] });
+    return result.violations
+      .filter((violation) =>
+        ["serious", "critical"].includes(violation.impact ?? ""),
+      )
+      .map((violation) => ({
+        id: violation.id,
+        impact: violation.impact,
+        help: violation.help,
+        targets: violation.nodes.flatMap((node) => node.target),
+      }));
+  }, selector);
+
+  expect(violations).toEqual([]);
 }
 
 function isBenignResourceLoadFailure(message: ConsoleMessage) {

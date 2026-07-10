@@ -8,6 +8,7 @@ import type {
   RunSnapshot,
   RunStatus,
   RuntimeEvent,
+  ScenarioState,
   ScenarioDefinition,
 } from "@kplay/contracts";
 import type {
@@ -21,6 +22,7 @@ import {
   defaultProcessingLatencyForScenario,
 } from "@kplay/scenario-engine";
 import type { RuntimeSubscriber } from "./runtime-event-hub";
+import { createInitialScenarioState } from "./scenario-experiments";
 
 export type InternalRun = CreateRunInput & {
   mode: KafkaMode;
@@ -45,6 +47,10 @@ export type InternalRun = CreateRunInput & {
   processingTimers: Map<string, NodeJS.Timeout>;
   consumerHandles: Map<string, PlaygroundConsumerHandle>;
   subscribers: Map<string, RuntimeSubscriber>;
+  scenarioState: ScenarioState | null;
+  virtualTimeMs: number;
+  inFlightExperimentId: string | null;
+  completedExperimentIds: Set<string>;
 };
 
 export function createInternalRun({
@@ -94,6 +100,14 @@ export function createInternalRun({
     processingTimers: new Map(),
     consumerHandles: new Map(),
     subscribers: new Map(),
+    // Deterministic teaching state is a demo-only projection. Remote runs stay
+    // on the observed broker renderer until a scenario has a matching remote
+    // experiment implementation.
+    scenarioState:
+      mode === "demo" ? createInitialScenarioState(scenario.id) : null,
+    virtualTimeMs: 0,
+    inFlightExperimentId: null,
+    completedExperimentIds: new Set(),
   };
 }
 
@@ -123,5 +137,6 @@ export function createRunSnapshot(
     recentEvents: run.events.slice(-timelineDisplayLimit),
     cleanupStatus: run.cleanupStatus,
     sequence: run.sequence,
+    scenarioState: run.scenarioState,
   };
 }

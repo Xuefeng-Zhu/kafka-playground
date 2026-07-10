@@ -30,13 +30,17 @@ Scenario catalog:
 
 ![Kafka Visual Playground scenario catalog](docs/screenshots/home.png)
 
-Partitioning run with message inspector:
+Partitioning teaching-first lesson:
 
-![Partitioning scenario run with message inspector](docs/screenshots/partitioning-run.png)
+![Partitioning lesson with causal and before-current-after evidence](docs/screenshots/partitioning-run.png)
 
-Hot partition detector:
+Hot partition comparison:
 
-![Hot partitions scenario with skewed key distribution](docs/screenshots/hot-partitions-run.png)
+![Independent equal-size hot-key and no-key comparison](docs/screenshots/hot-partitions-run.png)
+
+Teaching-first visualization V2 concept:
+
+![Teaching-first desktop and mobile scenario experience](docs/design/visualization-v2-concept.png)
 
 ## Architecture
 
@@ -125,26 +129,27 @@ Connection tests return only sanitized status, masked broker host, broker count,
 
 The UI uses the versioned `/api/v1` routes directly:
 
-| Method   | Route                                             | Behavior                                                                                                     |
-| -------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GET`    | `/api/v1/health`                                  | Returns process health.                                                                                      |
-| `GET`    | `/api/v1/scenarios`                               | Returns the scenario catalog.                                                                                |
-| `GET`    | `/api/v1/connection`                              | Returns sanitized Kafka connection status.                                                                   |
-| `POST`   | `/api/v1/connection/test`                         | Re-runs the sanitized connection check.                                                                      |
-| `GET`    | `/api/v1/runs`                                    | Returns the active run snapshot or `null`.                                                                   |
-| `POST`   | `/api/v1/runs`                                    | Creates a run for `{ "scenarioId": "partitioning" }`; only one active run is supported.                      |
-| `GET`    | `/api/v1/runs/:runId`                             | Returns a run snapshot.                                                                                      |
-| `DELETE` | `/api/v1/runs/:runId`                             | Deletes a run and requests resource cleanup.                                                                 |
-| `GET`    | `/api/v1/runs/:runId/events`                      | Opens the SSE stream for snapshots, live events, heartbeats, and bounded-history replay via `Last-Event-ID`. |
-| `PATCH`  | `/api/v1/runs/:runId/settings`                    | Updates `productionRate`, `keyStrategy`, or `processingLatencyMs`.                                           |
-| `POST`   | `/api/v1/runs/:runId/messages`                    | Produces one message, optionally with an override `keyStrategy`.                                             |
-| `POST`   | `/api/v1/runs/:runId/producer/start`              | Starts scheduled production.                                                                                 |
-| `POST`   | `/api/v1/runs/:runId/producer/pause`              | Pauses scheduled production.                                                                                 |
-| `POST`   | `/api/v1/runs/:runId/producer/stop`               | Stops scheduled production.                                                                                  |
-| `POST`   | `/api/v1/runs/:runId/consumers`                   | Adds one consumer to the run.                                                                                |
-| `DELETE` | `/api/v1/runs/:runId/consumers/:consumerId`       | Removes a consumer.                                                                                          |
-| `POST`   | `/api/v1/runs/:runId/consumers/:consumerId/crash` | Simulates a consumer crash.                                                                                  |
-| `POST`   | `/api/v1/runs/:runId/reset`                       | Stops producers, disconnects consumers, closes SSE subscribers, and requests resource cleanup.               |
+| Method   | Route                                             | Behavior                                                                                                                                  |
+| -------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/health`                                  | Returns process health.                                                                                                                   |
+| `GET`    | `/api/v1/scenarios`                               | Returns the scenario catalog.                                                                                                             |
+| `GET`    | `/api/v1/connection`                              | Returns sanitized Kafka connection status.                                                                                                |
+| `POST`   | `/api/v1/connection/test`                         | Re-runs the sanitized connection check.                                                                                                   |
+| `GET`    | `/api/v1/runs`                                    | Returns the active run snapshot or `null`.                                                                                                |
+| `POST`   | `/api/v1/runs`                                    | Creates a run for `{ "scenarioId": "partitioning" }`; only one active run is supported.                                                   |
+| `GET`    | `/api/v1/runs/:runId`                             | Returns a run snapshot.                                                                                                                   |
+| `DELETE` | `/api/v1/runs/:runId`                             | Deletes a run and requests resource cleanup.                                                                                              |
+| `GET`    | `/api/v1/runs/:runId/events`                      | Opens the SSE stream for snapshots, live events, heartbeats, and bounded-history replay via `Last-Event-ID`.                              |
+| `PATCH`  | `/api/v1/runs/:runId/settings`                    | Updates `productionRate`, `keyStrategy`, or `processingLatencyMs`.                                                                        |
+| `POST`   | `/api/v1/runs/:runId/messages`                    | Produces one message, optionally with an override `keyStrategy`.                                                                          |
+| `POST`   | `/api/v1/runs/:runId/experiments/:experimentId`   | Runs one deterministic, serialized demo experiment and returns authoritative scenario state; unsupported remote experiments return `409`. |
+| `POST`   | `/api/v1/runs/:runId/producer/start`              | Starts scheduled production.                                                                                                              |
+| `POST`   | `/api/v1/runs/:runId/producer/pause`              | Pauses scheduled production.                                                                                                              |
+| `POST`   | `/api/v1/runs/:runId/producer/stop`               | Stops scheduled production.                                                                                                               |
+| `POST`   | `/api/v1/runs/:runId/consumers`                   | Adds one consumer to the run.                                                                                                             |
+| `DELETE` | `/api/v1/runs/:runId/consumers/:consumerId`       | Removes a consumer.                                                                                                                       |
+| `POST`   | `/api/v1/runs/:runId/consumers/:consumerId/crash` | Simulates a consumer crash.                                                                                                               |
+| `POST`   | `/api/v1/runs/:runId/reset`                       | Stops producers, disconnects consumers, closes SSE subscribers, and requests resource cleanup.                                            |
 
 Routes that accept JSON bodies use these shapes:
 

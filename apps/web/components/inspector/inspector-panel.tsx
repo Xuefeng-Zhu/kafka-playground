@@ -19,7 +19,9 @@ import {
   type TaskDuration,
 } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import type { EntityDetailModel } from "@/lib/client/scenario-experience";
 import { useLiveTaskClock } from "@/lib/client/use-live-task-clock";
+import { EntityDetails } from "./entity-details";
 import { TopologyDetails } from "./topology-details";
 
 export function InspectorPanel({
@@ -27,6 +29,7 @@ export function InspectorPanel({
   event,
   snapshot,
   selectedNode,
+  entityDetail = null,
   onPreviousMessage,
   onNextMessage,
   onClose,
@@ -35,11 +38,18 @@ export function InspectorPanel({
   event: RuntimeEvent | null;
   snapshot: RunSnapshot | null;
   selectedNode: TopologySelection | null;
+  entityDetail?: EntityDetailModel | null;
   onPreviousMessage: () => void;
   onNextMessage: () => void;
   onClose: () => void;
 }) {
-  const inspectorKind = selectedNode ? "topology" : event ? "event" : "message";
+  const inspectorKind = entityDetail
+    ? "entity"
+    : selectedNode
+      ? "topology"
+      : event
+        ? "event"
+        : "message";
   const messageIndex =
     snapshot && message
       ? snapshot.recentMessages.findIndex(
@@ -65,20 +75,24 @@ export function InspectorPanel({
         <h2 className="kplay-section-title">
           {inspectorKind === "topology"
             ? "Topology Inspector"
-            : inspectorKind === "event"
-              ? "Event Inspector"
-              : "Message Inspector"}
+            : inspectorKind === "entity"
+              ? "Evidence Inspector"
+              : inspectorKind === "event"
+                ? "Event Inspector"
+                : "Message Inspector"}
         </h2>
         <button
           type="button"
           onClick={onClose}
-          className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200"
+          className="grid size-11 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-sky-200 lg:size-8"
           aria-label={
             inspectorKind === "topology"
               ? "Close topology inspector"
-              : inspectorKind === "event"
-                ? "Close event inspector"
-                : "Close message inspector"
+              : inspectorKind === "entity"
+                ? "Close evidence inspector"
+                : inspectorKind === "event"
+                  ? "Close event inspector"
+                  : "Close message inspector"
           }
         >
           <X size={16} aria-hidden />
@@ -99,7 +113,9 @@ export function InspectorPanel({
         />
       )}
 
-      {snapshot && !selectedNode && (
+      {snapshot && entityDetail && <EntityDetails detail={entityDetail} />}
+
+      {snapshot && !selectedNode && !entityDetail && (
         <>
           <section className="border-b-[3px] border-teal-700 p-5">
             <div className="text-sm font-semibold text-[#466778]">
@@ -119,7 +135,7 @@ export function InspectorPanel({
                     type="button"
                     onClick={onPreviousMessage}
                     disabled={!hasPreviousMessage}
-                    className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45"
+                    className="grid size-11 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45 lg:size-8"
                     aria-label="Previous message"
                   >
                     <ChevronLeft size={16} aria-hidden />
@@ -128,7 +144,7 @@ export function InspectorPanel({
                     type="button"
                     onClick={onNextMessage}
                     disabled={!hasNextMessage}
-                    className="grid size-8 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45"
+                    className="grid size-11 place-items-center rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-teal-800 disabled:opacity-45 lg:size-8"
                     aria-label="Next message"
                   >
                     <ChevronRight size={16} aria-hidden />

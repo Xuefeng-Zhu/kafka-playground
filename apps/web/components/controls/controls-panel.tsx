@@ -111,11 +111,11 @@ export function ControlsPanel({
         data-testid="run-settings-panel"
         id="run-settings-panel"
       >
-        <label className="grid min-h-[76px] grid-rows-[16px_36px_12px] gap-1.5 text-xs text-[#466778]">
+        <label className="grid min-h-[116px] grid-rows-[16px_44px_44px] gap-1.5 text-xs text-[#466778] md:min-h-[76px] md:grid-rows-[16px_36px_12px]">
           <span className="kplay-section-title">Rate</span>
           <input
             aria-label="Messages per second"
-            className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+            className="h-11 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047] md:h-9"
             min={1}
             max={10}
             type="number"
@@ -133,7 +133,7 @@ export function ControlsPanel({
           />
           <input
             aria-label="Produce rate slider"
-            className="h-3 w-full accent-sky-500"
+            className="h-11 w-full accent-sky-500 md:h-3"
             min={1}
             max={10}
             type="range"
@@ -151,11 +151,11 @@ export function ControlsPanel({
           />
         </label>
 
-        <label className="grid min-h-[76px] grid-rows-[16px_36px_12px] gap-1.5 text-xs text-[#466778]">
+        <label className="grid min-h-[116px] grid-rows-[16px_44px_44px] gap-1.5 text-xs text-[#466778] md:min-h-[76px] md:grid-rows-[16px_36px_12px]">
           <span className="kplay-section-title">Latency</span>
           <input
             aria-label="Consumer processing latency"
-            className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+            className="h-11 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047] md:h-9"
             min={0}
             max={5000}
             step={100}
@@ -174,7 +174,7 @@ export function ControlsPanel({
           />
           <input
             aria-label="Processing latency slider"
-            className="h-3 w-full accent-amber-500"
+            className="h-11 w-full accent-amber-500 md:h-3"
             min={0}
             max={5000}
             step={100}
@@ -193,13 +193,13 @@ export function ControlsPanel({
           />
         </label>
 
-        <section className="grid min-h-[76px] grid-rows-[16px_36px_12px] gap-1.5">
+        <section className="grid min-h-[116px] grid-rows-[16px_44px_minmax(44px,auto)] gap-1.5 md:min-h-[76px] md:grid-rows-[16px_36px_minmax(12px,auto)]">
           <label className="kplay-section-title" htmlFor="key-strategy">
             Key strategy
           </label>
           <select
             id="key-strategy"
-            className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+            className="h-11 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047] md:h-9"
             value={snapshot.keyStrategy.type}
             disabled={disabled}
             onChange={(event) => {
@@ -224,7 +224,7 @@ export function ControlsPanel({
           {snapshot.keyStrategy.type === "fixed" && (
             <input
               aria-label="Fixed key"
-              className="h-9 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047]"
+              className="h-11 w-full rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 text-sm font-semibold text-[#123047] md:h-9"
               value={fixedValue}
               disabled={disabled}
               onChange={(event) =>

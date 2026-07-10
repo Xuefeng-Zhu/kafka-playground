@@ -29,6 +29,7 @@ export function buildTopologyNodes({
   onSelectNode,
   partitions,
   scenarioVisualization,
+  showScenarioVisual = true,
   selectedMessageId,
   selectedNode,
   snapshot,
@@ -44,6 +45,7 @@ export function buildTopologyNodes({
   onSelectNode: (selection: TopologySelection) => void;
   partitions: number[];
   scenarioVisualization: ScenarioVisualization;
+  showScenarioVisual?: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   snapshot: RunSnapshot;
@@ -119,7 +121,7 @@ export function buildTopologyNodes({
     style: { width: isCompact ? 332 : 660 },
   };
 
-  return [...coreNodes, visualNode];
+  return showScenarioVisual ? [...coreNodes, visualNode] : coreNodes;
 }
 
 export function buildTopologyEdges({
@@ -129,6 +131,7 @@ export function buildTopologyEdges({
   consumersLength,
   latestMessage,
   partitions,
+  showScenarioVisual = true,
 }: {
   activeConsumerId: string | null;
   activePartition: number | null;
@@ -136,6 +139,7 @@ export function buildTopologyEdges({
   consumersLength: number;
   latestMessage: RunSnapshot["recentMessages"][number] | null;
   partitions: number[];
+  showScenarioVisual?: boolean;
 }): TopologyEdge[] {
   const nextEdges: TopologyEdge[] = [
     {
@@ -199,23 +203,25 @@ export function buildTopologyEdges({
     });
   }
 
-  nextEdges.push({
-    id: "edge-topic-scenario-visual",
-    type: "smoothstep",
-    source: "topic",
-    sourceHandle: "topic-empty-out",
-    target: "scenarioVisual",
-    targetHandle: "visual-in",
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#0f766e" },
-    className: latestMessage ? "kplay-flow-line" : undefined,
-    style: {
-      opacity: latestMessage ? 0.95 : 0.68,
-      stroke: "#0f766e",
-      strokeDasharray: "6 7",
-      strokeWidth: latestMessage ? 2.1 : 1.7,
-    },
-    domAttributes: edgeTestId("topology-edge-topic-scenario-visual"),
-  });
+  if (showScenarioVisual) {
+    nextEdges.push({
+      id: "edge-topic-scenario-visual",
+      type: "smoothstep",
+      source: "topic",
+      sourceHandle: "topic-empty-out",
+      target: "scenarioVisual",
+      targetHandle: "visual-in",
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#0f766e" },
+      className: latestMessage ? "kplay-flow-line" : undefined,
+      style: {
+        opacity: latestMessage ? 0.95 : 0.68,
+        stroke: "#0f766e",
+        strokeDasharray: "6 7",
+        strokeWidth: latestMessage ? 2.1 : 1.7,
+      },
+      domAttributes: edgeTestId("topology-edge-topic-scenario-visual"),
+    });
+  }
   return nextEdges;
 }
 

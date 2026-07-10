@@ -7,6 +7,7 @@ import {
   loadConnectionStatus,
   loadScenarioDefinitions,
   retireRun,
+  runScenarioExperiment,
 } from "./playground-api";
 
 describe("playground api client", () => {
@@ -96,13 +97,27 @@ describe("playground api client", () => {
 
     await expect(retireRun("missing")).resolves.toBeUndefined();
   });
+
+  it("posts stable experiment IDs through encoded run routes", async () => {
+    const fetchMock = mockFetch(
+      { ok: true, status: 200, statusText: "OK" },
+      { runId: "run/one" },
+    );
+
+    await runScenarioExperiment("run/one", "compare ownership");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/runs/run%2Fone/experiments/compare%20ownership",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
 });
 
 function mockFetch(
   response: Pick<Response, "ok" | "status" | "statusText">,
   body: unknown,
 ) {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue({
+  return vi.spyOn(globalThis, "fetch").mockResolvedValue({
     ...response,
     json: async () => body,
   } as Response);

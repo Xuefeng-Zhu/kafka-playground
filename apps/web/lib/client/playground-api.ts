@@ -123,6 +123,16 @@ export async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
   });
 }
 
+export async function runScenarioExperiment(
+  runId: string,
+  experimentId: string,
+) {
+  return api<RunSnapshot>(
+    `/api/v1/runs/${encodeURIComponent(runId)}/experiments/${encodeURIComponent(experimentId)}`,
+    { method: "POST" },
+  );
+}
+
 export async function retireRun(runId: string) {
   const response = await fetch(`/api/v1/runs/${runId}/reset`, {
     method: "POST",

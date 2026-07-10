@@ -30,12 +30,14 @@ const ZOOM_STEP = 0.15;
 
 export function KafkaTopology({
   snapshot,
+  showScenarioVisual = true,
   selectedMessageId,
   selectedNode,
   onSelectMessage,
   onSelectNode,
 }: {
   snapshot: RunSnapshot;
+  showScenarioVisual?: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   onSelectMessage: (messageId: string) => void;
@@ -45,6 +47,7 @@ export function KafkaTopology({
     <ReactFlowProvider>
       <KafkaTopologyFlow
         snapshot={snapshot}
+        showScenarioVisual={showScenarioVisual}
         selectedMessageId={selectedMessageId}
         selectedNode={selectedNode}
         onSelectMessage={onSelectMessage}
@@ -56,12 +59,14 @@ export function KafkaTopology({
 
 function KafkaTopologyFlow({
   snapshot,
+  showScenarioVisual,
   selectedMessageId,
   selectedNode,
   onSelectMessage,
   onSelectNode,
 }: {
   snapshot: RunSnapshot;
+  showScenarioVisual: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   onSelectMessage: (messageId: string) => void;
@@ -107,8 +112,11 @@ function KafkaTopologyFlow({
   );
   const taskNowMs = useLiveTaskClock(hasActiveConsumerTaskDuration(snapshot));
   const fitNodeIds = useMemo(
-    () => ["producer", "topic", "consumerGroup", "scenarioVisual"],
-    [],
+    () =>
+      showScenarioVisual
+        ? ["producer", "topic", "consumerGroup", "scenarioVisual"]
+        : ["producer", "topic", "consumerGroup"],
+    [showScenarioVisual],
   );
   const fitViewNodeOptions = useMemo(
     () => fitNodeIds.map((id) => ({ id })),
@@ -122,13 +130,14 @@ function KafkaTopologyFlow({
         consumers.map((consumer) => consumer.consumerId).join(","),
         layout,
         isCompact ? "compact" : "wide",
-        scenarioVisualization.kind,
+        showScenarioVisual ? scenarioVisualization.kind : "observed-only",
       ].join(":"),
     [
       consumers,
       isCompact,
       layout,
       scenarioVisualization.kind,
+      showScenarioVisual,
       snapshot.partitionCount,
       snapshot.runId,
     ],
@@ -258,6 +267,7 @@ function KafkaTopologyFlow({
         onSelectNode,
         partitions,
         scenarioVisualization,
+        showScenarioVisual,
         selectedMessageId,
         selectedNode,
         snapshot,
@@ -274,6 +284,7 @@ function KafkaTopologyFlow({
       onSelectNode,
       partitions,
       scenarioVisualization,
+      showScenarioVisual,
       selectedMessageId,
       selectedNode,
       snapshot,
@@ -290,6 +301,7 @@ function KafkaTopologyFlow({
         consumersLength: consumers.length,
         latestMessage,
         partitions,
+        showScenarioVisual,
       }),
     [
       activeConsumerId,
@@ -298,6 +310,7 @@ function KafkaTopologyFlow({
       consumers.length,
       latestMessage,
       partitions,
+      showScenarioVisual,
     ],
   );
 

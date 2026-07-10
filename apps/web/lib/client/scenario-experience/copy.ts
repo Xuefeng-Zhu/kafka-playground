@@ -1,0 +1,347 @@
+import type {
+  ScenarioExperienceId,
+  ScenarioExperimentMetadata,
+  ScenarioExperiments,
+  ScenarioLesson,
+} from "./model";
+
+export type ScenarioExperienceCopy = {
+  title: string;
+  lesson: ScenarioLesson;
+  experiments: ScenarioExperiments;
+};
+
+export const scenarioExperienceCopy = {
+  partitioning: copy(
+    "Partition routing and commit progress",
+    "Trace equal keys into a stable partition and separate processed from committed positions.",
+    "A topic is globally ordered, or processing a record automatically commits it.",
+    "Produce the A, B, A sequence to reveal routing and offset evidence.",
+    experiment(
+      "produce-keyed-record",
+      "primary",
+      "Route A, B, A",
+      "Equal keys should land in the same partition while offsets increase within that partition.",
+      "Produce the keyed routing sequence and record its partition and offset trace.",
+    ),
+    experiment(
+      "grow-consumer-group",
+      "contrast",
+      "Add three consumers",
+      "With two partitions, the third group member should remain idle.",
+      "Grow the group and compare assignments with the topic partition count.",
+    ),
+  ),
+  "fan-out-load-balancing": copy(
+    "Consumer-group ownership",
+    "See one group divide partitions and leave excess members idle.",
+    "Every consumer in one group receives every record.",
+    "Grow the group to create before and after assignment epochs.",
+    experiment(
+      "grow-consumer-group",
+      "primary",
+      "Grow from one to four members",
+      "Every partition should retain exactly one owner while the fourth member becomes idle.",
+      "Add members one at a time and compare each authoritative assignment epoch.",
+    ),
+    experiment(
+      "produce-unkeyed-burst",
+      "contrast",
+      "Produce an unkeyed burst",
+      "Records can spread across partitions without changing partition ownership.",
+      "Produce the existing unkeyed burst after the ownership comparison.",
+    ),
+  ),
+  "at-least-once-duplicates": copy(
+    "At-least-once redelivery",
+    "Follow one partition and offset through side effect, crash, and redelivery.",
+    "A processed record cannot be delivered again.",
+    "Run the crash experiment to create an actual second delivery.",
+    experiment(
+      "crash-and-redeliver",
+      "primary",
+      "Crash before commit",
+      "The same partition and offset should return after its first side effect but before commit.",
+      "Hold the commit, crash the consumer, and redeliver the same record.",
+    ),
+    experiment(
+      "duplicate-risk-records",
+      "contrast",
+      "Compare handler strategies",
+      "A naïve handler should apply twice while an idempotent handler applies once.",
+      "Compare side-effect totals for the same idempotency key.",
+    ),
+  ),
+  "retry-dead-letter-queues": copy(
+    "Retry and dead-letter lifecycle",
+    "Distinguish a transient recovery from a poison record that exhausts retries.",
+    "A failed record is in the retry topic and dead-letter topic at the same time.",
+    "Run a transient record first, then contrast it with a poison record.",
+    experiment(
+      "transient-recovery",
+      "primary",
+      "Recover a transient failure",
+      "The record should move through backoff and finish on exactly one success route.",
+      "Advance deterministic time through each retry attempt.",
+    ),
+    experiment(
+      "poison-to-dlq",
+      "contrast",
+      "Exhaust a poison record",
+      "The record should enter the DLQ only after its final allowed attempt.",
+      "Run the same lifecycle to terminal exhaustion.",
+    ),
+  ),
+  "schema-evolution-karapace": copy(
+    "Schema compatibility gate",
+    "Compare field-level compatible and incompatible schema changes before Kafka.",
+    "Kafka accepts a record and schema compatibility is checked later by its consumer.",
+    "Try a compatible version, then an incompatible version against the simulated gate.",
+    experiment(
+      "compatible-schema",
+      "primary",
+      "Add a compatible field",
+      "The compatible version should pass the gate and increase the topic record count.",
+      "Inspect the field diff before the accepted record reaches Kafka.",
+    ),
+    experiment(
+      "trigger-schema-rejection",
+      "contrast",
+      "Reject an incompatible change",
+      "The incompatible version should stop before Kafka and leave the topic count unchanged.",
+      "Remove or change a required field in the deterministic demo registry.",
+    ),
+  ),
+  "transactional-producers": copy(
+    "Transactional visibility",
+    "Separate staged, committed, aborted, and deduplicated producer records.",
+    "Records are visible merely because they share a transaction ID.",
+    "Commit one transaction, then contrast it with abort and resend behavior.",
+    experiment(
+      "transaction-pair",
+      "primary",
+      "Commit two staged records",
+      "Both records should become visible together only when the transaction commits.",
+      "Stage the pair and cross the simulated read-committed boundary atomically.",
+    ),
+    experiment(
+      "abort-and-dedupe",
+      "contrast",
+      "Abort and resend",
+      "Aborted output should remain hidden and a repeated producer sequence should be suppressed.",
+      "Abort one transaction, then resend one producer sequence.",
+    ),
+  ),
+  "event-replay-sourcing": copy(
+    "Replay and projection rebuild",
+    "Rebuild derived state from existing offsets without producing new facts.",
+    "Replaying the log creates new Kafka records.",
+    "Seed the immutable log, then clear and rebuild the projection.",
+    experiment(
+      "aggregate-events",
+      "primary",
+      "Append original events",
+      "Appending facts should grow the immutable source log and produced count.",
+      "Use the existing action to create source history before replay.",
+    ),
+    experiment(
+      "rebuild-projection",
+      "contrast",
+      "Rebuild the projection",
+      "The projection should recover while produced count stays fixed.",
+      "Clear state, reset the cursor, and step through existing offsets.",
+    ),
+  ),
+  "consumer-lag-backpressure": copy(
+    "Lag and backpressure",
+    "Compare per-partition lag and rates while pressure builds and recovers.",
+    "Adding consumers can always increase throughput, regardless of partition count.",
+    "Build lag at high latency, then reduce pressure and observe the trend reverse.",
+    experiment(
+      "build-lag",
+      "primary",
+      "Build backlog",
+      "Lag should rise when production rate exceeds processing rate.",
+      "Raise production and latency and inspect per-partition totals.",
+    ),
+    experiment(
+      "recover-lag",
+      "contrast",
+      "Drain backlog",
+      "Lag should fall and the drain estimate should improve until partition capacity is saturated.",
+      "Add useful consumers and lower pressure.",
+    ),
+  ),
+  "hot-partitions-key-skew": copy(
+    "Hot-key distribution",
+    "Compare independent equal-size fixed-key and no-key routing phases.",
+    "Adding a balanced phase repairs totals already accumulated by the hot phase.",
+    "Run both phases with equal sample sizes and compare skew ratios.",
+    experiment(
+      "hot-key-burst",
+      "primary",
+      "Route a fixed hot key",
+      "One partition should receive nearly all records in the fixed-key phase.",
+      "Produce the equal-size hot phase and preserve its independent counters.",
+    ),
+    experiment(
+      "balanced-comparison",
+      "contrast",
+      "Route a no-key phase",
+      "The separate balanced phase should spread more evenly than the hot phase.",
+      "Run the same sample size with no key and compare percentages side by side.",
+    ),
+  ),
+  "log-compaction-tombstones": copy(
+    "Compaction and tombstone cleanup",
+    "Separate append history, materialized state, compaction, and later tombstone removal.",
+    "Writing a tombstone immediately erases all evidence of the key.",
+    "Append updates and a tombstone, then run the two cleaner stages.",
+    experiment(
+      "run-compaction",
+      "primary",
+      "Run compaction",
+      "Older superseded values should be removed while the newest value or tombstone remains.",
+      "Compact A1, B1, A2, and the tombstone for B.",
+    ),
+    experiment(
+      "expire-tombstone",
+      "contrast",
+      "Clean the tombstone",
+      "The delete marker should disappear only in the later cleanup stage.",
+      "Advance virtual time and perform tombstone cleanup.",
+    ),
+  ),
+  "retention-data-loss": copy(
+    "Retention and replay limits",
+    "Move the log-start boundary past a committed offset and inspect recovery choices.",
+    "A committed offset guarantees its old record remains available forever.",
+    "Advance virtual time beyond retention while progress remains behind.",
+    experiment(
+      "advance-retention",
+      "primary",
+      "Expire old records",
+      "A stale committed offset should trigger offset_out_of_range when log start passes it.",
+      "Advance deterministic time past the retention window.",
+    ),
+    experiment(
+      "recover-retention",
+      "contrast",
+      "Choose a recovery point",
+      "Selecting a recovery option should restore a valid cursor but cannot recreate expired records.",
+      "Compare earliest, latest, and external restore choices.",
+    ),
+  ),
+  "cooperative-rebalancing": copy(
+    "Eager versus cooperative rebalancing",
+    "Compare kept, moved, revoked, and paused partitions for the same membership change.",
+    "Every rebalance must revoke every partition at once.",
+    "Replay one group change under both assignment strategies.",
+    experiment(
+      "compare-rebalance",
+      "primary",
+      "Compare strategies",
+      "Cooperative-sticky assignment should keep more ownership and pause fewer partitions.",
+      "Apply the same before and after membership to eager and cooperative strategies.",
+    ),
+    experiment(
+      "cooperative-pressure",
+      "contrast",
+      "Create ownership pressure",
+      "A membership change should move only the partitions needed by the chosen strategy.",
+      "Use the existing three-partition pressure action to seed the comparison.",
+    ),
+  ),
+  "streams-joins-windows": copy(
+    "Keyed window joins",
+    "Join only equal keys within the event-time window and grace period.",
+    "Any two records arriving close together can join, even with different keys.",
+    "Produce a matching pair, an unmatched key, and a late arrival.",
+    experiment(
+      "window-pair",
+      "primary",
+      "Join a matching pair",
+      "Only the order and payment with the same key and valid window should emit output.",
+      "Buffer both sides and evaluate key plus event-time boundaries.",
+    ),
+    experiment(
+      "late-arrival",
+      "contrast",
+      "Cross the grace boundary",
+      "An arrival after grace should be labeled late and produce no joined output.",
+      "Advance arrival time beyond the window grace period.",
+    ),
+  ),
+  "outbox-cdc": copy(
+    "Atomic outbox and CDC",
+    "Trace one business commit through outbox row, WAL LSN, CDC publish, and acknowledgement.",
+    "The database business row and Kafka message commit atomically without an outbox.",
+    "Commit a database transaction, then retry its connector delivery.",
+    experiment(
+      "cdc-batch",
+      "primary",
+      "Publish an outbox commit",
+      "The business and outbox rows should share one commit before the WAL and Kafka stages advance.",
+      "Follow stable transaction, outbox, LSN, and message IDs through the pipeline.",
+    ),
+    experiment(
+      "retry-cdc",
+      "contrast",
+      "Retry connector delivery",
+      "A repeated outbox row should be deduplicated rather than create a second accepted message.",
+      "Repeat the CDC attempt for the same outbox row and LSN.",
+    ),
+  ),
+  "acl-least-privilege": copy(
+    "ACL least privilege",
+    "Evaluate one principal, operation, and resource before Kafka and grant only the missing permission.",
+    "Kafka accepts a record first and reports authorization failure afterward.",
+    "Try a denied operation, then add its exact allow policy.",
+    experiment(
+      "trigger-acl-denial",
+      "primary",
+      "Deny a missing permission",
+      "The denied path should terminate before Kafka and leave topic totals unchanged.",
+      "Highlight the exact principal, operation, and resource matrix cell.",
+    ),
+    experiment(
+      "grant-required-permission",
+      "contrast",
+      "Grant one permission",
+      "Only the newly allowed operation should pass; unrelated permissions should remain denied.",
+      "Add the narrow matching allow rule and repeat the request.",
+    ),
+  ),
+} satisfies Record<ScenarioExperienceId, ScenarioExperienceCopy>;
+
+function copy(
+  title: string,
+  objective: string,
+  misconception: string,
+  emptyCopy: string,
+  primary: ScenarioExperimentMetadata,
+  contrast: ScenarioExperimentMetadata,
+): ScenarioExperienceCopy {
+  return {
+    title,
+    lesson: { objective, misconception, emptyCopy },
+    experiments: { primary, contrast },
+  };
+}
+
+function experiment(
+  id: string,
+  role: ScenarioExperimentMetadata["role"],
+  label: string,
+  hypothesis: string,
+  description: string,
+): ScenarioExperimentMetadata {
+  return {
+    id,
+    role,
+    label,
+    hypothesis,
+    description,
+    remoteSupport: "demo-only",
+  };
+}

@@ -331,6 +331,68 @@ describe("playground shell components", () => {
     expect(screen.queryByLabelText("Previous message")).toBeNull();
   });
 
+  it("returns focus to the opener when the inspector closes", () => {
+    const opener = document.createElement("button");
+    opener.textContent = "Open inspector";
+    document.body.append(opener);
+    opener.focus();
+
+    const { unmount } = render(
+      <InspectorDrawer
+        message={messageFixture}
+        event={null}
+        snapshot={snapshotFixture}
+        selectedNode={null}
+        onPreviousMessage={vi.fn()}
+        onNextMessage={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it("renders authoritative entity evidence in the unified inspector", () => {
+    render(
+      <InspectorDrawer
+        entityDetail={{
+          entityId: "commit-gate",
+          title: "Commit boundary",
+          summary: "The offset is still behind the processed record.",
+          provenance: "observed",
+          focus: { kind: "entity", id: "commit-gate" },
+          facts: [
+            {
+              id: "commit-offset",
+              label: "Committed offset",
+              value: {
+                value: "1",
+                provenance: "observed",
+                scope: "current",
+              },
+            },
+          ],
+        }}
+        message={null}
+        event={null}
+        snapshot={snapshotFixture}
+        selectedNode={null}
+        onPreviousMessage={vi.fn()}
+        onNextMessage={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Evidence inspector" }),
+    ).not.toBeNull();
+    expect(screen.queryByText("Commit boundary")).not.toBeNull();
+    expect(screen.queryByText("Committed offset")).not.toBeNull();
+    expect(screen.queryAllByText("Observed").length).toBeGreaterThan(0);
+  });
+
   it("exposes the How it works anchor target", () => {
     render(
       <EducationPanel

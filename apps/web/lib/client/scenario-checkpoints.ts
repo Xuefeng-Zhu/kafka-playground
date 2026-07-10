@@ -1,4 +1,5 @@
 import type { RunSnapshot } from "@kplay/contracts";
+import type { ScenarioId } from "@kplay/scenario-engine";
 import { busiestPartition } from "./scenario-metrics";
 
 type ScenarioCheckpointOption = {
@@ -319,6 +320,12 @@ export function deriveScenarioCheckpoint(
     scenarioCheckpointCatalog[snapshot.scenarioId] ??
     scenarioCheckpointCatalog.partitioning
   );
+}
+
+export function scenarioCheckpointForId(
+  scenarioId: ScenarioId,
+): ScenarioCheckpoint {
+  return scenarioCheckpointCatalog[scenarioId];
 }
 
 function hasReplayRisk(snapshot: RunSnapshot) {

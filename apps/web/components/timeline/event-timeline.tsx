@@ -7,6 +7,7 @@ import {
   formatTaskDuration,
   taskDurationForEvent,
 } from "@/lib/client/current-consumer-task";
+import type { FocusRef } from "@/lib/client/scenario-experience";
 
 const filters = [
   "Messages",
@@ -34,10 +35,14 @@ export function EventTimeline({
   events,
   hasSequenceGap,
   onSelect,
+  focus = null,
+  onFocus,
 }: {
   events: RuntimeEvent[];
   hasSequenceGap: boolean;
-  onSelect: (sequence: number) => void;
+  onSelect?: (sequence: number) => void;
+  focus?: FocusRef | null;
+  onFocus?: (focus: FocusRef) => void;
 }) {
   const [activeFilters, setActiveFilters] = useState<Set<TimelineFilter>>(
     () => new Set(filters),
@@ -105,8 +110,8 @@ export function EventTimeline({
             onClick={toggleAllFilters}
             className={
               allFiltersSelected
-                ? "rounded-full border-2 border-sky-500 bg-sky-100 px-3 py-1 text-xs font-extrabold text-sky-800"
-                : "rounded-full border-2 border-teal-700 bg-[#fffdf5] px-3 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
+                ? "min-h-11 rounded-full border-2 border-sky-500 bg-sky-100 px-3 py-1 text-xs font-extrabold text-sky-800"
+                : "min-h-11 rounded-full border-2 border-teal-700 bg-[#fffdf5] px-3 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
             }
           >
             All
@@ -118,8 +123,8 @@ export function EventTimeline({
               onClick={() => toggleFilter(filter)}
               className={
                 activeFilters.has(filter)
-                  ? "inline-flex items-center gap-2 rounded-full border-2 border-sky-500 bg-sky-100 px-2 py-1 text-xs font-extrabold text-sky-800"
-                  : "inline-flex items-center gap-2 rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
+                  ? "inline-flex min-h-11 items-center gap-2 rounded-full border-2 border-sky-500 bg-sky-100 px-2 py-1 text-xs font-extrabold text-sky-800"
+                  : "inline-flex min-h-11 items-center gap-2 rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-teal-800 hover:bg-teal-50"
               }
             >
               <span className={`size-3 rounded-full ${filterTone[filter]}`} />
@@ -137,7 +142,7 @@ export function EventTimeline({
             type="button"
             aria-pressed={autoScroll}
             onClick={() => setAutoScroll((current) => !current)}
-            className="flex items-center gap-2 whitespace-nowrap rounded-xl px-1 py-1 focus:outline-none focus:ring-4 focus:ring-sky-200"
+            className="flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl px-1 py-1 focus:outline-none focus:ring-4 focus:ring-sky-200"
           >
             Auto scroll
             <span
@@ -156,7 +161,7 @@ export function EventTimeline({
             type="button"
             onClick={clearVisibleEvents}
             disabled={events.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 font-extrabold text-teal-800 disabled:opacity-45"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1.5 font-extrabold text-teal-800 disabled:opacity-45"
           >
             <Trash2 size={14} aria-hidden /> Clear
           </button>
@@ -182,11 +187,22 @@ export function EventTimeline({
         ) : (
           visibleEvents.map((event) => {
             const category = categoryFor(event);
+            const focused = eventMatchesFocus(event, focus);
             return (
               <button
                 key={event.sequence}
-                onClick={() => onSelect(event.sequence)}
-                className={`${timelineGridClass} border-b-[3px] border-teal-700 px-4 py-2 text-left text-xs text-[#123047] hover:bg-sky-50 focus:outline-none focus:ring-4 focus:ring-sky-200`}
+                type="button"
+                aria-pressed={focused}
+                data-focus-key={`event:${event.eventId}`}
+                onClick={() => {
+                  onFocus?.({ kind: "event", id: event.eventId });
+                  onSelect?.(event.sequence);
+                }}
+                className={`${timelineGridClass} min-h-11 border-b-[3px] border-teal-700 px-4 py-2 text-left text-xs text-[#123047] hover:bg-sky-50 focus:outline-none focus:ring-4 focus:ring-sky-200 ${
+                  focused
+                    ? "bg-sky-100 shadow-[inset_5px_0_0_#0ea5e9]"
+                    : "bg-[#fffdf5]"
+                }`}
               >
                 <span className="font-mono text-[#466778]">
                   {new Date(event.occurredAt).toLocaleTimeString()}
@@ -212,6 +228,30 @@ export function EventTimeline({
   );
 }
 
+function eventMatchesFocus(event: RuntimeEvent, focus: FocusRef | null) {
+  if (!focus) return false;
+  if (focus.kind === "event") return focus.id === event.eventId;
+  if (focus.kind === "message") {
+    return "messageId" in event && event.messageId === focus.id;
+  }
+  return eventEntityIds(event).includes(focus.id);
+}
+
+function eventEntityIds(event: RuntimeEvent) {
+  const candidate = event as RuntimeEvent & {
+    entityId?: unknown;
+    entityIds?: unknown;
+  };
+  return [
+    ...(typeof candidate.entityId === "string" ? [candidate.entityId] : []),
+    ...(Array.isArray(candidate.entityIds)
+      ? candidate.entityIds.filter(
+          (entityId): entityId is string => typeof entityId === "string",
+        )
+      : []),
+  ];
+}
+
 function categoryFor(event: RuntimeEvent): TimelineFilter {
   if (event.type.startsWith("message.")) return "Messages";
   if (
@@ -230,6 +270,11 @@ function categoryFor(event: RuntimeEvent): TimelineFilter {
 }
 
 function componentFor(event: RuntimeEvent) {
+  if (event.type.startsWith("scenario.experiment.")) {
+    return "entityIds" in event
+      ? (event.entityIds[0] ?? "Experiment")
+      : "Experiment";
+  }
   if ("consumerId" in event && event.consumerId) return event.consumerId;
   if ("actor" in event && event.actor) return event.actor;
   if (event.type.startsWith("message.")) return "Producer";
@@ -238,6 +283,27 @@ function componentFor(event: RuntimeEvent) {
 }
 
 function detailsFor(event: RuntimeEvent, events: RuntimeEvent[]) {
+  if (event.type.startsWith("scenario.experiment.")) {
+    const coordinate = [
+      "partition" in event && event.partition != null
+        ? `P${event.partition}`
+        : null,
+      "offset" in event && event.offset != null ? `O${event.offset}` : null,
+    ]
+      .filter(Boolean)
+      .join(" / ");
+    const provenance =
+      "provenance" in event
+        ? `${event.provenance[0]?.toUpperCase()}${event.provenance.slice(1)}`
+        : null;
+    return [
+      "step" in event ? event.step.label : event.type,
+      provenance,
+      coordinate,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
   if (event.type === "message.produced") {
     return `Produced message to ${event.topic} partition ${event.partition} offset ${event.offset}`;
   }

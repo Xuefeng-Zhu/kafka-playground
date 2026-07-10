@@ -13,6 +13,25 @@ const fanOutLoadBalancingLimits = {
   maxConsumers: 4,
 };
 
+export const SCENARIO_IDS = [
+  "partitioning",
+  "fan-out-load-balancing",
+  "at-least-once-duplicates",
+  "retry-dead-letter-queues",
+  "schema-evolution-karapace",
+  "transactional-producers",
+  "event-replay-sourcing",
+  "consumer-lag-backpressure",
+  "hot-partitions-key-skew",
+  "log-compaction-tombstones",
+  "retention-data-loss",
+  "cooperative-rebalancing",
+  "streams-joins-windows",
+  "outbox-cdc",
+  "acl-least-privilege",
+] as const;
+export type ScenarioId = (typeof SCENARIO_IDS)[number];
+
 export const SCENARIOS = [
   {
     id: "partitioning",
@@ -226,8 +245,6 @@ export const SCENARIOS = [
     limits: standardLimits,
   },
 ] satisfies ScenarioDefinition[];
-
-export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 
 export const PRIMARY_SCENARIO = SCENARIOS[0];
 

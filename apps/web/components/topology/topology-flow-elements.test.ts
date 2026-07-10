@@ -91,4 +91,41 @@ describe("topology flow elements", () => {
         ?.domAttributes,
     ).toMatchObject({ "data-testid": "topology-edge-topic-scenario-visual" });
   });
+
+  it("omits scenario-derived nodes and edges for observed-only remote views", () => {
+    const snapshot = runSnapshot();
+    const common = {
+      activeConsumerId: null,
+      activePartition: null,
+      assignmentByPartition: partitionAssignments(snapshot.consumers),
+      consumers: snapshot.consumers,
+      isCompact: false,
+      metrics: topologyMetrics("auto", false),
+      onSelectMessage: vi.fn(),
+      onSelectNode: vi.fn(),
+      partitions: [0, 1],
+      scenarioVisualization: deriveScenarioVisualization(snapshot),
+      selectedMessageId: null,
+      selectedNode: null,
+      snapshot,
+      taskNowMs: Date.parse("2026-07-02T12:00:00.000Z"),
+    };
+
+    expect(
+      buildTopologyNodes({ ...common, showScenarioVisual: false }).map(
+        (node) => node.id,
+      ),
+    ).toEqual(["producer", "topic", "consumerGroup"]);
+    expect(
+      buildTopologyEdges({
+        activeConsumerId: null,
+        activePartition: null,
+        assignmentByPartition: common.assignmentByPartition,
+        consumersLength: 0,
+        latestMessage: null,
+        partitions: common.partitions,
+        showScenarioVisual: false,
+      }).some((edge) => edge.id === "edge-topic-scenario-visual"),
+    ).toBe(false);
+  });
 });

@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { scenarioStateSchema } from "./scenario-state";
+
+export * from "./scenario-state";
 
 export const kafkaModeSchema = z.enum(["demo", "aiven", "remote"]);
 export type KafkaMode = z.infer<typeof kafkaModeSchema>;
@@ -193,7 +196,28 @@ export const detailedRuntimeEventTypes = [
 export const runtimeEventTypes = [
   ...simpleRuntimeEventTypes,
   ...detailedRuntimeEventTypes,
+  "scenario.experiment.started",
+  "scenario.experiment.transition",
+  "scenario.experiment.completed",
+  "scenario.experiment.failed",
 ] as const;
+
+const scenarioExperimentEventBaseSchema = eventBaseSchema.extend({
+  scenarioId: z.string(),
+  experimentId: z.string(),
+  entityIds: z.array(z.string()).min(1),
+  provenance: z.enum(["observed", "derived", "simulated"]),
+  virtualTimeMs: z.number().int().nonnegative(),
+  messageId: z.string().optional(),
+  partition: z.number().int().nonnegative().optional(),
+  offset: z.string().optional(),
+  step: z.object({
+    id: z.string(),
+    index: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
+    label: z.string(),
+  }),
+});
 
 export const runtimeEventSchema = z.discriminatedUnion("type", [
   eventBaseSchema.extend({
@@ -267,6 +291,21 @@ export const runtimeEventSchema = z.discriminatedUnion("type", [
     messageId: z.string(),
     errorCode: z.string(),
   }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.started"),
+  }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.transition"),
+    transition: z.string(),
+  }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.completed"),
+  }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.failed"),
+    errorCode: z.string(),
+    message: z.string(),
+  }),
 ]);
 export type RuntimeEvent = z.infer<typeof runtimeEventSchema>;
 
@@ -304,6 +343,7 @@ export const runSnapshotSchema = z.object({
   recentEvents: z.array(runtimeEventSchema),
   cleanupStatus: cleanupStatusSchema,
   sequence: z.number().int().nonnegative(),
+  scenarioState: scenarioStateSchema.nullable().optional(),
 });
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 

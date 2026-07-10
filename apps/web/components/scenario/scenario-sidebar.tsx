@@ -33,7 +33,7 @@ export function ScenarioSidebar({
       <div className="mt-3">
         <label
           htmlFor="scenario-search"
-          className="block text-[0.62rem] font-extrabold uppercase tracking-[0.22em] text-teal-700"
+          className="block text-xs font-extrabold uppercase tracking-[0.16em] text-teal-700"
         >
           Search scenarios
         </label>

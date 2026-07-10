@@ -1,9 +1,11 @@
 import { act, render, waitFor } from "@testing-library/react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
 
 const fetchRunSnapshot = vi.hoisted(() => vi.fn());
+let reentrantChildRendering = false;
+let reentrantEventEmitted = false;
 
 vi.mock("@/lib/client/playground-api", () => ({
   fetchRunSnapshot,
@@ -14,11 +16,14 @@ import { useRunLiveUpdates } from "./use-run-live-updates";
 describe("useRunLiveUpdates", () => {
   beforeEach(() => {
     FakeEventSource.instances = [];
+    reentrantChildRendering = false;
+    reentrantEventEmitted = false;
     fetchRunSnapshot.mockReset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -36,12 +41,15 @@ describe("useRunLiveUpdates", () => {
 
     act(() => {
       FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+      expect(dispatch).not.toHaveBeenCalled();
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "event",
-      event: runtimeEventFixture,
-    });
+    await waitFor(() =>
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "event",
+        event: runtimeEventFixture,
+      }),
+    );
     await waitFor(() =>
       expect(dispatch).toHaveBeenCalledWith({
         type: "snapshot",
@@ -68,19 +76,80 @@ describe("useRunLiveUpdates", () => {
 
     act(() => {
       FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+      unmount();
     });
-    unmount();
     await act(async () => {
       pendingRefresh.resolve({ ok: true, data: snapshotFixture });
       await pendingRefresh.promise;
     });
 
-    expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "event",
-      event: runtimeEventFixture,
-    });
+    expect(dispatch).not.toHaveBeenCalled();
     expect(setActionError).not.toHaveBeenCalled();
+  });
+
+  it("cancels queued and in-flight updates before a hard page unload", async () => {
+    const pendingRefresh = deferred<{
+      ok: true;
+      data: RunSnapshot;
+    }>();
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+    fetchRunSnapshot.mockReturnValue(pendingRefresh.promise);
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+      />,
+    );
+    const source = FakeEventSource.latest();
+
+    act(() => {
+      source.emit("run.started", runtimeEventFixture);
+      window.dispatchEvent(new PageTransitionEvent("pagehide"));
+    });
+    await act(async () => {
+      pendingRefresh.resolve({ ok: true, data: snapshotFixture });
+      await pendingRefresh.promise;
+    });
+
+    expect(source.close).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(setActionError).not.toHaveBeenCalled();
+  });
+
+  it("defers a reentrant live event until after the child render commits", async () => {
+    fetchRunSnapshot.mockReturnValue(new Promise(() => undefined));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const onDelivery = vi.fn();
+    const { rerender } = render(
+      <ReentrantLiveUpdatesHarness
+        emitDuringRender={false}
+        onDelivery={onDelivery}
+      />,
+    );
+
+    rerender(
+      <ReentrantLiveUpdatesHarness emitDuringRender onDelivery={onDelivery} />,
+    );
+
+    await waitFor(() =>
+      expect(
+        document.querySelector("[data-testid='delivery-count']")?.textContent,
+      ).toBe("1"),
+    );
+    expect(onDelivery).toHaveBeenCalledWith("after-render");
+    expect(onDelivery).not.toHaveBeenCalledWith("during-render");
+    expect(
+      consoleError.mock.calls.filter((call) =>
+        call.some((value) =>
+          String(value).includes("Cannot update a component"),
+        ),
+      ),
+    ).toEqual([]);
+    consoleError.mockRestore();
   });
 
   it("coalesces overlapping refreshes and skips stale snapshots", async () => {
@@ -130,10 +199,12 @@ describe("useRunLiveUpdates", () => {
       await secondRefresh.promise;
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "snapshot",
-      snapshot: { ...snapshotFixture, sequence: 2 },
-    });
+    await waitFor(() =>
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "snapshot",
+        snapshot: { ...snapshotFixture, sequence: 2 },
+      }),
+    );
     expect(dispatch).not.toHaveBeenCalledWith({
       type: "snapshot",
       snapshot: snapshotFixture,
@@ -238,6 +309,46 @@ function LiveUpdatesHarness({
   useEffect(() => {
     onCloseReady?.(closeLiveUpdates);
   }, [closeLiveUpdates, onCloseReady]);
+  return null;
+}
+
+function ReentrantLiveUpdatesHarness({
+  emitDuringRender,
+  onDelivery,
+}: {
+  emitDuringRender: boolean;
+  onDelivery: (phase: "during-render" | "after-render") => void;
+}) {
+  const [deliveryCount, setDeliveryCount] = useState(0);
+  const dispatch = useCallback(() => {
+    onDelivery(reentrantChildRendering ? "during-render" : "after-render");
+    setDeliveryCount((current) => current + 1);
+  }, [onDelivery]);
+  const setActionError = useCallback(() => undefined, []);
+  useRunLiveUpdates({
+    dispatch,
+    runId: "run-1",
+    setActionError,
+  });
+  return (
+    <>
+      <span data-testid="delivery-count">{deliveryCount}</span>
+      {emitDuringRender && deliveryCount === 0 ? (
+        <EmitLiveEventDuringRender />
+      ) : null}
+    </>
+  );
+}
+
+function EmitLiveEventDuringRender() {
+  if (reentrantEventEmitted) return null;
+  reentrantEventEmitted = true;
+  reentrantChildRendering = true;
+  try {
+    FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+  } finally {
+    reentrantChildRendering = false;
+  }
   return null;
 }
 

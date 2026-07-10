@@ -139,8 +139,36 @@ describe("contracts", () => {
         "consumer.crashed",
         "offset.committed",
         "resource.cleanup_failed",
+        "scenario.experiment.transition",
       ]),
     );
     expect(new Set(runtimeEventTypes).size).toBe(runtimeEventTypes.length);
+  });
+
+  it("validates scenario experiment events with stable evidence references", () => {
+    expect(() =>
+      runtimeEventSchema.parse({
+        eventId: "experiment-event-1",
+        runId: "run-1",
+        sequence: 1,
+        occurredAt: "2026-07-09T00:00:00.000Z",
+        type: "scenario.experiment.transition",
+        scenarioId: "partitioning",
+        experimentId: "produce-keyed-record",
+        entityIds: ["routing-message-1", "partition-0"],
+        provenance: "simulated",
+        virtualTimeMs: 100,
+        messageId: "message-1",
+        partition: 0,
+        offset: "7",
+        transition: "key.hashed",
+        step: {
+          id: "route-key-a",
+          index: 1,
+          total: 4,
+          label: "Route key A",
+        },
+      }),
+    ).not.toThrow();
   });
 });

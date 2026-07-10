@@ -80,6 +80,38 @@ describe("ControlsPanel", () => {
     expect(screen.queryByText(/Group:/)).toBeNull();
     expect(screen.queryByText("group")).toBeNull();
   });
+
+  it("reserves 44px mobile rows for settings inputs", () => {
+    renderControls();
+
+    const rateInput = screen.getByLabelText("Messages per second");
+    const rateSlider = screen.getByLabelText("Produce rate slider");
+    const latencyInput = screen.getByLabelText("Consumer processing latency");
+    const latencySlider = screen.getByLabelText("Processing latency slider");
+    const keyStrategy = screen.getByLabelText("Key strategy");
+    const fixedKey = screen.getByLabelText("Fixed key");
+
+    for (const input of [
+      rateInput,
+      rateSlider,
+      latencyInput,
+      latencySlider,
+      keyStrategy,
+      fixedKey,
+    ]) {
+      expect(input.className).toContain("h-11");
+    }
+
+    expect(rateInput.parentElement?.className).toContain(
+      "grid-rows-[16px_44px_44px]",
+    );
+    expect(latencyInput.parentElement?.className).toContain(
+      "grid-rows-[16px_44px_44px]",
+    );
+    expect(keyStrategy.parentElement?.className).toContain(
+      "grid-rows-[16px_44px_minmax(44px,auto)]",
+    );
+  });
 });
 
 function renderControls({

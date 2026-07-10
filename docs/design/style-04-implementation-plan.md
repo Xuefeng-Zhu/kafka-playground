@@ -1,5 +1,7 @@
 # Style 04 Control-Room UI Implementation Plan
 
+> **Historical:** This plan records the original Style 04 rollout. Its oversized React Flow scenario board and duplicated education panels are superseded by the teaching-first visualization architecture in [`../visualization-acceptance.md`](../visualization-acceptance.md). Keep this document for design provenance only.
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** Apply the approved Style 04 “Playful Learning Studio” visual treatment to the real Kafka Playground Next.js UI while preserving the same control-room layout approved in `docs/design/kafka-playground-control-room-style-04.html`.
