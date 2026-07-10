@@ -144,6 +144,9 @@ export function scenarioFlowNodeId(id: string) {
   return `scenario-${id}`;
 }
 
-export function topologyEndpointId(id: string, scenarioNodeIds: Set<string>) {
+export function topologyEndpointId(
+  id: string,
+  scenarioNodeIds: ReadonlySet<string>,
+) {
   return scenarioNodeIds.has(id) ? scenarioFlowNodeId(id) : id;
 }

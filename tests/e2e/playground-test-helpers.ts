@@ -2,6 +2,7 @@ import { expect, type ConsoleMessage, type Page, test } from "@playwright/test";
 import { source as axeSource } from "axe-core";
 
 export const idleConsumerLabel = "idle - no partition available";
+export const WORKSPACE_VIEW_STORAGE_KEY = "kplay.workspace.view";
 const consoleFailures = new WeakMap<Page, string[]>();
 export const scenarioOverlayCases = [
   { id: "partitioning", overlayId: "key-router", title: "Key router" },
@@ -379,6 +380,56 @@ export async function resetActiveRun(page: Page) {
       `Unable to reset active run ${payload.run.runId} before the test (${resetResponse.status()} ${resetResponse.statusText()}).`,
     ).toBe(true);
   }
+}
+
+/**
+ * Clear the persisted Guided/Explore preference on the first document load in
+ * this test without clearing it again on reload. This keeps first-use tests
+ * deterministic while still allowing the same test to prove persistence.
+ */
+export async function clearWorkspaceViewPreference(page: Page) {
+  await page.addInitScript(
+    ({ markerKey, storageKey }) => {
+      if (window.sessionStorage.getItem(markerKey) === "true") return;
+      window.localStorage.removeItem(storageKey);
+      window.sessionStorage.setItem(markerKey, "true");
+    },
+    {
+      markerKey: "kplay.e2e.workspace-view-preference-cleared",
+      storageKey: WORKSPACE_VIEW_STORAGE_KEY,
+    },
+  );
+}
+
+export async function selectWorkspaceView(
+  page: Page,
+  view: "Guided" | "Explore",
+) {
+  const tab = page.getByRole("tab", { name: view, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
+export async function expectMobileTargets(
+  page: Page,
+  regionTestId = "scenario-learning-surface",
+) {
+  const undersized = await page
+    .getByTestId(regionTestId)
+    .locator("button:visible")
+    .evaluateAll((buttons) =>
+      buttons
+        .map((button) => {
+          const box = button.getBoundingClientRect();
+          return {
+            label: button.getAttribute("aria-label") ?? button.textContent,
+            height: Math.round(box.height),
+            width: Math.round(box.width),
+          };
+        })
+        .filter((button) => button.height < 44 || button.width < 44),
+    );
+  expect(undersized).toEqual([]);
 }
 
 export async function activeRunId(page: Page) {

@@ -25,6 +25,7 @@ describe("PartitionLane", () => {
         latestOffset="2"
         committedOffset="1"
         messageCount={1}
+        provenance="simulated"
         onSelect={vi.fn()}
         onSelectMessage={onSelectMessage}
       />,
@@ -35,6 +36,10 @@ describe("PartitionLane", () => {
     });
 
     expect(messageChip.textContent).toBe("m8@2");
+    expect(messageChip.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.getByText("1 simulated message in this partition"),
+    ).not.toBeNull();
     fireEvent.click(messageChip);
     expect(onSelectMessage).toHaveBeenCalledWith("message-global-8");
   });
@@ -57,6 +62,7 @@ describe("PartitionLane", () => {
         latestOffset="96"
         committedOffset="96"
         messageCount={1}
+        provenance="simulated"
         onSelect={vi.fn()}
         onSelectMessage={vi.fn()}
       />,
@@ -69,6 +75,38 @@ describe("PartitionLane", () => {
     expect(messageChip.textContent).toBe("m290@96");
     expect(messageChip.className).toContain("shrink-0");
     expect(messageChip.className).toContain("whitespace-nowrap");
+  });
+
+  it("uses a high-contrast selected message state", () => {
+    render(
+      <PartitionLane
+        partition={0}
+        messages={[
+          playgroundMessage({
+            messageId: "selected-message",
+            partition: 0,
+            offset: "4",
+            sequence: 4,
+          }),
+        ]}
+        selectedMessageId="selected-message"
+        selected={true}
+        active={false}
+        latestOffset="4"
+        committedOffset="4"
+        messageCount={1}
+        provenance="simulated"
+        onSelect={vi.fn()}
+        onSelectMessage={vi.fn()}
+      />,
+    );
+
+    const messageChip = screen.getByRole("button", {
+      name: "m4@4 | P0@4 | selected-message",
+    });
+    expect(messageChip.getAttribute("aria-pressed")).toBe("true");
+    expect(messageChip.className).toContain("bg-rose-700");
+    expect(messageChip.className).not.toContain("bg-rose-400");
   });
 });
 

@@ -19,11 +19,24 @@ Every scenario visualization is a lesson backed by server-authoritative state. A
 - Ordered transition steps remain visible in the evidence lens with virtual time and provenance; a fast deterministic experiment must not collapse into an unexplained final jump.
 - Instructional evidence is normal DOM content rendered at 100% scale or greater. It is never placed inside a transformed React Flow board.
 
+## Workspace-view contract
+
+- First-use converted demo runs open in **Guided**. Guided is a full-height lesson and does not mount the lower dock, raw Controls, full Timeline, or React Flow.
+- **Explore** presents the same active run as one projected topology with raw Controls, full Timeline, and inspector. Converted demo scenarios render each route-relevant Kafka core entity exactly once plus every scenario-specific causal node and labeled edge; they do not fabricate an irrelevant core node and must not restore the superseded scenario-overlay board.
+- The `kplay.workspace.view` preference is global to the browser, accepts only `guided` or `explore`, and survives reloads and later demo runs. Forced Explore for remote, Aiven, or legacy runs must not overwrite it.
+- Converted scenario start pages keep the saved/default switch visible in a disabled state with the accessible instruction **Start a run to use Guided or Explore**. Starting a demo run enables the same switch without shifting the header.
+- Switching views preserves authoritative run state, experiment progress, checkpoint answers, `FocusRef`, inspector state, and the active Explore dock tab. Switching is disabled while an experiment or raw mutation is pending.
+- Explore uses **Simulated runtime topology** or **Observed broker topology** as its accessible region name instead of a full-width explanatory banner. The global runtime mode and provenance on every node and edge remain visible; remote and Aiven Explore remains core-only and never calls demo state observed.
+- An allowlisted scenario with no authoritative experience frame falls back to core-only Explore. Legacy overlays remain limited to truly unconverted IDs during the soak and never substitute for a missing converted projection.
+- React Flow is lazy-loaded only after desktop or tablet Explore opens. Re-entering Explore frames the projection at a readable 100% home zoom; learners can zoom out to a 50% overview, and larger graphs remain reachable by dragging the grab-cursor canvas. Pan and zoom are not persisted.
+
 ## Responsive and accessibility contract
 
-- Desktop: compact causal graph beside the evidence lens.
-- Tablet: graph above evidence.
-- Mobile: semantic causal list and full-width evidence. React Flow is not mounted and the page owns vertical scrolling.
+- Guided desktop: compact causal graph beside the evidence lens.
+- Guided tablet: causal graph above evidence.
+- Guided mobile: semantic causal list and full-width evidence.
+- Explore desktop and tablet: the ranked core-plus-scenario projection in React Flow plus the lower dock.
+- Explore mobile below 768 pixels: the same ranked causal order as semantic producer, partition, message, ownership, consumer, and scenario-extension cards with labeled connections. React Flow is not mounted and the page owns vertical scrolling.
 - Instructional text is at least 12 effective CSS pixels. Mobile controls have a 44 by 44 pixel minimum target.
 - Tables have named columns and selectable record rows. Lists use semantic list markup.
 - Provenance is communicated by visible text, not color alone.
@@ -71,7 +84,7 @@ Each scenario is reported as a separate test and must:
 2. Run the server-owned experiment.
 3. Wait for the matching authoritative scenario-state revision.
 4. Assert the exact visual delta.
-5. Follow the affected subject into the inspector and timeline.
+5. Follow the affected subject through the transition trail and inspector.
 6. Reload and verify persistence.
 7. Finish with a clean console and stable layout.
 
@@ -79,14 +92,19 @@ Each scenario is reported as a separate test and must:
 
 - Lint, typecheck, unit tests, production build, and E2E.
 - All 15 scenarios in Chromium at 1440 by 900.
+- All 15 scenarios prove the first-use Guided state with no dock or React Flow.
+- All 15 converted scenarios expose a distinctive extension node and causal edge in both desktop and semantic mobile Explore.
+- Partitioning proves the complete Guided-to-Explore round trip, raw action, synchronized focus, reload persistence, and global preference restoration.
 - Partitioning, duplicates, hot partitions, streams joins, and ACL at 390 by 844.
-- Evidence screenshots for all 15 scenarios.
+- Those five mobile scenarios prove semantic Explore topology with no React Flow, overflow, or scroll trapping.
+- Guided evidence screenshots for all 15 scenarios plus desktop and mobile Explore screenshots. Store generated CI evidence under the ignored `docs/screenshots/evidence/` directory; refresh the tracked README screenshots at 1440 by 900 when workspace structure changes.
 - Axe scan with zero serious or critical findings.
 
 ### Nightly gate
 
 - All scenarios at representative mobile and tablet sizes, including 320-pixel width and short-height viewports.
 - Reduced motion, 200% zoom, long values, high-volume state, and SSE reconnect.
+- Desktop Explore plus representative mobile semantic Explore coverage.
 - Chromium, Firefox, and WebKit.
 
 ## Rollout

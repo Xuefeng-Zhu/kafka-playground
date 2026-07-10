@@ -84,7 +84,12 @@ select {
 }
 
 .kplay-topology-flow .react-flow__pane {
+  cursor: grab;
   z-index: 1;
+}
+
+.kplay-topology-flow .react-flow__pane.dragging {
+  cursor: grabbing;
 }
 
 .kplay-topology-flow .react-flow__renderer,

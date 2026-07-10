@@ -1,20 +1,28 @@
 import { expect, test } from "@playwright/test";
 import {
   activeRunId,
+  clearWorkspaceViewPreference,
   installConsoleFailureChecks,
   produceOneViaApi,
   resetActiveRun,
+  selectWorkspaceView,
 } from "./playground-test-helpers";
 
 installConsoleFailureChecks();
 
-test("raw consumer controls still crash and reassign work below the teaching surface", async ({
+test("Explore raw consumer controls crash and reassign work", async ({
   page,
 }) => {
+  await clearWorkspaceViewPreference(page);
   await resetActiveRun(page);
   await page.goto("/scenarios/at-least-once-duplicates");
   await page.getByRole("button", { name: "Start scenario run" }).click();
   await expect(page.getByTestId("scenario-learning-surface")).toBeVisible();
+  await expect(page.getByTestId("timeline-region")).toHaveCount(0);
+
+  await selectWorkspaceView(page, "Explore");
+  await expect(page.getByTestId("explore-topology")).toBeVisible();
+  await expect(page.getByTestId("topology-flow")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Controls" })).toBeVisible();
 
   await page.getByRole("button", { name: /^Consumer$/ }).click();

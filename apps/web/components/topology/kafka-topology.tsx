@@ -10,6 +10,7 @@ import {
   useViewport,
 } from "@xyflow/react";
 import { Maximize2, Minus, Network, Plus } from "lucide-react";
+import type { ScenarioExploreTopologyProjection } from "@/lib/client/scenario-experience/explore-topology";
 import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { hasActiveConsumerTaskDuration } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
@@ -22,14 +23,17 @@ import {
   type TopologyNode,
 } from "./topology-flow-elements";
 import { topologyNodeTypes } from "./topology-flow-nodes";
+import { topologyEdgeTypes } from "./scenario-topology-edge";
 import { topologyMetrics, type TopologyLayout } from "./topology-flow-helpers";
 
 const MIN_ZOOM = 0.5;
+const HOME_ZOOM = 1;
 const MAX_ZOOM = 1.35;
 const ZOOM_STEP = 0.15;
 
 export function KafkaTopology({
   snapshot,
+  scenarioTopology = null,
   showScenarioVisual = true,
   selectedMessageId,
   selectedNode,
@@ -37,6 +41,7 @@ export function KafkaTopology({
   onSelectNode,
 }: {
   snapshot: RunSnapshot;
+  scenarioTopology?: ScenarioExploreTopologyProjection | null;
   showScenarioVisual?: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
@@ -47,6 +52,7 @@ export function KafkaTopology({
     <ReactFlowProvider>
       <KafkaTopologyFlow
         snapshot={snapshot}
+        scenarioTopology={scenarioTopology}
         showScenarioVisual={showScenarioVisual}
         selectedMessageId={selectedMessageId}
         selectedNode={selectedNode}
@@ -59,6 +65,7 @@ export function KafkaTopology({
 
 function KafkaTopologyFlow({
   snapshot,
+  scenarioTopology,
   showScenarioVisual,
   selectedMessageId,
   selectedNode,
@@ -66,6 +73,7 @@ function KafkaTopologyFlow({
   onSelectNode,
 }: {
   snapshot: RunSnapshot;
+  scenarioTopology: ScenarioExploreTopologyProjection | null;
   showScenarioVisual: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
@@ -100,7 +108,7 @@ function KafkaTopologyFlow({
   const flow = useReactFlow<TopologyNode, TopologyEdge>();
   const updateNodeInternals = useUpdateNodeInternals();
   const viewport = useViewport();
-  const zoom = clampZoom(viewport.zoom);
+  const zoom = Number(viewport.zoom.toFixed(2));
   const zoomPercent = Math.round(zoom * 100);
   const metrics = useMemo(
     () => topologyMetrics(layout, isCompact),
@@ -111,12 +119,17 @@ function KafkaTopologyFlow({
     [snapshot],
   );
   const taskNowMs = useLiveTaskClock(hasActiveConsumerTaskDuration(snapshot));
+  const fitNodeIdsKey = [
+    ...(scenarioTopology
+      ? scenarioTopology.nodes.map((node) =>
+          node.nodeKind === "scenario" ? `scenario-${node.id}` : node.id,
+        )
+      : ["producer", "topic", "consumerGroup"]),
+    ...(showScenarioVisual ? ["scenarioVisual"] : []),
+  ].join("|");
   const fitNodeIds = useMemo(
-    () =>
-      showScenarioVisual
-        ? ["producer", "topic", "consumerGroup", "scenarioVisual"]
-        : ["producer", "topic", "consumerGroup"],
-    [showScenarioVisual],
+    () => fitNodeIdsKey.split("|").filter(Boolean),
+    [fitNodeIdsKey],
   );
   const fitViewNodeOptions = useMemo(
     () => fitNodeIds.map((id) => ({ id })),
@@ -131,25 +144,33 @@ function KafkaTopologyFlow({
         layout,
         isCompact ? "compact" : "wide",
         showScenarioVisual ? scenarioVisualization.kind : "observed-only",
+        scenarioTopology?.scenarioId ?? "core",
       ].join(":"),
     [
       consumers,
       isCompact,
       layout,
       scenarioVisualization.kind,
+      scenarioTopology?.scenarioId,
       showScenarioVisual,
       snapshot.partitionCount,
       snapshot.runId,
     ],
   );
   const setViewportHome = useCallback(() => {
-    void flow.fitView({
-      duration: 120,
-      maxZoom: 1,
-      minZoom: MIN_ZOOM,
-      nodes: fitViewNodeOptions,
-      padding: { x: 32, y: 28 },
-    });
+    void flow
+      .fitView({
+        duration: 0,
+        maxZoom: HOME_ZOOM,
+        minZoom: HOME_ZOOM,
+        nodes: fitViewNodeOptions,
+        padding: { x: 32, y: 28 },
+      })
+      .then(() => {
+        if (flow.getZoom() < HOME_ZOOM) {
+          void flow.zoomTo(HOME_ZOOM);
+        }
+      });
   }, [fitViewNodeOptions, flow]);
 
   useEffect(() => {
@@ -267,6 +288,7 @@ function KafkaTopologyFlow({
         onSelectNode,
         partitions,
         scenarioVisualization,
+        scenarioTopology,
         showScenarioVisual,
         selectedMessageId,
         selectedNode,
@@ -284,6 +306,7 @@ function KafkaTopologyFlow({
       onSelectNode,
       partitions,
       scenarioVisualization,
+      scenarioTopology,
       showScenarioVisual,
       selectedMessageId,
       selectedNode,
@@ -301,6 +324,7 @@ function KafkaTopologyFlow({
         consumersLength: consumers.length,
         latestMessage,
         partitions,
+        scenarioTopology,
         showScenarioVisual,
       }),
     [
@@ -310,6 +334,7 @@ function KafkaTopologyFlow({
       consumers.length,
       latestMessage,
       partitions,
+      scenarioTopology,
       showScenarioVisual,
     ],
   );
@@ -322,24 +347,37 @@ function KafkaTopologyFlow({
     >
       <div className="pointer-events-none absolute left-4 right-4 top-5 z-20 flex flex-wrap items-center justify-end gap-3 lg:left-6 lg:right-6">
         <div className="pointer-events-auto flex items-center gap-2 lg:gap-3">
-          <button
-            className="inline-flex h-8 items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]"
-            onClick={toggleLayout}
-            aria-pressed={layout === "spread"}
-          >
-            <Network size={15} aria-hidden />{" "}
-            {layout === "auto" ? "Auto layout" : "Spread layout"}
-          </button>
+          {scenarioTopology ? (
+            <span className="sr-only">
+              Scenario topology flows from cause to effect. Drag empty canvas
+              space to pan.
+            </span>
+          ) : (
+            <button
+              className="inline-flex h-8 items-center gap-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-3 text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]"
+              onClick={toggleLayout}
+              aria-pressed={layout === "spread"}
+            >
+              <Network size={15} aria-hidden />{" "}
+              {layout === "auto" ? "Auto layout" : "Spread layout"}
+            </button>
+          )}
           <div className="flex h-8 overflow-hidden rounded-xl border-2 border-teal-700 bg-[#fffdf5] text-xs font-extrabold text-teal-800 shadow-[4px_4px_0_rgba(15,118,110,0.16)]">
             <button
               className="grid w-10 place-items-center border-r-2 border-teal-700 disabled:opacity-45"
               onClick={() => updateZoom((current) => current - ZOOM_STEP)}
               disabled={zoom <= MIN_ZOOM}
-              aria-label="Zoom out"
+              aria-label="Zoom out (minimum 50%)"
+              title="Minimum zoom: 50%"
             >
               <Minus size={15} aria-hidden />
             </button>
-            <div className="grid w-16 place-items-center" aria-live="polite">
+            <div
+              className="grid w-16 place-items-center"
+              aria-label="Topology zoom level"
+              aria-live="polite"
+              data-testid="topology-zoom-level"
+            >
               {zoomPercent}%
             </div>
             <button
@@ -366,27 +404,23 @@ function KafkaTopologyFlow({
           key={flowKey}
           nodes={nodes}
           edges={edges}
+          edgeTypes={topologyEdgeTypes}
           nodeTypes={topologyNodeTypes}
           minZoom={MIN_ZOOM}
           maxZoom={MAX_ZOOM}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          nodesDraggable={!isCompact}
+          nodesDraggable={!isCompact && scenarioTopology === null}
           nodesConnectable={false}
           nodesFocusable={false}
           edgesFocusable={false}
           elementsSelectable={false}
+          disableKeyboardA11y
           panOnDrag
           zoomOnScroll
           zoomOnPinch
           zoomOnDoubleClick={false}
           preventScrolling
-          fitView
-          fitViewOptions={{
-            maxZoom: 1,
-            minZoom: MIN_ZOOM,
-            nodes: fitViewNodeOptions,
-            padding: { x: 32, y: 28 },
-          }}
+          onInit={setViewportHome}
           onError={handleReactFlowError}
           noDragClassName="nodrag"
           noPanClassName="nopan"

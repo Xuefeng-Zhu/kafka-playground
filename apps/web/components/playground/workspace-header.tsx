@@ -2,34 +2,66 @@
 
 import type { ConnectionStatus, RunSnapshot } from "@kplay/contracts";
 import { RotateCcw } from "lucide-react";
+import { useId, useRef, type KeyboardEvent, type Ref } from "react";
 import { Button } from "@/components/ui/button";
 import { connectionStatusLabel } from "@/lib/client/connection-labels";
+import type { WorkspaceView } from "./use-workspace-view";
 
 export function WorkspaceHeader({
   run,
   connection,
   disabled,
   onReset,
+  workspaceView,
+  showWorkspaceViewSwitch,
+  canSwitchWorkspaceView = false,
+  onWorkspaceViewChange,
 }: {
   run: RunSnapshot | null;
   connection: ConnectionStatus | null;
   disabled: boolean;
   onReset: () => void;
+  workspaceView?: WorkspaceView;
+  showWorkspaceViewSwitch?: boolean;
+  canSwitchWorkspaceView?: boolean;
+  onWorkspaceViewChange?: (view: WorkspaceView) => void;
 }) {
+  const shouldShowWorkspaceViewSwitch =
+    (showWorkspaceViewSwitch ?? canSwitchWorkspaceView) &&
+    workspaceView &&
+    onWorkspaceViewChange;
+  const workspaceSwitchDisabled = disabled || !canSwitchWorkspaceView;
+  const workspaceSwitchDisabledReason = !canSwitchWorkspaceView
+    ? "Start a run to use Guided or Explore."
+    : disabled
+      ? "Wait for the current action to finish before switching views."
+      : undefined;
+
   return (
     <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b-[3px] border-teal-700 bg-[#fff7ed] px-3 py-3 shadow-[0_6px_0_rgba(15,118,110,0.12)] sm:px-5 lg:h-16 lg:flex-nowrap lg:py-0">
-      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+      <div className="order-1 flex min-w-0 items-center gap-3 sm:gap-4 lg:order-none">
         <div className="relative grid size-10 shrink-0 place-items-center rounded-2xl border-[3px] border-teal-700 bg-amber-200 text-teal-700 shadow-[5px_5px_0_rgba(15,118,110,0.18)]">
           <KafkaMarkIcon />
           <span className="absolute -right-1 -top-1 size-3 rounded-full border-2 border-[#fff7ed] bg-sky-500" />
         </div>
         <div className="min-w-0">
-          <h1 className="max-w-44 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">
+          <h1 className="max-w-32 truncate text-base font-extrabold tracking-tight text-[#123047] sm:max-w-none sm:text-lg">
             Kafka Visual Playground
           </h1>
         </div>
       </div>
-      <div className="flex min-w-0 items-center gap-2 text-sm sm:gap-4">
+      {shouldShowWorkspaceViewSwitch ? (
+        <div className="order-3 flex w-full basis-full lg:order-none lg:w-auto lg:basis-auto">
+          <WorkspaceViewTabs
+            workspaceView={workspaceView}
+            disabled={workspaceSwitchDisabled}
+            disabledReason={workspaceSwitchDisabledReason}
+            controlsAvailable={canSwitchWorkspaceView}
+            onWorkspaceViewChange={onWorkspaceViewChange}
+          />
+        </div>
+      ) : null}
+      <div className="order-2 flex min-w-0 items-center gap-2 text-sm sm:gap-4 lg:order-none">
         <div className="hidden min-w-44 border-r-2 border-teal-700 pr-5 md:block">
           <div className="flex items-center gap-2 font-extrabold text-[#123047]">
             <span className="size-2.5 rounded-full bg-emerald-500" />
@@ -38,13 +70,6 @@ export function WorkspaceHeader({
           <div className="mt-0.5 truncate text-xs text-[#466778]">
             {connectionHostLabel(run, connection)}
           </div>
-        </div>
-        <div className="hidden items-center gap-3 border-r-2 border-teal-700 pr-5 sm:flex">
-          <span className="font-semibold text-[#466778]">Run status</span>
-          <StatusPill
-            label={run?.status ?? "No run"}
-            tone={run?.status === "running" ? "green" : "slate"}
-          />
         </div>
         <Button
           onClick={onReset}
@@ -57,6 +82,129 @@ export function WorkspaceHeader({
         </Button>
       </div>
     </header>
+  );
+}
+
+function WorkspaceViewTabs({
+  workspaceView,
+  disabled,
+  disabledReason,
+  controlsAvailable,
+  onWorkspaceViewChange,
+}: {
+  workspaceView: WorkspaceView;
+  disabled: boolean;
+  disabledReason?: string;
+  controlsAvailable: boolean;
+  onWorkspaceViewChange: (view: WorkspaceView) => void;
+}) {
+  const disabledReasonId = useId();
+  const guidedTabRef = useRef<HTMLButtonElement>(null);
+  const exploreTabRef = useRef<HTMLButtonElement>(null);
+
+  function selectAndFocus(nextView: WorkspaceView) {
+    onWorkspaceViewChange(nextView);
+    const nextTab =
+      nextView === "guided" ? guidedTabRef.current : exploreTabRef.current;
+    nextTab?.focus();
+  }
+
+  function handleTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentView: WorkspaceView,
+  ) {
+    let nextView: WorkspaceView | null = null;
+
+    if (event.key === "Home") nextView = "guided";
+    if (event.key === "End") nextView = "explore";
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      nextView = currentView === "guided" ? "explore" : "guided";
+    }
+    if (!nextView) return;
+
+    event.preventDefault();
+    selectAndFocus(nextView);
+  }
+
+  return (
+    <>
+      <div
+        role="tablist"
+        aria-label="Workspace view"
+        aria-describedby={disabledReason ? disabledReasonId : undefined}
+        title={disabledReason}
+        className="flex w-full rounded-xl border-2 border-teal-700 bg-teal-50 p-0.5 shadow-[2px_2px_0_rgba(15,118,110,0.14)] md:h-9 md:w-auto"
+      >
+        <WorkspaceViewTab
+          ref={guidedTabRef}
+          view="guided"
+          label="Guided"
+          selected={workspaceView === "guided"}
+          disabled={disabled}
+          controlsAvailable={controlsAvailable}
+          onClick={() => onWorkspaceViewChange("guided")}
+          onKeyDown={(event) => handleTabKeyDown(event, "guided")}
+        />
+        <WorkspaceViewTab
+          ref={exploreTabRef}
+          view="explore"
+          label="Explore"
+          selected={workspaceView === "explore"}
+          disabled={disabled}
+          controlsAvailable={controlsAvailable}
+          onClick={() => onWorkspaceViewChange("explore")}
+          onKeyDown={(event) => handleTabKeyDown(event, "explore")}
+        />
+      </div>
+      {disabledReason ? (
+        <span className="sr-only" id={disabledReasonId}>
+          {disabledReason}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function WorkspaceViewTab({
+  ref,
+  view,
+  label,
+  selected,
+  disabled,
+  controlsAvailable,
+  onClick,
+  onKeyDown,
+}: {
+  ref: Ref<HTMLButtonElement>;
+  view: WorkspaceView;
+  label: string;
+  selected: boolean;
+  disabled: boolean;
+  controlsAvailable: boolean;
+  onClick: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      role="tab"
+      id={`workspace-view-${view}-tab`}
+      data-testid={`workspace-view-${view}`}
+      aria-controls={controlsAvailable ? `workspace-${view}-panel` : undefined}
+      aria-selected={selected}
+      tabIndex={selected ? 0 : -1}
+      disabled={disabled}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      className={`inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border-2 px-3 py-2 text-center text-sm font-extrabold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-7 md:flex-none md:px-3 md:py-1 md:text-xs ${
+        selected
+          ? "border-teal-700 bg-teal-700 text-white"
+          : "border-transparent bg-transparent text-teal-800 hover:border-teal-300 hover:bg-white"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -119,28 +267,6 @@ function KafkaMarkIcon() {
         strokeWidth="2.6"
       />
     </svg>
-  );
-}
-
-function StatusPill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "green" | "amber" | "sky" | "slate";
-}) {
-  const color = {
-    green: "border-emerald-500 bg-emerald-100 text-emerald-800",
-    amber: "border-amber-500 bg-amber-100 text-amber-800",
-    sky: "border-teal-700 bg-teal-100 text-teal-800",
-    slate: "border-teal-700 bg-[#fffdf5] text-teal-800",
-  }[tone];
-  return (
-    <span
-      className={`rounded-full border-2 px-3 py-1 text-xs font-extrabold ${color}`}
-    >
-      {label}
-    </span>
   );
 }
 

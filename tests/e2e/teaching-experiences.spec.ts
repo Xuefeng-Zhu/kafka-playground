@@ -1,9 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import {
+  clearWorkspaceViewPreference,
+  expectMobileTargets,
   expectNoSeriousOrCriticalAxeViolations,
   installConsoleFailureChecks,
   resetActiveRun,
+  selectWorkspaceView,
 } from "./playground-test-helpers";
 import { scenarioTeachingManifest } from "./scenario-teaching-manifest";
 
@@ -13,6 +16,7 @@ for (const scenario of scenarioTeachingManifest) {
   test(`${scenario.scenarioId} explains its authoritative change and contrast`, async ({
     page,
   }, testInfo) => {
+    await clearWorkspaceViewPreference(page);
     await resetActiveRun(page);
     await page.goto(`/scenarios/${scenario.scenarioId}`);
     await page.getByRole("button", { name: "Start scenario run" }).click();
@@ -24,6 +28,13 @@ for (const scenario of scenarioTeachingManifest) {
       "data-scenario-id",
       scenario.scenarioId,
     );
+    await expect(
+      page.getByRole("tab", { name: "Guided", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("teaching-experience-region")).toBeVisible();
+    await expect(page.getByTestId("explore-workspace-region")).toHaveCount(0);
+    await expect(page.getByTestId("timeline-region")).toHaveCount(0);
+    await expect(page.getByTestId("lower-panel-tabs")).toHaveCount(0);
     await expect(page.getByTestId("topology-flow")).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Insights" })).toHaveCount(0);
     await expect(evidence).toBeVisible();
@@ -73,7 +84,7 @@ for (const scenario of scenarioTeachingManifest) {
 
     await mkdir("docs/screenshots/evidence", { recursive: true });
     await evidence.screenshot({
-      path: `docs/screenshots/evidence/${testInfo.project.name}-${scenario.scenarioId}.png`,
+      path: `docs/screenshots/evidence/${testInfo.project.name}-${scenario.scenarioId}-guided.png`,
       animations: "disabled",
     });
 
@@ -109,23 +120,65 @@ for (const scenario of scenarioTeachingManifest) {
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.getByRole("button", { name: /^Close .* inspector$/ }).click();
 
-    await page.getByRole("tab", { name: "Timeline" }).click();
-    await expect(page.getByTestId("event-timeline")).toBeVisible();
-    await expect(
-      page.locator('[data-focus-key][aria-pressed="true"]').first(),
-    ).toBeVisible();
+    const transitionFocus = page
+      .getByTestId("experiment-transition-trail")
+      .getByRole("button")
+      .first();
+    await transitionFocus.click();
+    await expect(transitionFocus).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: /^Close .* inspector$/ }).click();
 
     await expectNoSeriousOrCriticalAxeViolations(page);
     await expectStableLayout(page);
 
     if (scenario.mobileRequired) {
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole("tab", { name: "Controls" }).click();
       await expect(page.getByTestId("causal-graph-list")).toBeVisible();
       await expect(page.getByTestId("causal-graph-rail")).toBeHidden();
       await expect(page.getByTestId("topology-flow")).toHaveCount(0);
       await expectMobileTargets(page);
       await expectStableLayout(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+
+    await selectWorkspaceView(page, "Explore");
+    await expect(page.getByTestId("explore-workspace-region")).toBeVisible();
+    await expect(page.getByTestId("explore-topology")).toBeVisible();
+    await expect(page.getByTestId("topology-flow")).toBeVisible();
+    await expect(
+      page.getByTestId(`topology-node-scenario-${scenario.extensionNodeId}`),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`topology-edge-scenario-${scenario.causalEdgeId}`),
+    ).toHaveCount(1);
+    await expect(page.getByTestId("topology-node-scenario-visual")).toHaveCount(
+      0,
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("semantic-topology-list")).toBeVisible();
+    await expect(page.getByTestId("topology-flow")).toHaveCount(0);
+    await expect(
+      page.getByTestId(`semantic-scenario-node-${scenario.extensionNodeId}`),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`semantic-scenario-edge-${scenario.causalEdgeId}`),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Simulated runtime topology" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("timeline-region")).toBeVisible();
+    await page.getByRole("tab", { name: "Controls" }).click();
+    await expectMobileTargets(page, "explore-workspace-region");
+    await expectStableLayout(page);
+    await expectNoSeriousOrCriticalAxeViolations(page);
+
+    if (scenario.mobileRequired) {
+      await page.getByTestId("explore-topology").screenshot({
+        path: `docs/screenshots/evidence/${testInfo.project.name}-${scenario.scenarioId}-explore-mobile.png`,
+        animations: "disabled",
+      });
     }
   });
 }
@@ -431,23 +484,4 @@ async function expectStableLayout(page: Page) {
     viewport: window.innerWidth,
   }));
   expect(widths.document).toBeLessThanOrEqual(widths.viewport + 2);
-}
-
-async function expectMobileTargets(page: Page) {
-  const undersized = await page
-    .getByTestId("scenario-learning-surface")
-    .locator("button:visible")
-    .evaluateAll((buttons) =>
-      buttons
-        .map((button) => {
-          const box = button.getBoundingClientRect();
-          return {
-            label: button.getAttribute("aria-label") ?? button.textContent,
-            height: Math.round(box.height),
-            width: Math.round(box.width),
-          };
-        })
-        .filter((button) => button.height < 44 || button.width < 44),
-    );
-  expect(undersized).toEqual([]);
 }

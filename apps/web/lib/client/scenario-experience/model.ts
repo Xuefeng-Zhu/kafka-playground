@@ -4,6 +4,7 @@ import type {
   RuntimeEvent,
   ScenarioState,
 } from "@kplay/contracts";
+import type { ScenarioTopologyIcon } from "../scenario-topology-model";
 
 export const SCENARIO_EXPERIENCE_IDS = scenarioStateIds;
 
@@ -317,6 +318,46 @@ export type ScenarioExperiments = {
   contrast: ScenarioExperimentMetadata;
 };
 
+export type ScenarioExploreTopologyVisualKind =
+  | "producer"
+  | "topic"
+  | "consumer-group"
+  | ScenarioTopologyIcon;
+
+export type ScenarioExploreTopologyEdgeKind =
+  | "data"
+  | "control"
+  | "ownership"
+  | "feedback";
+
+export type ScenarioExploreTopologyNodeDefinition = {
+  id: string;
+  visualKind: ScenarioTopologyIcon;
+  rank?: number;
+  lane?: number;
+};
+
+export type ScenarioExploreTopologyEdgeDefinition = {
+  id: string;
+  kind: ScenarioExploreTopologyEdgeKind;
+};
+
+export type ScenarioExploreTopologyLayoutHint = {
+  rank?: number;
+  lane?: number;
+};
+
+/** Client-only display metadata layered over the authoritative causal graph. */
+export type ScenarioExploreTopologyDefinition<
+  Id extends ScenarioExperienceId = ScenarioExperienceId,
+> = {
+  scenarioId: Id;
+  nodes: readonly ScenarioExploreTopologyNodeDefinition[];
+  edges: readonly ScenarioExploreTopologyEdgeDefinition[];
+  layout?: Readonly<Record<string, ScenarioExploreTopologyLayoutHint>>;
+  replacesCoreProducerTopicEdge: boolean;
+};
+
 export type ScenarioCheckpointOption = {
   id: string;
   label: string;
@@ -409,6 +450,7 @@ export type ScenarioExperienceDefinition<
   lesson: ScenarioLesson;
   experiments: ScenarioExperiments;
   checkpoint: ScenarioCheckpoint;
+  exploreTopology: ScenarioExploreTopologyDefinition<Id>;
   project(
     input: ScenarioExperienceProjectionInput<Id>,
   ): ScenarioExperienceFrame<Id>;

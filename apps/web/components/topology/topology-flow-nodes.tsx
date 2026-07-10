@@ -17,6 +17,7 @@ import {
 import type { ScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { currentTasksForConsumer } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import type { RuntimeTopologyProvenance } from "@/lib/client/topology-provenance";
 import { ScenarioVisualStage } from "./scenario-visual-stage";
 import {
   ConsumerCard,
@@ -26,6 +27,9 @@ import {
   toneForPartition,
 } from "./topology-cards";
 import { assignmentHandleTop } from "./topology-flow-helpers";
+import { ScenarioTopologyFlowNode } from "./scenario-topology-node";
+
+export type { ScenarioExploreNodeData } from "./scenario-topology-node";
 
 type TopologyCallbacks = {
   onSelectMessage: (messageId: string) => void;
@@ -46,6 +50,7 @@ export type TopicNodeData = TopologyCallbacks & {
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   snapshot: RunSnapshot;
+  provenance: RuntimeTopologyProvenance;
 };
 
 export type ConsumerGroupNodeData = TopologyCallbacks & {
@@ -69,6 +74,7 @@ export const topologyNodeTypes = {
   producer: ProducerFlowNode,
   topic: TopicFlowNode,
   consumerGroup: ConsumerGroupFlowNode,
+  scenarioExplore: ScenarioTopologyFlowNode,
   scenarioVisual: ScenarioVisualFlowNode,
 } satisfies NodeTypes;
 
@@ -78,6 +84,12 @@ function ProducerFlowNode({ data }: NodeProps<Node<ProducerNodeData>>) {
       className="nodrag pointer-events-auto relative"
       data-testid="topology-node-producer"
     >
+      <Handle
+        id="producer-in"
+        type="target"
+        position={Position.Left}
+        className={handleClass}
+      />
       <ProducerCard
         status={data.status}
         selected={data.selected}
@@ -126,8 +138,9 @@ function TopicFlowNode({ id, data }: NodeProps<Node<TopicNodeData>>) {
             : "border-transparent hover:border-teal-700 hover:bg-teal-50"
         }`}
         aria-label="Inspect topic"
+        aria-pressed={data.selectedNode?.type === "topic"}
       >
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-teal-700">
+        <div className="text-xs font-extrabold uppercase tracking-[0.14em] text-teal-700">
           Topic
         </div>
         <div className="mt-1 break-words font-extrabold text-[#123047]">
@@ -161,6 +174,7 @@ function TopicFlowNode({ id, data }: NodeProps<Node<TopicNodeData>>) {
               }
               owner={data.assignmentByPartition.get(partition)}
               messageCount={data.messageCounts[String(partition)] ?? 0}
+              provenance={data.provenance}
             />
             <Handle
               id={`partition-${partition}-out`}
@@ -202,7 +216,23 @@ function ConsumerGroupFlowNode({
         position={Position.Left}
         className={handleClass}
       />
-      <div className="mb-3 min-w-0 text-center">
+      <Handle
+        id="group-out"
+        type="source"
+        position={Position.Right}
+        className={handleClass}
+      />
+      <button
+        type="button"
+        aria-label="Inspect consumer group"
+        aria-pressed={data.selectedNode?.type === "consumerGroup"}
+        onClick={() => data.onSelectNode({ type: "consumerGroup" })}
+        className={`mb-3 min-w-0 w-full rounded-2xl border-2 px-3 py-2 text-center focus:outline-none focus:ring-4 focus:ring-sky-200 ${
+          data.selectedNode?.type === "consumerGroup"
+            ? "border-teal-700 bg-teal-100 shadow-[0_0_0_5px_rgba(15,118,110,0.14)]"
+            : "border-transparent hover:border-teal-700 hover:bg-teal-50"
+        }`}
+      >
         <div className="text-[13px] font-extrabold uppercase tracking-[0.12em] text-[#123047]">
           Consumer Group
         </div>
@@ -212,7 +242,7 @@ function ConsumerGroupFlowNode({
         <div className="text-xs text-[#466778]">
           {data.consumers.length} consumers
         </div>
-      </div>
+      </button>
       <div className="space-y-2">
         {data.consumers.length === 0 ? (
           <p className="rounded-2xl border-[3px] border-dashed border-teal-700 bg-[#fffdf5] p-3 text-xs font-semibold text-[#466778]">

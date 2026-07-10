@@ -35,7 +35,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ControlsPanel } from "@/components/controls/controls-panel";
 import { ScenarioLearningSurface } from "@/components/learning";
-import { KafkaTopology } from "@/components/topology/kafka-topology";
+import { ExploreTopology } from "@/components/topology/explore-topology";
 import { EventTimeline } from "@/components/timeline/event-timeline";
 import { EducationPanel } from "@/components/education/education-panel";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
@@ -47,6 +47,7 @@ import {
 } from "@/components/playground/use-lower-panel-tabs";
 import { WorkspaceHeader } from "@/components/playground/workspace-header";
 import { useRunLiveUpdates } from "@/components/playground/use-run-live-updates";
+import { useWorkspaceView } from "@/components/playground/use-workspace-view";
 import {
   MAX_TIMELINE_HEIGHT,
   MIN_TIMELINE_HEIGHT,
@@ -65,10 +66,12 @@ import {
 } from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
 import {
+  isScenarioExperienceEnabled,
   resolveScenarioExperience,
   type FocusRef,
   type ScenarioExperienceSnapshot,
 } from "@/lib/client/scenario-experience";
+import { resolveExploreTopologyFocus } from "@/lib/client/explore-topology-focus";
 import {
   evidenceFocusForRuntimeEvent,
   experimentTransitionTrail,
@@ -172,7 +175,19 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     [activeExperienceExperimentId, scenarioId, state.events],
   );
   const isTeachingExperience = experienceResolution?.kind === "experience";
-  const showLegacyEducation = !isTeachingExperience && run?.mode !== "remote";
+  const isConvertedScenario = isScenarioExperienceEnabled(
+    run?.scenarioId ?? scenarioId,
+  );
+  const canUseGuidedView = isTeachingExperience && run?.mode === "demo";
+  const showWorkspaceViewSwitch =
+    canUseGuidedView || (!run && isConvertedScenario);
+  const { workspaceView, setWorkspaceView } = useWorkspaceView(
+    canUseGuidedView,
+    showWorkspaceViewSwitch,
+  );
+  const showGuidedView = canUseGuidedView && workspaceView === "guided";
+  const showExploreDock = Boolean(run) && !showGuidedView;
+  const showLegacyEducation = !isConvertedScenario && run?.mode === "demo";
   const {
     activeLowerPanelTab,
     availableTabIds,
@@ -267,6 +282,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
   useEffect(() => {
     if (!shouldFrameTopology || !run) return;
+    if (!showExploreDock) return;
     const frame = requestAnimationFrame(() => {
       if (window.matchMedia("(max-width: 767px)").matches) {
         topologySectionRef.current?.scrollIntoView({ block: "start" });
@@ -274,7 +290,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       setShouldFrameTopology(false);
     });
     return () => cancelAnimationFrame(frame);
-  }, [run, shouldFrameTopology]);
+  }, [run, shouldFrameTopology, showExploreDock]);
 
   const selectedEvent = useMemo(() => {
     if (focus?.kind !== "event") return null;
@@ -299,13 +315,38 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     if (focus !== null) return null;
     return messages.at(-1) ?? null;
   }, [focus, run?.recentMessages, selectedEvent]);
-  const selectedTopologyNode = useMemo(
+  const exploreTopologyFocus = useMemo(
     () =>
-      experienceResolution?.kind === "legacy"
-        ? topologySelectionForFocus(focus)
-        : null,
-    [experienceResolution, focus],
+      run
+        ? resolveExploreTopologyFocus({
+            snapshot: run,
+            focus,
+            selectedEvent,
+            entityDetails:
+              experienceResolution?.kind === "experience"
+                ? experienceResolution.frame.entityDetails
+                : {},
+          })
+        : {
+            selectedMessageId: null,
+            selectedCoreNode: null,
+            selectedScenarioNodeId: null,
+          },
+    [experienceResolution, focus, run, selectedEvent],
   );
+  const selectedTopologyNode = useMemo(() => {
+    if (showGuidedView) return null;
+    if (isConvertedScenario || run?.mode !== "demo") {
+      return exploreTopologyFocus.selectedCoreNode;
+    }
+    return topologySelectionForFocus(focus);
+  }, [
+    exploreTopologyFocus.selectedCoreNode,
+    focus,
+    isConvertedScenario,
+    run?.mode,
+    showGuidedView,
+  ]);
   const entityDetail = useMemo(() => {
     if (
       focus?.kind !== "entity" ||
@@ -474,7 +515,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         setAnnouncement(
           `${experimentId} completed with authoritative scenario evidence.`,
         );
-        setShouldFrameTopology(true);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Experiment failed.";
@@ -522,12 +562,10 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     setInspectorOpen(true);
   }
 
-  function selectTopologyNode(selection: TopologySelection) {
-    selectFocus(focusForTopologySelection(selection));
-  }
-
   const inspectorButtonStyle = {
-    "--inspector-desktop-bottom": run ? `${timelineHeight + 20}px` : "1.25rem",
+    "--inspector-desktop-bottom": showExploreDock
+      ? `${timelineHeight + 20}px`
+      : "1.25rem",
   } as CSSProperties;
 
   return (
@@ -535,7 +573,11 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       <WorkspaceHeader
         run={run}
         connection={connection}
-        disabled={isActionPending}
+        disabled={isActionPending || pendingExperimentId !== null}
+        workspaceView={workspaceView}
+        showWorkspaceViewSwitch={showWorkspaceViewSwitch}
+        canSwitchWorkspaceView={canUseGuidedView}
+        onWorkspaceViewChange={setWorkspaceView}
         onReset={resetRun}
       />
       {actionError && (
@@ -555,7 +597,9 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         aria-expanded={isInspectorOpen}
         aria-label={
           focus?.kind === "entity"
-            ? "Open evidence inspector"
+            ? !showGuidedView && selectedTopologyNode
+              ? "Open topology inspector"
+              : "Open evidence inspector"
             : focus?.kind === "event"
               ? "Open event inspector"
               : "Open message inspector"
@@ -570,7 +614,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       <div
         ref={workspaceGridRef}
         className={`grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[260px_minmax(680px,1fr)] lg:overflow-hidden ${
-          run
+          showExploreDock
             ? "lg:grid-rows-[minmax(320px,1fr)_var(--timeline-height)]"
             : "lg:grid-rows-[1fr]"
         }`}
@@ -578,7 +622,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       >
         <aside
           className={`max-h-[260px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 sm:max-h-[420px] lg:max-h-none lg:border-b-0 lg:border-r-[3px] ${
-            run ? "lg:row-span-2" : ""
+            showExploreDock ? "lg:row-span-2" : ""
           }`}
         >
           <ScenarioSidebar
@@ -610,10 +654,13 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
               onTestRemoteConnection={testRemoteConnection}
               scenario={selectedScenario}
             />
-          ) : experienceResolution?.kind === "experience" ? (
+          ) : showGuidedView && experienceResolution?.kind === "experience" ? (
             <div
               className="h-full overflow-y-auto"
               data-testid="teaching-experience-region"
+              id="workspace-guided-panel"
+              role="tabpanel"
+              aria-labelledby="workspace-view-guided-tab"
             >
               <ScenarioLearningSurface
                 frame={experienceResolution.frame}
@@ -633,36 +680,47 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
                 onAnswerCheckpoint={setSelectedCheckpointOptionId}
               />
             </div>
+          ) : isConvertedScenario || run.mode !== "demo" ? (
+            <div
+              className="flex h-full min-h-0 flex-col"
+              data-testid="explore-workspace-region"
+              id="workspace-explore-panel"
+              role={canUseGuidedView ? "tabpanel" : undefined}
+              aria-labelledby={
+                canUseGuidedView ? "workspace-view-explore-tab" : undefined
+              }
+            >
+              <ExploreTopology
+                snapshot={run}
+                focus={focus}
+                selectedEvent={selectedEvent}
+                entityDetails={
+                  experienceResolution?.kind === "experience"
+                    ? experienceResolution.frame.entityDetails
+                    : {}
+                }
+                scenarioFrame={
+                  experienceResolution?.kind === "experience"
+                    ? experienceResolution.frame
+                    : undefined
+                }
+                onFocus={selectFocus}
+              />
+            </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col">
-              {run.mode === "remote" ? (
-                <div
-                  className="m-3 mb-0 shrink-0 rounded-xl border-2 border-sky-700 bg-sky-50 px-3 py-2 text-sm font-bold leading-6 text-sky-950 shadow-[4px_4px_0_rgba(3,105,161,0.14)]"
-                  data-testid="remote-observed-only-notice"
-                  role="status"
-                >
-                  Observed broker view. Deterministic teaching experiments are
-                  disabled in Remote Kafka mode until this scenario has a
-                  matching remote integration.
-                </div>
-              ) : null}
-              <div className="min-h-0 flex-1">
-                <KafkaTopology
-                  snapshot={run}
-                  showScenarioVisual={run.mode !== "remote"}
-                  selectedMessageId={
-                    focus?.kind === "message" ? focus.id : null
-                  }
-                  selectedNode={selectedTopologyNode}
-                  onSelectMessage={selectMessage}
-                  onSelectNode={selectTopologyNode}
-                />
-              </div>
+              <ExploreTopology
+                snapshot={run}
+                focus={focus}
+                selectedEvent={selectedEvent}
+                showLegacyScenarioVisual
+                onFocus={selectFocus}
+              />
             </div>
           )}
         </section>
 
-        {run && (
+        {run && showExploreDock && (
           <section
             className="flex min-h-[520px] flex-col bg-[#fff7ed] lg:min-h-0 lg:border-r-[3px] lg:border-t-[3px] lg:border-teal-700"
             data-testid="timeline-region"
@@ -803,9 +861,18 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         <InspectorDrawer
           message={selectedMessage}
           event={selectedEvent}
-          entityDetail={entityDetail}
+          entityDetail={
+            focus?.kind === "entity" &&
+            (showGuidedView || selectedTopologyNode === null)
+              ? entityDetail
+              : null
+          }
           snapshot={run}
-          selectedNode={selectedTopologyNode}
+          selectedNode={
+            focus?.kind === "entity" && !showGuidedView
+              ? selectedTopologyNode
+              : null
+          }
           onPreviousMessage={() => selectAdjacentMessage(-1)}
           onNextMessage={() => selectAdjacentMessage(1)}
           onClose={() => setInspectorOpen(false)}
@@ -815,19 +882,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   );
 }
 
-function focusForTopologySelection(selection: TopologySelection): FocusRef {
-  if (selection.type === "producer" || selection.type === "topic") {
-    return { kind: "entity", id: selection.type };
-  }
-  if (selection.type === "partition") {
-    return { kind: "entity", id: `partition-${selection.partition}` };
-  }
-  if (selection.type === "consumer") {
-    return { kind: "entity", id: `consumer:${selection.consumerId}` };
-  }
-  return { kind: "entity", id: selection.nodeId };
-}
-
 function topologySelectionForFocus(
   focus: FocusRef | null,
 ): TopologySelection | null {
@@ -835,6 +889,7 @@ function topologySelectionForFocus(
   if (focus.id === "producer" || focus.id === "topic") {
     return { type: focus.id };
   }
+  if (focus.id === "consumerGroup") return { type: "consumerGroup" };
   if (focus.id.startsWith("partition-")) {
     const partition = Number(focus.id.slice("partition-".length));
     if (Number.isInteger(partition) && partition >= 0) {

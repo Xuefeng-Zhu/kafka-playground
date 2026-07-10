@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  clearWorkspaceViewPreference,
   installConsoleFailureChecks,
   resetActiveRun,
 } from "./playground-test-helpers";
@@ -9,12 +10,17 @@ installConsoleFailureChecks();
 test("non-primary scenarios are routable and start teaching experiences", async ({
   page,
 }) => {
+  await clearWorkspaceViewPreference(page);
   await resetActiveRun(page);
   await page.goto("/scenarios/hot-partitions-key-skew");
   await expect(page.getByTestId("current-scenario-card")).toContainText(
     "Hot partitions and key skew",
   );
   await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(
+    page.getByRole("tab", { name: "Guided", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("timeline-region")).toHaveCount(0);
   await expect(page.getByTestId("scenario-learning-surface")).toHaveAttribute(
     "data-scenario-id",
     "hot-partitions-key-skew",
@@ -35,9 +41,14 @@ test("non-primary scenarios are routable and start teaching experiences", async 
 test("load-balancing experiment shows one owner per partition and an idle fourth member", async ({
   page,
 }) => {
+  await clearWorkspaceViewPreference(page);
   await resetActiveRun(page);
   await page.goto("/scenarios/fan-out-load-balancing");
   await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(
+    page.getByRole("tab", { name: "Guided", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("timeline-region")).toHaveCount(0);
   await page.getByTestId("experiment-grow-consumer-group").click();
 
   await expect
@@ -64,9 +75,14 @@ test("load-balancing experiment shows one owner per partition and an idle fourth
 });
 
 test("sidebar scenario navigation retires the active run", async ({ page }) => {
+  await clearWorkspaceViewPreference(page);
   await resetActiveRun(page);
   await page.goto("/scenarios/partitioning");
   await page.getByRole("button", { name: "Start scenario run" }).click();
+  await expect(
+    page.getByRole("tab", { name: "Guided", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("timeline-region")).toHaveCount(0);
   await page.getByLabel("Search scenarios").fill("load balancing");
   await page
     .getByRole("link", { name: /Consumer-group load balancing/ })

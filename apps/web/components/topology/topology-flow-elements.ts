@@ -1,22 +1,40 @@
 import type { RunSnapshot } from "@kplay/contracts";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
+import {
+  SCENARIO_EXPLORE_NODE_HEIGHT,
+  SCENARIO_EXPLORE_NODE_WIDTH,
+  type ScenarioExploreTopologyProjection,
+} from "@/lib/client/scenario-experience/explore-topology";
 import type { ScenarioVisualization } from "@/lib/client/scenario-visualization";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { topologyProvenance } from "@/lib/client/topology-provenance";
+import {
+  scenarioCausalEdgeColor,
+  type ScenarioCausalFlowEdge,
+} from "./scenario-topology-edge";
 import { toneForPartition } from "./topology-cards";
 import type {
   ConsumerGroupNodeData,
   ProducerNodeData,
+  ScenarioExploreNodeData,
   ScenarioVisualNodeData,
   TopicNodeData,
 } from "./topology-flow-nodes";
-import { type TopologyLayoutMetrics } from "./topology-flow-helpers";
+import {
+  scenarioFlowNodeId,
+  topologyEndpointId,
+  type TopologyLayoutMetrics,
+} from "./topology-flow-helpers";
 
 export type TopologyNode =
   | Node<ProducerNodeData, "producer">
   | Node<TopicNodeData, "topic">
   | Node<ConsumerGroupNodeData, "consumerGroup">
+  | Node<ScenarioExploreNodeData, "scenarioExplore">
   | Node<ScenarioVisualNodeData, "scenarioVisual">;
-export type TopologyEdge = Edge<Record<string, never>, "smoothstep">;
+
+type CoreTopologyEdge = Edge<Record<string, never>, "smoothstep">;
+export type TopologyEdge = CoreTopologyEdge | ScenarioCausalFlowEdge;
 
 export function buildTopologyNodes({
   activeConsumerId,
@@ -28,6 +46,7 @@ export function buildTopologyNodes({
   onSelectMessage,
   onSelectNode,
   partitions,
+  scenarioTopology = null,
   scenarioVisualization,
   showScenarioVisual = true,
   selectedMessageId,
@@ -44,6 +63,7 @@ export function buildTopologyNodes({
   onSelectMessage: (messageId: string) => void;
   onSelectNode: (selection: TopologySelection) => void;
   partitions: number[];
+  scenarioTopology?: ScenarioExploreTopologyProjection | null;
   scenarioVisualization: ScenarioVisualization;
   showScenarioVisual?: boolean;
   selectedMessageId: string | null;
@@ -55,7 +75,7 @@ export function buildTopologyNodes({
     {
       id: "producer",
       type: "producer",
-      position: metrics.producer,
+      position: corePosition(scenarioTopology, "producer", metrics.producer),
       draggable: false,
       selectable: false,
       data: {
@@ -64,12 +84,16 @@ export function buildTopologyNodes({
         onSelectMessage,
         onSelectNode,
       },
-      style: { width: metrics.producerWidth },
+      style: {
+        width: scenarioTopology
+          ? SCENARIO_EXPLORE_NODE_WIDTH
+          : metrics.producerWidth,
+      },
     },
     {
       id: "topic",
       type: "topic",
-      position: metrics.topic,
+      position: corePosition(scenarioTopology, "topic", metrics.topic),
       draggable: false,
       selectable: false,
       data: {
@@ -83,13 +107,22 @@ export function buildTopologyNodes({
         selectedMessageId,
         selectedNode,
         snapshot,
+        provenance: topologyProvenance(snapshot),
       },
-      style: { width: metrics.topicWidth },
+      style: {
+        width: scenarioTopology
+          ? SCENARIO_EXPLORE_NODE_WIDTH
+          : metrics.topicWidth,
+      },
     },
     {
       id: "consumerGroup",
       type: "consumerGroup",
-      position: metrics.consumerGroup,
+      position: corePosition(
+        scenarioTopology,
+        "consumerGroup",
+        metrics.consumerGroup,
+      ),
       draggable: false,
       selectable: false,
       data: {
@@ -102,9 +135,45 @@ export function buildTopologyNodes({
         snapshot,
         taskNowMs,
       },
-      style: { width: metrics.consumerGroupWidth },
+      style: {
+        width: scenarioTopology
+          ? SCENARIO_EXPLORE_NODE_WIDTH
+          : metrics.consumerGroupWidth,
+      },
     },
-  ];
+  ].filter(
+    (node) =>
+      scenarioTopology === null || scenarioTopology.coreNodeIds.has(node.id),
+  ) as TopologyNode[];
+
+  const scenarioNodes: TopologyNode[] = (scenarioTopology?.nodes ?? [])
+    .filter((node) => node.nodeKind === "scenario")
+    .map((node) => ({
+      id: scenarioFlowNodeId(node.id),
+      type: "scenarioExplore" as const,
+      position: node.position,
+      draggable: false,
+      selectable: false,
+      data: {
+        description: node.description,
+        entityId: node.entityId,
+        nodeId: node.id,
+        onSelectNode,
+        provenance: node.provenance,
+        selected:
+          selectedNode?.type === "scenarioNode" &&
+          (selectedNode.nodeId === node.id ||
+            selectedNode.nodeId === node.entityId),
+        title: node.title,
+        visualKind: node.visualKind,
+        ...(node.metric ? { metric: node.metric } : {}),
+        ...(node.state ? { state: node.state } : {}),
+      },
+      style: {
+        height: SCENARIO_EXPLORE_NODE_HEIGHT,
+        width: SCENARIO_EXPLORE_NODE_WIDTH,
+      },
+    }));
 
   const visualNode: TopologyNode = {
     id: "scenarioVisual",
@@ -121,7 +190,11 @@ export function buildTopologyNodes({
     style: { width: isCompact ? 332 : 660 },
   };
 
-  return showScenarioVisual ? [...coreNodes, visualNode] : coreNodes;
+  return [
+    ...coreNodes,
+    ...scenarioNodes,
+    ...(showScenarioVisual ? [visualNode] : []),
+  ];
 }
 
 export function buildTopologyEdges({
@@ -131,6 +204,7 @@ export function buildTopologyEdges({
   consumersLength,
   latestMessage,
   partitions,
+  scenarioTopology = null,
   showScenarioVisual = true,
 }: {
   activeConsumerId: string | null;
@@ -139,10 +213,12 @@ export function buildTopologyEdges({
   consumersLength: number;
   latestMessage: RunSnapshot["recentMessages"][number] | null;
   partitions: number[];
+  scenarioTopology?: ScenarioExploreTopologyProjection | null;
   showScenarioVisual?: boolean;
 }): TopologyEdge[] {
-  const nextEdges: TopologyEdge[] = [
-    {
+  const nextEdges: TopologyEdge[] = [];
+  if (scenarioTopology === null) {
+    nextEdges.push({
       id: "edge-producer-topic",
       type: "smoothstep",
       source: "producer",
@@ -157,10 +233,36 @@ export function buildTopologyEdges({
         strokeWidth: 2,
       },
       domAttributes: edgeTestId("topology-edge-producer-topic"),
-    },
-  ];
+    });
+  } else if (scenarioTopology.coreProducerTopicRoute) {
+    const route = scenarioTopology.coreProducerTopicRoute;
+    nextEdges.push({
+      id: "core-edge-producer-topic",
+      type: "scenarioCausal",
+      source: route.source,
+      sourceHandle: "producer-out",
+      target: route.target,
+      targetHandle: "topic-in",
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: scenarioCausalEdgeColor(route.kind),
+      },
+      data: {
+        active: route.active,
+        kind: route.kind,
+        label: route.label,
+        provenance: route.provenance,
+      },
+      domAttributes: {
+        "aria-label": `${route.label}. Runtime ${route.kind} edge, ${route.provenance} state.`,
+        "data-edge-kind": route.kind,
+        "data-provenance": route.provenance,
+        "data-testid": "topology-edge-core-producer-topic",
+      } as TopologyEdge["domAttributes"],
+    });
+  }
 
-  if (consumersLength === 0) {
+  if (consumersLength === 0 && scenarioTopology === null) {
     nextEdges.push({
       id: "edge-empty-ownership",
       type: "smoothstep",
@@ -203,6 +305,64 @@ export function buildTopologyEdges({
     });
   }
 
+  if (scenarioTopology) {
+    for (const edge of scenarioTopology.edges) {
+      const source = topologyEndpointId(
+        edge.source,
+        scenarioTopology.scenarioNodeIds,
+      );
+      const target = topologyEndpointId(
+        edge.target,
+        scenarioTopology.scenarioNodeIds,
+      );
+      const sourceIsScenario = scenarioTopology.scenarioNodeIds.has(
+        edge.source,
+      );
+      const targetIsScenario = scenarioTopology.scenarioNodeIds.has(
+        edge.target,
+      );
+      const sourceProjectionNode = scenarioTopology.nodes.find(
+        (node) => node.id === edge.source,
+      );
+      const targetProjectionNode = scenarioTopology.nodes.find(
+        (node) => node.id === edge.target,
+      );
+      const verticalScenarioEdge =
+        sourceIsScenario &&
+        targetIsScenario &&
+        sourceProjectionNode?.rank === targetProjectionNode?.rank &&
+        sourceProjectionNode?.lane !== targetProjectionNode?.lane;
+      const color = scenarioCausalEdgeColor(edge.kind);
+      nextEdges.push({
+        id: `scenario-edge-${edge.id}`,
+        type: "scenarioCausal",
+        source,
+        sourceHandle: sourceHandleFor(
+          edge.kind,
+          source,
+          sourceIsScenario,
+          verticalScenarioEdge,
+        ),
+        target,
+        targetHandle: targetHandleFor(
+          edge.kind,
+          target,
+          targetIsScenario,
+          verticalScenarioEdge,
+        ),
+        markerEnd: { type: MarkerType.ArrowClosed, color },
+        className: edge.active ? "kplay-flow-line" : undefined,
+        data: {
+          active: edge.active,
+          kind: edge.kind,
+          label: edge.label,
+          provenance: edge.provenance,
+        },
+        domAttributes: scenarioEdgeAttributes(edge),
+      });
+    }
+  }
+
   if (showScenarioVisual) {
     nextEdges.push({
       id: "edge-topic-scenario-visual",
@@ -225,6 +385,49 @@ export function buildTopologyEdges({
   return nextEdges;
 }
 
+function corePosition(
+  topology: ScenarioExploreTopologyProjection | null,
+  entityId: "producer" | "topic" | "consumerGroup",
+  fallback: { x: number; y: number },
+) {
+  return (
+    topology?.nodes.find((node) => node.entityId === entityId)?.position ??
+    fallback
+  );
+}
+
+function sourceHandleFor(
+  kind: ScenarioExploreTopologyProjection["edges"][number]["kind"],
+  source: string,
+  scenarioNode: boolean,
+  verticalScenarioEdge = false,
+) {
+  if (scenarioNode) {
+    if (verticalScenarioEdge) return "scenario-vertical-out";
+    return kind === "feedback" ? "scenario-feedback-out" : "scenario-out";
+  }
+  if (source === "producer") return "producer-out";
+  if (source === "topic") return "topic-empty-out";
+  if (source === "consumerGroup") return "group-out";
+  return undefined;
+}
+
+function targetHandleFor(
+  kind: ScenarioExploreTopologyProjection["edges"][number]["kind"],
+  target: string,
+  scenarioNode: boolean,
+  verticalScenarioEdge = false,
+) {
+  if (scenarioNode) {
+    if (verticalScenarioEdge) return "scenario-vertical-in";
+    return kind === "feedback" ? "scenario-feedback-in" : "scenario-in";
+  }
+  if (target === "producer") return "producer-in";
+  if (target === "topic") return "topic-in";
+  if (target === "consumerGroup") return "empty-in";
+  return undefined;
+}
+
 function scenarioVisualPosition(
   metrics: TopologyLayoutMetrics,
   isCompact: boolean,
@@ -238,4 +441,15 @@ function scenarioVisualPosition(
 
 function edgeTestId(value: string): TopologyEdge["domAttributes"] {
   return { "data-testid": value } as TopologyEdge["domAttributes"];
+}
+
+function scenarioEdgeAttributes(
+  edge: ScenarioExploreTopologyProjection["edges"][number],
+): TopologyEdge["domAttributes"] {
+  return {
+    "aria-label": `${edge.label}. ${edge.kind} edge, ${edge.provenance} evidence.`,
+    "data-edge-kind": edge.kind,
+    "data-provenance": edge.provenance,
+    "data-testid": `topology-edge-scenario-${edge.id}`,
+  } as TopologyEdge["domAttributes"];
 }

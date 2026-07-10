@@ -393,6 +393,34 @@ describe("playground shell components", () => {
     expect(screen.queryAllByText("Observed").length).toBeGreaterThan(0);
   });
 
+  it("does not activate topology and evidence detail models together", () => {
+    render(
+      <InspectorDrawer
+        entityDetail={{
+          entityId: "key-router",
+          title: "Key router",
+          summary: "Chooses one partition for an equal key.",
+          provenance: "derived",
+          focus: { kind: "entity", id: "key-router" },
+          facts: [],
+        }}
+        message={null}
+        event={null}
+        snapshot={snapshotFixture}
+        selectedNode={{ type: "topic" }}
+        onPreviousMessage={vi.fn()}
+        onNextMessage={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Evidence inspector" }),
+    ).not.toBeNull();
+    expect(screen.queryByText("Key router")).not.toBeNull();
+    expect(screen.queryByText("Topic Metrics")).toBeNull();
+  });
+
   it("exposes the How it works anchor target", () => {
     render(
       <EducationPanel

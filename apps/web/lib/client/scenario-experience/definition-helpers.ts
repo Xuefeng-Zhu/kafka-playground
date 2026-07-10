@@ -1,5 +1,6 @@
 import { scenarioCheckpointForId } from "../scenario-checkpoints";
 import { scenarioExperienceCopy } from "./copy";
+import { getScenarioExploreTopologyDefinition } from "./explore-topology";
 import type {
   EntityDetailModel,
   EvidenceFact,
@@ -26,6 +27,7 @@ export function experienceDefinition<Id extends ScenarioExperienceId>(
     scenarioId,
     ...scenarioExperienceCopy[scenarioId],
     checkpoint: scenarioCheckpointForId(scenarioId),
+    exploreTopology: getScenarioExploreTopologyDefinition(scenarioId),
     project(input) {
       return projector(definition, input);
     },

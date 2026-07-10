@@ -15,7 +15,8 @@ Recommended flow:
 7. Choose exactly one discriminated evidence lens and give every table named columns plus typed record references.
 8. Add the scenario to the migration allowlist only when its server state, experiment, projector, lens, and tests are complete.
 9. Add model fixtures for initial, pivotal, and contrast or recovery states to the test-owned scenario manifest.
-10. Add reducer, runtime, demo integration, component, accessibility, and independent Playwright coverage.
+10. Map causal-graph entities to stable Explore topology IDs; evidence-record aliases use `graphEntityId` and remain Evidence Inspector subjects.
+11. Add reducer, runtime, demo integration, component, accessibility, and independent Playwright coverage for both workspace views.
 
 ## Authoring guardrails
 
@@ -32,6 +33,13 @@ Recommended flow:
 - Remote mode may show only observed broker behavior and must disable unsupported experiments explicitly.
 - Use one `FocusRef` so selecting a message, event, or entity synchronizes the graph, lens, timeline, and inspector.
 - Instructional content belongs in normal DOM at 100% scale. Mobile uses a semantic causal list instead of a transformed graph.
+- A converted demo scenario must work in both workspace views: Guided owns the lesson, while Explore projects the same causal graph into the runtime topology with raw Controls and the full Timeline. Do not duplicate core producer, topic, partition, message, ownership, or consumer cards.
+- Every converted scenario must provide at least one distinctive extension node and causal edge. Project nodes into deterministic rank and lane order, label every edge, and preserve each graph entity ID as the selectable Explore identity.
+- Use stable core Explore entity IDs: `producer`, `topic`, `consumerGroup`, `partition-N`, and `consumer:<id>`. Scenario extensions use their existing causal-graph entity IDs; never create a second ID for desktop or mobile rendering.
+- Converted Explore must not render the old scenario overlay. An allowlisted scenario with a temporarily missing frame uses core-only Explore; keep the legacy overlay and Insights panel only for truly unconverted IDs during the migration soak.
+- Demo Explore labels its state simulated; remote/Aiven Explore labels broker-reported state observed. Never reuse observed copy for deterministic demo counts.
+- Mobile Explore renders the same ranked core-plus-extension topology as semantic cards and labeled causal connections, and must not mount React Flow below 768 pixels. Every selectable card has a 44-pixel minimum target.
+- New scenario tests clear `kplay.workspace.view` before proving the Guided default, then exercise Explore without resetting the active run or `FocusRef`. Assert one distinctive extension node and edge in both desktop and mobile renderers.
 
 See [Teaching-First Visualization Acceptance](visualization-acceptance.md) for the per-scenario proof and release gates.
 
