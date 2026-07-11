@@ -1,24 +1,9 @@
-import type { RunSnapshot } from "@kplay/contracts";
-import { busiestPartition } from "./scenario-metrics";
+import type { ScenarioId } from "@kplay/scenario-engine";
+import type { ScenarioCheckpoint } from "./scenario-experience/model";
 
-type ScenarioCheckpointOption = {
-  id: string;
-  label: string;
-};
-
-export type ScenarioCheckpoint = {
-  id: string;
-  title: string;
-  prompt: string;
-  options: ScenarioCheckpointOption[];
-  correctOptionId: string;
-  explanation: string;
-};
-
-const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
+const scenarioCheckpointCatalog = {
   partitioning: {
     id: "partitioning-commit-step",
-    title: "Checkpoint",
     prompt: "What does committing an offset tell Kafka?",
     options: [
       { id: "record-written", label: "The producer wrote a new record." },
@@ -34,7 +19,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "fan-out-load-balancing": {
     id: "fan-out-group-sharing",
-    title: "Checkpoint",
     prompt: "How does one consumer group use multiple members?",
     options: [
       { id: "copy-all", label: "Every member receives every record." },
@@ -47,7 +31,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "at-least-once-duplicates": {
     id: "at-least-once-idempotency",
-    title: "Checkpoint",
     prompt: "Why do at-least-once consumers need idempotent handlers?",
     options: [
       { id: "schema", label: "Schemas cannot evolve without idempotency." },
@@ -60,7 +43,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "retry-dead-letter-queues": {
     id: "retry-dlq-purpose",
-    title: "Checkpoint",
     prompt: "What is the main purpose of a dead-letter topic?",
     options: [
       { id: "terminal", label: "Store records that cannot be handled safely." },
@@ -73,7 +55,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "schema-evolution-karapace": {
     id: "schema-compatibility",
-    title: "Checkpoint",
     prompt: "When should an incompatible payload fail?",
     options: [
       { id: "before-processing", label: "Before unsafe consumer processing." },
@@ -86,7 +67,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "transactional-producers": {
     id: "transaction-boundary",
-    title: "Checkpoint",
     prompt: "What does a transaction boundary group together?",
     options: [
       { id: "records-offsets", label: "Records and related offset commits." },
@@ -99,7 +79,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "event-replay-sourcing": {
     id: "event-replay-source",
-    title: "Checkpoint",
     prompt: "What is the source of truth during event replay?",
     options: [
       { id: "projection", label: "The current projection state." },
@@ -112,7 +91,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "consumer-lag-backpressure": {
     id: "lag-capacity",
-    title: "Checkpoint",
     prompt: "What usually makes consumer lag grow?",
     options: [
       { id: "outpace", label: "Production outpaces processing and commits." },
@@ -125,7 +103,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "hot-partitions-key-skew": {
     id: "hot-partition-key-choice",
-    title: "Checkpoint",
     prompt: "Why can one partition become hot?",
     options: [
       { id: "dominant-key", label: "A dominant key keeps hashing to it." },
@@ -138,7 +115,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "log-compaction-tombstones": {
     id: "compaction-tombstone",
-    title: "Checkpoint",
     prompt: "What does a tombstone record mean in a compacted topic?",
     options: [
       { id: "delete", label: "The key is marked for deletion." },
@@ -151,7 +127,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "retention-data-loss": {
     id: "retention-window",
-    title: "Checkpoint",
     prompt: "What does retention limit?",
     options: [
       { id: "rewind", label: "How far consumers can rewind and replay." },
@@ -164,7 +139,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "cooperative-rebalancing": {
     id: "cooperative-revoke",
-    title: "Checkpoint",
     prompt: "What does cooperative rebalancing try to reduce?",
     options: [
       { id: "full-stop", label: "Full-stop partition revocations." },
@@ -177,7 +151,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "streams-joins-windows": {
     id: "stream-window-join",
-    title: "Checkpoint",
     prompt: "What does a windowed join group by?",
     options: [
       { id: "event-time", label: "Matching keys within an event-time window." },
@@ -190,7 +163,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "outbox-cdc": {
     id: "outbox-atomicity",
-    title: "Checkpoint",
     prompt: "Why use an outbox table with CDC?",
     options: [
       { id: "atomic", label: "Bridge database commits to Kafka publication." },
@@ -203,7 +175,6 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
   },
   "acl-least-privilege": {
     id: "acl-permission",
-    title: "Checkpoint",
     prompt: "What causes an authorization failure?",
     options: [
       {
@@ -217,123 +188,10 @@ const scenarioCheckpointCatalog: Record<string, ScenarioCheckpoint> = {
     explanation:
       "Kafka ACLs evaluate the principal, resource, and operation before allowing producer, consumer, or admin work.",
   },
-};
+} satisfies Record<ScenarioId, ScenarioCheckpoint>;
 
-export function deriveScenarioCheckpoint(
-  snapshot: RunSnapshot,
+export function scenarioCheckpointForId(
+  scenarioId: ScenarioId,
 ): ScenarioCheckpoint {
-  const idleConsumerCount = snapshot.consumers.filter(
-    (consumer) =>
-      consumer.assignments.length === 0 &&
-      (consumer.status === "running" || consumer.status === "idle"),
-  ).length;
-  if (idleConsumerCount > 0) {
-    return {
-      id: "idle-consumer-partition-limit",
-      title: "Checkpoint",
-      prompt: "Why is a consumer idle in this group?",
-      options: [
-        {
-          id: "partition-limit",
-          label: "There are more group members than partitions.",
-        },
-        {
-          id: "producer-paused",
-          label: "The producer has paused message creation.",
-        },
-        { id: "commit-gap", label: "Committed offsets are waiting for retry." },
-      ],
-      correctOptionId: "partition-limit",
-      explanation: `${snapshot.partitionCount} partitions can be owned by at most ${snapshot.partitionCount} active members in one consumer group. Extra members wait idle.`,
-    };
-  }
-
-  if (
-    snapshot.scenarioId === "at-least-once-duplicates" &&
-    hasReplayRisk(snapshot)
-  ) {
-    return {
-      id: "at-least-once-replay-risk",
-      title: "Checkpoint",
-      prompt: "What can happen if this consumer crashes before commit?",
-      options: [
-        { id: "replay", label: "The same message can be delivered again." },
-        { id: "delete", label: "Kafka deletes the partition immediately." },
-        {
-          id: "schema",
-          label: "The schema registry changes compatibility mode.",
-        },
-      ],
-      correctOptionId: "replay",
-      explanation:
-        "At-least-once delivery favors not losing work. A record that was received but not committed can be replayed.",
-    };
-  }
-
-  if (
-    snapshot.scenarioId === "retry-dead-letter-queues" &&
-    failedCount(snapshot) > 0
-  ) {
-    return {
-      id: "retry-failure-routing",
-      title: "Checkpoint",
-      prompt: "Why route a failed event away from the main topic?",
-      options: [
-        {
-          id: "observe",
-          label: "To retry or inspect it without blocking the main flow.",
-        },
-        { id: "hide", label: "To hide failures from operators." },
-        { id: "assign", label: "To give every consumer every partition." },
-      ],
-      correctOptionId: "observe",
-      explanation:
-        "Retry and dead-letter paths preserve observability while keeping poison records from stalling normal processing.",
-    };
-  }
-
-  if (
-    snapshot.scenarioId === "hot-partitions-key-skew" &&
-    snapshot.keyStrategy.type === "fixed" &&
-    busiestPartition(snapshot).count > 0
-  ) {
-    return {
-      id: "hot-partition-detected",
-      title: "Checkpoint",
-      prompt: `What explains ${busiestPartition(snapshot).partition} receiving the most records?`,
-      options: [
-        {
-          id: "fixed-key",
-          label: "A repeated key is hashing to the same partition.",
-        },
-        { id: "commit", label: "Committed offsets route new records there." },
-        { id: "consumer", label: "The newest consumer chooses the partition." },
-      ],
-      correctOptionId: "fixed-key",
-      explanation:
-        "Kafka routes keyed records by hash. A repeated hot key preserves ordering but can overload one partition.",
-    };
-  }
-
-  return (
-    scenarioCheckpointCatalog[snapshot.scenarioId] ??
-    scenarioCheckpointCatalog.partitioning
-  );
-}
-
-function hasReplayRisk(snapshot: RunSnapshot) {
-  return snapshot.recentMessages.some(
-    (message) =>
-      ["received", "processing", "processed", "commit_requested"].includes(
-        message.state,
-      ) && !message.committedOffset,
-  );
-}
-
-function failedCount(snapshot: RunSnapshot) {
-  return (
-    snapshot.messageCounts.failed ??
-    snapshot.recentMessages.filter((message) => message.state === "failed")
-      .length
-  );
+  return scenarioCheckpointCatalog[scenarioId];
 }

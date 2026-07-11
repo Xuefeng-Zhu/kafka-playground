@@ -1,0 +1,228 @@
+import {
+  coreNodes,
+  descriptor,
+  layout,
+  scenarioEdge,
+  scenarioNode,
+} from "./helpers";
+import type { ScenarioGraphDescriptorCatalogSubset } from "./model";
+
+export const deliveryScenarioGraphDescriptors = {
+  "at-least-once-duplicates": descriptor({
+    scenarioId: "at-least-once-duplicates",
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(2),
+      }),
+      scenarioNode(
+        "idempotent-handler",
+        "Side-effect handler",
+        "Applies work once per idempotency key.",
+        "simulated",
+        "handler",
+        layout(3),
+      ),
+      scenarioNode(
+        "commit-gate",
+        "Commit boundary",
+        "Records consumer progress only after processing.",
+        "observed",
+        "commit",
+        layout(4),
+      ),
+      scenarioNode(
+        "replay-loop",
+        "Redelivery loop",
+        "Returns an uncommitted partition and offset to a consumer.",
+        "observed",
+        "retry",
+        layout(5),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "append once",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-group",
+        "topic",
+        "consumerGroup",
+        "deliver",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "group-handler",
+        "consumerGroup",
+        "idempotent-handler",
+        "apply side effect",
+        "simulated",
+        "data",
+      ),
+      scenarioEdge(
+        "handler-commit",
+        "idempotent-handler",
+        "commit-gate",
+        "request commit",
+        "observed",
+        "control",
+      ),
+      scenarioEdge(
+        "commit-replay",
+        "commit-gate",
+        "replay-loop",
+        "crash before commit",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "replay-group",
+        "replay-loop",
+        "consumerGroup",
+        "same offset",
+        "observed",
+        "feedback",
+      ),
+    ],
+  }),
+  "retry-dead-letter-queues": descriptor({
+    scenarioId: "retry-dead-letter-queues",
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(2),
+      }),
+      scenarioNode(
+        "retry-topic",
+        "Retry topic",
+        "Holds a record until its next attempt.",
+        "simulated",
+        "retry",
+        layout(3),
+      ),
+      scenarioNode(
+        "dead-letter-topic",
+        "Dead-letter topic",
+        "Stores a terminal poison record after retry exhaustion.",
+        "simulated",
+        "dlq",
+        layout(4),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "append",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-group",
+        "topic",
+        "consumerGroup",
+        "attempt",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "group-retry",
+        "consumerGroup",
+        "retry-topic",
+        "retry only",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "retry-group",
+        "retry-topic",
+        "consumerGroup",
+        "after backoff",
+        "simulated",
+        "feedback",
+      ),
+      scenarioEdge(
+        "retry-dlq",
+        "retry-topic",
+        "dead-letter-topic",
+        "terminal only",
+        "simulated",
+        "data",
+      ),
+    ],
+  }),
+  "transactional-producers": descriptor({
+    scenarioId: "transactional-producers",
+    replacesCoreProducerTopicEdge: true,
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(3),
+        consumerGroup: layout(4),
+      }),
+      scenarioNode(
+        "transaction-coordinator",
+        "Transaction coordinator",
+        "Stages deterministic demo transactions.",
+        "simulated",
+        "transaction",
+        layout(1),
+      ),
+      scenarioNode(
+        "commit-boundary",
+        "Read-committed boundary",
+        "Reveals only committed transactional records.",
+        "simulated",
+        "commit",
+        layout(2),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-coordinator",
+        "producer",
+        "transaction-coordinator",
+        "stage records",
+        "simulated",
+        "data",
+      ),
+      scenarioEdge(
+        "coordinator-boundary",
+        "transaction-coordinator",
+        "commit-boundary",
+        "commit or abort",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "boundary-topic",
+        "commit-boundary",
+        "topic",
+        "committed only",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "topic-group",
+        "topic",
+        "consumerGroup",
+        "read committed",
+        "observed",
+        "data",
+      ),
+    ],
+  }),
+} satisfies ScenarioGraphDescriptorCatalogSubset<
+  | "at-least-once-duplicates"
+  | "retry-dead-letter-queues"
+  | "transactional-producers"
+>;

@@ -50,6 +50,31 @@ describe("EventTimeline", () => {
       ),
     ).not.toBeNull();
   });
+
+  it("highlights every event for the focused message and emits a stable event focus", () => {
+    const onFocus = vi.fn();
+    render(
+      <EventTimeline
+        events={[messageProducedEvent(1), messageReceivedEvent(2)]}
+        focus={{ kind: "message", id: "message-1" }}
+        hasSequenceGap={false}
+        onFocus={onFocus}
+      />,
+    );
+
+    const produced = screen.getByRole("button", {
+      name: /message\.produced/i,
+    });
+    const received = screen.getByRole("button", {
+      name: /message\.received/i,
+    });
+
+    expect(produced.getAttribute("aria-pressed")).toBe("true");
+    expect(received.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(received);
+    expect(onFocus).toHaveBeenCalledWith({ kind: "event", id: "event-2" });
+  });
 });
 
 function eventBase(sequence: number) {

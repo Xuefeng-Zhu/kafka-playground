@@ -134,7 +134,7 @@ export function StartRunPanel({
         </h2>
         {scenario ? (
           <div className="mt-4 text-left">
-            <div className="text-[0.65rem] font-extrabold uppercase tracking-[0.22em] text-teal-700">
+            <div className="text-xs font-extrabold uppercase tracking-[0.16em] text-teal-700">
               Selected scenario
             </div>
             <h3 className="mt-1 text-xl font-extrabold text-[#123047]">

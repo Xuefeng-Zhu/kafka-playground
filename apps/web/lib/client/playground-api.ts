@@ -4,9 +4,12 @@ import {
   scenarioDefinitionSchema,
   type ConnectionStatus,
   type KeyStrategy,
+  type RemoteKafkaConfig,
   type RunSnapshot,
   type ScenarioDefinition,
+  type UserSelectableKafkaMode,
 } from "@kplay/contracts";
+import { z } from "zod";
 
 export type ClientLoadResult<T> =
   | { ok: true; data: T }
@@ -23,7 +26,38 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+const notFoundResponse = Symbol("not-found-response");
+
+type RequestJsonOptions = {
+  init?: RequestInit;
+  notFound?: "throw" | "return-not-found";
+  responseBody?: "required-json" | "ignore";
+};
+
+const scenarioDefinitionsResponseSchema = z.object({
+  scenarios: scenarioDefinitionSchema.array(),
+});
+
+const activeRunResponseSchema = z.object({
+  run: runSnapshotSchema.nullable(),
+});
+
+async function requestJson(
+  path: string,
+  options?: RequestJsonOptions & { notFound?: "throw" },
+): Promise<unknown>;
+async function requestJson(
+  path: string,
+  options: RequestJsonOptions & { notFound: "return-not-found" },
+): Promise<unknown | typeof notFoundResponse>;
+async function requestJson(
+  path: string,
+  {
+    init,
+    notFound = "throw",
+    responseBody = "required-json",
+  }: RequestJsonOptions = {},
+): Promise<unknown | typeof notFoundResponse> {
   const response = await fetch(path, {
     ...init,
     headers: {
@@ -32,6 +66,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
+    if (response.status === 404 && notFound === "return-not-found") {
+      return notFoundResponse;
+    }
     const error = await readErrorBody(response);
     throw new ApiRequestError(
       error.message ?? response.statusText,
@@ -39,20 +76,12 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       error.code,
     );
   }
-  return response.json() as Promise<T>;
+  if (responseBody === "ignore") return undefined;
+  return response.json() as Promise<unknown>;
 }
 
-export async function fetchJson(path: string) {
-  const response = await fetch(path);
-  if (!response.ok) {
-    const error = await readErrorBody(response);
-    throw new ApiRequestError(
-      error.message ?? response.statusText,
-      response.status,
-      error.code,
-    );
-  }
-  return response.json() as Promise<unknown>;
+function runApiUrl(runId: string, suffix = "") {
+  return `/api/v1/runs/${encodeURIComponent(runId)}${suffix}`;
 }
 
 export async function loadConnectionStatus(): Promise<
@@ -61,7 +90,9 @@ export async function loadConnectionStatus(): Promise<
   try {
     return {
       ok: true,
-      data: connectionStatusSchema.parse(await fetchJson("/api/v1/connection")),
+      data: connectionStatusSchema.parse(
+        await requestJson("/api/v1/connection"),
+      ),
     };
   } catch (error) {
     return {
@@ -78,14 +109,11 @@ export async function loadScenarioDefinitions(): Promise<
   ClientLoadResult<ScenarioDefinition[]>
 > {
   try {
-    const payload = await fetchJson("/api/v1/scenarios");
-    const scenarios =
-      payload && typeof payload === "object" && "scenarios" in payload
-        ? payload.scenarios
-        : [];
     return {
       ok: true,
-      data: scenarioDefinitionSchema.array().parse(scenarios),
+      data: scenarioDefinitionsResponseSchema.parse(
+        await requestJson("/api/v1/scenarios"),
+      ).scenarios,
     };
   } catch (error) {
     return {
@@ -99,14 +127,10 @@ export async function loadActiveRunSnapshot(): Promise<
   ClientLoadResult<RunSnapshot | null>
 > {
   try {
-    const payload = await fetchJson("/api/v1/runs");
-    const runPayload =
-      payload && typeof payload === "object" && "run" in payload
-        ? payload.run
-        : null;
     return {
       ok: true,
-      data: runPayload ? runSnapshotSchema.parse(runPayload) : null,
+      data: activeRunResponseSchema.parse(await requestJson("/api/v1/runs"))
+        .run,
     };
   } catch (error) {
     return {
@@ -117,46 +141,81 @@ export async function loadActiveRunSnapshot(): Promise<
 }
 
 export async function produceMessage(runId: string, keyStrategy?: KeyStrategy) {
-  return api<RunSnapshot>(`/api/v1/runs/${runId}/messages`, {
-    method: "POST",
-    body: JSON.stringify(keyStrategy ? { keyStrategy } : {}),
+  const payload = await requestJson(runApiUrl(runId, "/messages"), {
+    init: {
+      method: "POST",
+      body: JSON.stringify(keyStrategy ? { keyStrategy } : {}),
+    },
   });
+  return runSnapshotSchema.parse(payload);
+}
+
+export async function startScenarioRun(input: {
+  scenarioId: string;
+  mode: UserSelectableKafkaMode;
+  remoteKafkaConfig?: RemoteKafkaConfig;
+}) {
+  const payload = await requestJson("/api/v1/runs", {
+    init: {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  });
+  return runSnapshotSchema.parse(payload);
+}
+
+export async function testKafkaConnection(
+  remoteKafkaConfig: RemoteKafkaConfig,
+) {
+  const payload = await requestJson("/api/v1/connection/test", {
+    init: {
+      method: "POST",
+      body: JSON.stringify({ mode: "remote", remoteKafkaConfig }),
+    },
+  });
+  return connectionStatusSchema.parse(payload);
+}
+
+export async function mutateRun(
+  runId: string,
+  path: string,
+  init?: RequestInit,
+) {
+  const payload = await requestJson(runApiUrl(runId, path), { init });
+  return runSnapshotSchema.parse(payload);
+}
+
+export async function runScenarioExperiment(
+  runId: string,
+  experimentId: string,
+) {
+  const payload = await requestJson(
+    runApiUrl(runId, `/experiments/${encodeURIComponent(experimentId)}`),
+    { init: { method: "POST" } },
+  );
+  return runSnapshotSchema.parse(payload);
 }
 
 export async function retireRun(runId: string) {
-  const response = await fetch(`/api/v1/runs/${runId}/reset`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
+  await requestJson(runApiUrl(runId, "/reset"), {
+    init: {
+      method: "POST",
     },
+    notFound: "return-not-found",
+    responseBody: "ignore",
   });
-  if (!response.ok) {
-    const error = await readErrorBody(response);
-    if (response.status === 404) return;
-    throw new ApiRequestError(
-      error.message ?? response.statusText,
-      response.status,
-      error.code,
-    );
-  }
-  await response.json().catch(() => null);
 }
 
 export async function fetchRunSnapshot(
   runId: string,
 ): Promise<ClientLoadResult<RunSnapshot | null>> {
   try {
-    const response = await fetch(`/api/v1/runs/${runId}`);
-    if (!response.ok) {
-      const error = await readErrorBody(response);
-      if (response.status === 404) return { ok: true, data: null };
-      throw new ApiRequestError(
-        error.message ?? response.statusText,
-        response.status,
-        error.code,
-      );
-    }
-    return { ok: true, data: runSnapshotSchema.parse(await response.json()) };
+    const payload = await requestJson(runApiUrl(runId), {
+      notFound: "return-not-found",
+    });
+    return payload === notFoundResponse
+      ? { ok: true, data: null }
+      : { ok: true, data: runSnapshotSchema.parse(payload) };
   } catch (error) {
     return {
       ok: false,

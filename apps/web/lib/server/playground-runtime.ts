@@ -5,6 +5,7 @@ import type {
   RemoteKafkaConfig,
   UserSelectableKafkaMode,
   RuntimeEvent,
+  ScenarioState,
 } from "@kplay/contracts";
 import {
   DemoKafkaRuntimeAdapter,
@@ -47,6 +48,12 @@ import {
   DEFAULT_SESSION_ID,
   PlaygroundRunRegistry,
 } from "./playground-run-registry";
+import {
+  buildScenarioExperimentResult,
+  scenarioExperimentPrerequisite,
+  supportsScenarioExperiment,
+  type ScenarioExperimentObservations,
+} from "./scenario-experiments";
 
 export class PlaygroundRuntime {
   private readonly env = getServerEnv();
@@ -76,6 +83,9 @@ export class PlaygroundRuntime {
     this.diagnostics,
   );
   private readonly runs = new PlaygroundRunRegistry();
+  private readonly inFlightExperiments = new Map<string, Promise<void>>();
+  private readonly cleanupRequestedRunIds = new Set<string>();
+  private readonly cleanupOperations = new Map<string, Promise<void>>();
   private shutdownStarted = false;
 
   scenarios() {
@@ -504,6 +514,195 @@ export class PlaygroundRuntime {
     return this.snapshot(runId, sessionId);
   }
 
+  async runExperiment(
+    runId: string,
+    experimentId: string,
+    sessionId = DEFAULT_SESSION_ID,
+  ) {
+    const run = this.requireRun(runId, sessionId);
+    if (
+      this.cleanupRequestedRunIds.has(runId) ||
+      run.mode !== "demo" ||
+      !run.scenarioState ||
+      !supportsScenarioExperiment(run.scenarioState, experimentId) ||
+      run.inFlightExperimentId
+    ) {
+      throw new ApiError(
+        "SCENARIO_EXPERIMENT_UNAVAILABLE",
+        run.inFlightExperimentId
+          ? `Experiment ${run.inFlightExperimentId} is already running.`
+          : run.mode !== "demo"
+            ? "Teaching experiments are unavailable for remote Kafka runs because their deterministic evidence is demo-only."
+            : "This experiment is unavailable for the active scenario.",
+        409,
+      );
+    }
+
+    const prerequisite = scenarioExperimentPrerequisite(
+      run.scenarioState,
+      experimentId,
+    );
+    if (prerequisite && !run.completedExperimentIds.has(prerequisite)) {
+      throw new ApiError(
+        "SCENARIO_EXPERIMENT_UNAVAILABLE",
+        `Complete experiment ${prerequisite} before running ${experimentId}.`,
+        409,
+      );
+    }
+
+    run.inFlightExperimentId = experimentId;
+    let resolveExperiment: (() => void) | undefined;
+    const experimentCompleted = new Promise<void>((resolve) => {
+      resolveExperiment = resolve;
+    });
+    this.inFlightExperiments.set(runId, experimentCompleted);
+    const startedAtVirtualMs = run.virtualTimeMs;
+    let totalSteps = 0;
+
+    try {
+      const preview = buildScenarioExperimentResult({
+        state: run.scenarioState,
+        experimentId,
+        startedAtVirtualMs,
+      });
+      totalSteps = preview.transitions.length;
+      run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
+        status: "running",
+        experimentId,
+        stepIndex: 0,
+        totalSteps,
+        startedAtVirtualMs,
+        completedAtVirtualMs: null,
+        error: null,
+      });
+      this.emit(run, "scenario.experiment.started", {
+        scenarioId: run.scenarioId,
+        experimentId,
+        entityIds: [`scenario-${run.scenarioId}`],
+        provenance: "simulated",
+        virtualTimeMs: run.virtualTimeMs,
+        step: {
+          id: "experiment-started",
+          index: 0,
+          total: totalSteps,
+          label: "Experiment started",
+        },
+      });
+
+      // Yield once without using wall-clock time. This keeps the per-run guard
+      // observable to a concurrent request while all domain time stays virtual.
+      await Promise.resolve();
+      const observations = await this.prepareExperimentObservations(
+        run,
+        experimentId,
+        sessionId,
+      );
+      const result = buildScenarioExperimentResult({
+        state: run.scenarioState,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      });
+
+      result.transitions.forEach((transition, index) => {
+        run.virtualTimeMs += transition.advanceMs;
+        if (run.scenarioState) {
+          run.scenarioState = this.updateExperimentProgress(
+            {
+              ...run.scenarioState,
+              revision: run.scenarioState.revision + 1,
+              virtualTimeMs: run.virtualTimeMs,
+            } as ScenarioState,
+            {
+              status: "running",
+              experimentId,
+              stepIndex: index + 1,
+              totalSteps,
+              startedAtVirtualMs,
+              completedAtVirtualMs: null,
+              error: null,
+            },
+          );
+        }
+        this.emit(run, "scenario.experiment.transition", {
+          scenarioId: run.scenarioId,
+          experimentId,
+          entityIds: transition.entityIds,
+          provenance: transition.provenance,
+          virtualTimeMs: run.virtualTimeMs,
+          messageId: transition.messageId,
+          partition: transition.partition,
+          offset: transition.offset,
+          transition: transition.transition,
+          step: {
+            id: transition.id,
+            index: index + 1,
+            total: totalSteps,
+            label: transition.label,
+          },
+        });
+      });
+
+      run.scenarioState = result.state;
+      run.virtualTimeMs = result.state.virtualTimeMs;
+      run.completedExperimentIds.add(experimentId);
+      const lastStep = result.transitions.at(-1);
+      this.emit(run, "scenario.experiment.completed", {
+        scenarioId: run.scenarioId,
+        experimentId,
+        entityIds: [`scenario-${run.scenarioId}`],
+        provenance: "simulated",
+        virtualTimeMs: run.virtualTimeMs,
+        step: {
+          id: "experiment-completed",
+          index: totalSteps,
+          total: totalSteps,
+          label: lastStep?.label ?? "Experiment completed",
+        },
+      });
+      return this.snapshot(runId, sessionId);
+    } catch (error) {
+      const errorCode =
+        error instanceof ApiError ? error.code : "SCENARIO_EXPERIMENT_FAILED";
+      const message =
+        error instanceof Error ? error.message : "Experiment execution failed.";
+      const failedEventTotalSteps = Math.max(totalSteps, 1);
+      if (run.scenarioState) {
+        run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
+          status: "failed",
+          experimentId,
+          stepIndex: run.scenarioState.experiment.stepIndex,
+          totalSteps,
+          startedAtVirtualMs,
+          completedAtVirtualMs: run.virtualTimeMs,
+          error: { code: errorCode, message },
+        });
+      }
+      this.emit(run, "scenario.experiment.failed", {
+        scenarioId: run.scenarioId,
+        experimentId,
+        entityIds: [`scenario-${run.scenarioId}`],
+        provenance: "simulated",
+        virtualTimeMs: run.virtualTimeMs,
+        errorCode,
+        message,
+        step: {
+          id: "experiment-failed",
+          index: run.scenarioState?.experiment.stepIndex ?? 0,
+          total: failedEventTotalSteps,
+          label: "Experiment failed",
+        },
+      });
+      throw error;
+    } finally {
+      run.inFlightExperimentId = null;
+      resolveExperiment?.();
+      if (this.inFlightExperiments.get(runId) === experimentCompleted) {
+        this.inFlightExperiments.delete(runId);
+      }
+    }
+  }
+
   async reset(runId: string, sessionId = DEFAULT_SESSION_ID) {
     const run = this.requireRun(runId, sessionId);
     await this.cleanup(run);
@@ -564,6 +763,180 @@ export class PlaygroundRuntime {
 
   private findRun(runId: string) {
     return this.runs.findRun(runId);
+  }
+
+  private updateExperimentProgress(
+    state: ScenarioState,
+    experiment: ScenarioState["experiment"],
+  ): ScenarioState {
+    return { ...state, experiment } as ScenarioState;
+  }
+
+  private async prepareExperimentObservations(
+    run: InternalRun,
+    experimentId: string,
+    sessionId: string,
+  ): Promise<ScenarioExperimentObservations | undefined> {
+    if (run.scenarioId === "partitioning") {
+      const growGroup = experimentId === "grow-consumer-group";
+      const produced: PlaygroundMessage[] = growGroup
+        ? run.messages.filter((message) =>
+            run.scenarioState?.scenarioId === "partitioning"
+              ? run.scenarioState.routingTraces.some(
+                  (trace) => trace.messageId === message.messageId,
+                )
+              : false,
+          )
+        : [];
+      if (!growGroup) {
+        for (const key of ["A", "B", "A"]) {
+          await this.produceOne(
+            run.runId,
+            { type: "fixed", value: key },
+            sessionId,
+          );
+          const message = run.messages.at(-1);
+          if (message) produced.push(message);
+        }
+      }
+      const targetConsumerCount = growGroup ? 3 : 1;
+      while (this.activeConsumers(run).length < targetConsumerCount) {
+        await this.addConsumer(run.runId, sessionId);
+      }
+      for (const message of produced) {
+        const timer = run.processingTimers.get(message.messageId);
+        if (timer) clearTimeout(timer);
+        run.processingTimers.delete(message.messageId);
+        if (message.assignedConsumerId) {
+          await this.processMessage(
+            run.runId,
+            message.messageId,
+            message.assignedConsumerId,
+            { commit: growGroup || message !== produced.at(-1) },
+          );
+        }
+      }
+
+      const assignmentEpoch =
+        run.scenarioState?.scenarioId === "partitioning"
+          ? run.scenarioState.assignmentEpoch + 1
+          : 1;
+      return {
+        partitioning: {
+          routingTraces: produced.flatMap((message, index) =>
+            message.partition === null || message.offset === null
+              ? []
+              : [
+                  {
+                    id: `routing-${message.messageId}`,
+                    provenance: "simulated" as const,
+                    messageId: message.messageId,
+                    key: message.key,
+                    partition: message.partition,
+                    offset: message.offset,
+                    sequence: index + 1,
+                  },
+                ],
+          ),
+          partitionPositions: Array.from(
+            { length: run.partitionCount },
+            (_, partition) => {
+              const partitionMessages = produced.filter(
+                (message) => message.partition === partition,
+              );
+              const processed = partitionMessages
+                .filter((message) =>
+                  ["processed", "commit_requested", "committed"].includes(
+                    message.state,
+                  ),
+                )
+                .at(-1);
+              return {
+                id: `partition-${partition}-position`,
+                provenance: "simulated" as const,
+                partition,
+                processedOffset: processed?.offset ?? null,
+                committedOffset:
+                  run.latestCommittedOffsets[String(partition)] ?? null,
+              };
+            },
+          ),
+          consumers: run.consumers.map((consumer) => ({
+            id: `assignment-${consumer.consumerId}-${assignmentEpoch}`,
+            provenance: "simulated" as const,
+            consumerId: consumer.consumerId,
+            partitions: consumer.assignments.map(
+              (assignment) => assignment.partition,
+            ),
+            status: consumer.assignments.length > 0 ? "running" : "idle",
+            epoch: assignmentEpoch,
+          })),
+          assignmentEpoch,
+        },
+      };
+    }
+
+    if (run.scenarioId === "fan-out-load-balancing") {
+      const routes: Array<{
+        messageId: string;
+        partition: number;
+        offset: string;
+      }> = [];
+      if (experimentId === "produce-unkeyed-burst") {
+        for (let index = 0; index < 3; index += 1) {
+          await this.produceOne(run.runId, { type: "no_key" }, sessionId);
+          const message = run.messages.at(-1);
+          if (
+            message &&
+            message.partition !== null &&
+            message.offset !== null
+          ) {
+            routes.push({
+              messageId: message.messageId,
+              partition: message.partition,
+              offset: message.offset,
+            });
+          }
+        }
+      }
+      const epochs: NonNullable<
+        ScenarioExperimentObservations["loadBalancing"]
+      >["epochs"] = [];
+      if (experimentId === "grow-consumer-group") {
+        // This experiment teaches a four-member assignment independently of
+        // the raw-controls consumer pool. The pool can be capped below four
+        // and can already contain user-created members, so mutating it here
+        // would either exceed run capacity or skip the early assignment
+        // epochs. Keep the authoritative lesson deterministic and explicitly
+        // simulated while leaving real run capacity untouched.
+        for (let epoch = 1; epoch <= 4; epoch += 1) {
+          const memberIds = Array.from(
+            { length: epoch },
+            (_, index) => `consumer-${index + 1}`,
+          );
+          const assignments = memberIds.map((consumerId, memberIndex) => ({
+            consumerId,
+            partitions: Array.from(
+              { length: run.partitionCount },
+              (_, partition) => partition,
+            ).filter((partition) => partition % epoch === memberIndex),
+          }));
+          epochs.push({
+            id: `assignment-epoch-${epoch}`,
+            provenance: "simulated",
+            epoch,
+            memberIds,
+            assignments,
+            idleConsumerIds: assignments
+              .filter((assignment) => assignment.partitions.length === 0)
+              .map((assignment) => assignment.consumerId),
+          });
+        }
+      }
+      return { loadBalancing: { epochs, routes } };
+    }
+
+    return undefined;
   }
 
   private emit(
@@ -779,6 +1152,7 @@ export class PlaygroundRuntime {
     runId: string,
     messageId: string,
     expectedConsumerId?: string,
+    options: { commit?: boolean } = {},
   ) {
     const run = this.findRun(runId);
     if (!run) return;
@@ -829,6 +1203,7 @@ export class PlaygroundRuntime {
       consumerId: consumer.consumerId,
       actor: consumer.consumerId,
     });
+    if (options.commit === false) return;
     const committedOffset = String(Number(message.offset) + 1);
     message.state = "commit_requested";
     this.emit(run, "offset.commit_requested", {
@@ -880,7 +1255,24 @@ export class PlaygroundRuntime {
     }
   }
 
-  private async cleanup(run: InternalRun) {
+  private cleanup(run: InternalRun) {
+    const existingCleanup = this.cleanupOperations.get(run.runId);
+    if (existingCleanup) return existingCleanup;
+
+    this.cleanupRequestedRunIds.add(run.runId);
+    const cleanup = this.performCleanup(run);
+    const trackedCleanup = cleanup.finally(() => {
+      this.cleanupRequestedRunIds.delete(run.runId);
+      this.cleanupOperations.delete(run.runId);
+    });
+    this.cleanupOperations.set(run.runId, trackedCleanup);
+    return trackedCleanup;
+  }
+
+  private async performCleanup(run: InternalRun) {
+    const inFlightExperiment = this.inFlightExperiments.get(run.runId);
+    if (inFlightExperiment) await inFlightExperiment;
+
     clearProducerTimer(run);
     run.producerStatus = "stopped";
     for (const timer of run.processingTimers.values()) clearTimeout(timer);
@@ -894,6 +1286,10 @@ export class PlaygroundRuntime {
       });
     }
     run.consumerHandles.clear();
+    run.scenarioState = null;
+    run.virtualTimeMs = 0;
+    run.inFlightExperimentId = null;
+    run.completedExperimentIds.clear();
     run.status = "cleaning";
     run.cleanupStatus = "requested";
     this.emit(run, "resource.cleanup_started", {

@@ -233,6 +233,7 @@ describe("PlaygroundRuntime demo integration", () => {
     });
 
     expect(snapshot.mode).toBe("remote");
+    expect(snapshot.scenarioState).toBeNull();
     expect(createRun).toHaveBeenCalledTimes(1);
 
     snapshot = await runtime.produceOne(snapshot.runId);

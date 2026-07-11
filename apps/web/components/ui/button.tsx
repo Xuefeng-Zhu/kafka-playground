@@ -13,7 +13,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition focus:outline-none focus:ring-4 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-45",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition-colors focus:outline-none focus:ring-4 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-45",
         variant === "primary" &&
           "border-teal-700 bg-teal-700 text-white shadow-[4px_4px_0_rgba(15,118,110,0.18)] hover:bg-teal-800",
         variant === "secondary" &&

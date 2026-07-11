@@ -4,6 +4,7 @@ import type {
   RunSnapshot,
 } from "@kplay/contracts";
 import type { ConsumerTask } from "@/lib/client/current-consumer-task";
+import type { RuntimeTopologyProvenance } from "@/lib/client/topology-provenance";
 import { Code2, Users } from "lucide-react";
 
 const partitionTones = [
@@ -44,6 +45,7 @@ export function ProducerCard({
       type="button"
       onClick={onSelect}
       aria-label="Inspect producer"
+      aria-pressed={selected}
       className={`w-full rounded-2xl border-[3px] bg-[#fffdf5]/95 p-5 text-center shadow-[7px_7px_0_rgba(15,118,110,0.14)] focus:outline-none focus:ring-4 focus:ring-sky-200 ${
         selected
           ? "border-teal-700 ring-4 ring-sky-200"
@@ -60,7 +62,7 @@ export function ProducerCard({
         />
         {status}
       </div>
-      <div className="mt-3 rounded-full border-2 border-teal-700 bg-teal-50 px-2 py-1 text-[11px] font-extrabold text-teal-800">
+      <div className="mt-3 rounded-full border-2 border-teal-700 bg-teal-50 px-2 py-1 text-xs font-extrabold text-teal-800">
         Source
       </div>
     </button>
@@ -77,6 +79,7 @@ export function PartitionLane({
   committedOffset,
   owner,
   messageCount,
+  provenance,
   onSelect,
   onSelectMessage,
 }: {
@@ -89,6 +92,7 @@ export function PartitionLane({
   committedOffset?: string;
   owner?: { consumerId: string };
   messageCount: number;
+  provenance: RuntimeTopologyProvenance;
   onSelect: () => void;
   onSelectMessage: (messageId: string) => void;
 }) {
@@ -112,17 +116,18 @@ export function PartitionLane({
           onClick={onSelect}
           className={`rounded-xl border-2 px-2 py-1 text-sm font-extrabold focus:outline-none focus:ring-4 focus:ring-sky-200 ${tone.chip}`}
           aria-label={`Inspect partition ${partition}`}
+          aria-pressed={selected}
         >
           Partition {partition}
         </button>
-        <span className="rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-0.5 text-[11px] font-extrabold text-teal-800">
+        <span className="rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-0.5 text-xs font-extrabold text-teal-800">
           latest {latestOffset ?? "none"}
         </span>
-        <span className="rounded-full border-2 border-emerald-500 bg-emerald-100 px-2 py-0.5 text-[11px] font-extrabold text-emerald-800">
+        <span className="rounded-full border-2 border-emerald-500 bg-emerald-100 px-2 py-0.5 text-xs font-extrabold text-emerald-800">
           committed {committedOffset ?? "-"}
         </span>
         <span
-          className="ml-auto rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-0.5 text-[11px] font-extrabold text-teal-800"
+          className="ml-auto rounded-full border-2 border-teal-700 bg-[#fffdf5] px-2 py-0.5 text-xs font-extrabold text-teal-800"
           data-testid={`partition-owner-${partition}`}
         >
           {owner
@@ -136,11 +141,12 @@ export function PartitionLane({
             key={message.messageId}
             title={messageChipTitle(message)}
             aria-label={messageChipTitle(message)}
+            aria-pressed={selectedMessageId === message.messageId}
             data-testid={`partition-message-${message.messageId}`}
             onClick={() => onSelectMessage(message.messageId)}
             className={`min-w-9 shrink-0 whitespace-nowrap rounded-xl border-2 px-2 py-1 font-mono text-xs font-extrabold ${
               selectedMessageId === message.messageId
-                ? "border-rose-700 bg-rose-400 text-white shadow-[0_0_0_5px_rgba(251,113,133,0.16)]"
+                ? "border-rose-900 bg-rose-700 text-white shadow-[0_0_0_5px_rgba(190,18,60,0.18)]"
                 : tone.chip
             }`}
           >
@@ -168,8 +174,9 @@ export function PartitionLane({
           className={`ml-auto size-2.5 rounded-full ${active ? "bg-emerald-500" : partition === 0 ? "bg-sky-500" : "bg-violet-500"}`}
         />
       </div>
-      <div className="mt-2 text-[11px] font-semibold text-[#466778]">
-        {messageCount} messages observed in this partition
+      <div className="mt-2 text-xs font-semibold text-[#466778]">
+        {messageCount} {provenance}{" "}
+        {messageCount === 1 ? "message" : "messages"} in this partition
       </div>
     </div>
   );
@@ -195,6 +202,7 @@ export function ConsumerCard({
       type="button"
       onClick={onSelect}
       aria-label={`Inspect ${consumer.consumerId}`}
+      aria-pressed={selected}
       className={`w-full rounded-2xl border-[3px] p-3 text-left focus:outline-none focus:ring-4 focus:ring-sky-200 ${
         isCrashed
           ? "border-rose-500 bg-rose-100"
@@ -236,14 +244,14 @@ export function ConsumerCard({
         {consumer.assignments.map((assignment) => (
           <span
             key={assignment.partition}
-            className={`rounded-full border-2 px-2 py-0.5 text-[11px] font-extrabold ${toneForPartition(assignment.partition).chip}`}
+            className={`rounded-full border-2 px-2 py-0.5 text-xs font-extrabold ${toneForPartition(assignment.partition).chip}`}
           >
             P{assignment.partition}
           </span>
         ))}
       </div>
       {currentTasks.length > 0 ? (
-        <div className="mt-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-[11px] font-extrabold text-[#31566a]">
+        <div className="mt-2 rounded-xl border-2 border-teal-700 bg-[#fffdf5] px-2 py-1 text-xs font-extrabold text-[#31566a]">
           <span className="text-teal-800">Working: </span>
           {currentTasks.length === 1
             ? "1 task"

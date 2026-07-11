@@ -5,101 +5,52 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import {
   type ConnectionStatus,
-  type KeyStrategy,
-  type RemoteKafkaConfig,
   type RunSnapshot,
-  type RuntimeEvent,
   type ScenarioDefinition,
-  type UserSelectableKafkaMode,
 } from "@kplay/contracts";
-import {
-  Lightbulb,
-  List,
-  PanelRightOpen,
-  SlidersHorizontal,
-  type LucideIcon,
-} from "lucide-react";
-import {
-  initializeFromSnapshot,
-  mergeSnapshot,
-  applyRuntimeEvent,
-  initialVisualizationState,
-} from "@/lib/client/visualization-reducer";
+import { PanelRightOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ControlsPanel } from "@/components/controls/controls-panel";
-import { KafkaTopology } from "@/components/topology/kafka-topology";
-import { EventTimeline } from "@/components/timeline/event-timeline";
-import { EducationPanel } from "@/components/education/education-panel";
+import { ScenarioLearningSurface } from "@/components/learning";
+import { ExploreTopology } from "@/components/topology/explore-topology";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
 import { StartRunPanel } from "@/components/playground/start-run-panel";
 import { useRunAction } from "@/components/playground/use-run-action";
-import {
-  useLowerPanelTabs,
-  type LowerPanelTab,
-} from "@/components/playground/use-lower-panel-tabs";
+import { useLowerPanelTabs } from "@/components/playground/use-lower-panel-tabs";
+import { usePlaygroundBootstrap } from "@/components/playground/use-playground-bootstrap";
+import { usePlaygroundRunCommands } from "@/components/playground/use-playground-run-commands";
+import { usePlaygroundVisualization } from "@/components/playground/use-playground-visualization";
 import { WorkspaceHeader } from "@/components/playground/workspace-header";
+import { WorkspaceLowerPanel } from "@/components/playground/workspace-lower-panel";
 import { useRunLiveUpdates } from "@/components/playground/use-run-live-updates";
-import {
-  MAX_TIMELINE_HEIGHT,
-  MIN_TIMELINE_HEIGHT,
-  useTimelineResize,
-} from "@/components/playground/use-timeline-resize";
-import { ScenarioInsightPanel } from "@/components/scenario/scenario-insight-panel";
+import { useScenarioExperience } from "@/components/playground/use-scenario-experience";
+import { useTeachingExperiment } from "@/components/playground/use-teaching-experiment";
+import { useWorkspaceView } from "@/components/playground/use-workspace-view";
+import { useWorkspaceFocus } from "@/components/playground/use-workspace-focus";
+import { useTimelineResize } from "@/components/playground/use-timeline-resize";
 import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
-import {
-  api,
-  loadActiveRunSnapshot,
-  loadConnectionStatus,
-  loadScenarioDefinitions,
-  produceMessage,
-  retireRun,
-} from "@/lib/client/playground-api";
 import { usePlaygroundUiStore } from "@/lib/client/playground-ui-store";
-import type { ScenarioAction } from "@/lib/client/scenario-actions";
-import type { TopologySelection } from "@/lib/client/topology-selection";
-
-type Action =
-  | { type: "snapshot"; snapshot: RunSnapshot }
-  | { type: "event"; event: RuntimeEvent }
-  | { type: "clear" };
-
-const lowerPanelTabs = [
-  { id: "controls", label: "Controls", Icon: SlidersHorizontal },
-  { id: "insights", label: "Insights", Icon: Lightbulb },
-  { id: "timeline", label: "Timeline", Icon: List },
-] as const satisfies ReadonlyArray<{
-  id: LowerPanelTab;
-  label: string;
-  Icon: LucideIcon;
-}>;
-
-function reducer(state: typeof initialVisualizationState, action: Action) {
-  if (action.type === "snapshot") {
-    return state.snapshot
-      ? mergeSnapshot(state, action.snapshot)
-      : initializeFromSnapshot(action.snapshot);
-  }
-  if (action.type === "event") return applyRuntimeEvent(state, action.event);
-  return initialVisualizationState;
-}
+import type { FocusRef } from "@/lib/client/scenario-experience";
+import { messageFocus } from "@/lib/client/scenario-experience/helpers";
 
 export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   const router = useRouter();
-  const [state, dispatch] = useReducer(reducer, initialVisualizationState);
+  const [state, dispatch] = usePlaygroundVisualization();
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
   const [isInspectorOpen, setInspectorOpen] = useState(false);
   const [shouldFrameTopology, setShouldFrameTopology] = useState(false);
-  const [selectedTopologyNode, setSelectedTopologyNode] =
-    useState<TopologySelection | null>(null);
+  const [selectedCheckpointOptionId, setSelectedCheckpointOptionId] = useState<
+    string | null
+  >(null);
   const workspaceGridRef = useRef<HTMLDivElement | null>(null);
   const topologySectionRef = useRef<HTMLElement | null>(null);
+  const run = state.snapshot;
   const {
     activeLowerPanelTab,
     lowerPanelTabRefs,
@@ -114,16 +65,57 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     timelineHeight,
     workspaceStyle,
   } = useTimelineResize(workspaceGridRef);
-  const {
-    selectedMessageId,
-    selectedEventSequence,
-    setSelectedMessageId,
-    setSelectedEventSequence,
-    resetSelection,
-  } = usePlaygroundUiStore();
+  const { focus, setFocus, resetFocus } = usePlaygroundUiStore();
   const { actionError, isActionPending, runAction, setActionError } =
     useRunAction();
-  const run = state.snapshot;
+  const applySnapshot = useCallback(
+    (snapshot: RunSnapshot) => {
+      dispatch({ type: "snapshot", snapshot });
+    },
+    [dispatch],
+  );
+  const {
+    announcement,
+    experimentError,
+    pendingExperimentId,
+    resetTeachingExperiment,
+    runTeachingExperiment,
+  } = useTeachingExperiment({
+    runId: run?.runId ?? null,
+    runAction,
+    onSnapshot: applySnapshot,
+  });
+  const {
+    canUseGuidedView,
+    experienceResolution,
+    experimentTransitions,
+    showWorkspaceViewSwitch,
+  } = useScenarioExperience({
+    run,
+    scenarioId,
+    events: state.events,
+    pendingExperimentId,
+  });
+  const { workspaceView, setWorkspaceView } = useWorkspaceView(
+    canUseGuidedView,
+    showWorkspaceViewSwitch,
+  );
+  const showGuidedView = canUseGuidedView && workspaceView === "guided";
+  const showExploreDock = Boolean(run) && !showGuidedView;
+  const {
+    entityDetail,
+    entityDetails,
+    evidenceFocus,
+    exploreTopologyFocus,
+    graphFocus,
+    selectedEvent,
+    selectedMessage,
+  } = useWorkspaceFocus({
+    run,
+    events: state.events,
+    focus,
+    experienceResolution,
+  });
   const closeLiveUpdates = useRunLiveUpdates({
     dispatch,
     runId: run?.runId ?? null,
@@ -134,69 +126,80 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     [scenarioId, scenarios],
   );
   const clearRunSelection = useCallback(() => {
-    resetSelection();
-    setSelectedTopologyNode(null);
+    resetFocus();
     setInspectorOpen(false);
+    resetTeachingExperiment();
+    setSelectedCheckpointOptionId(null);
     dispatch({ type: "clear" });
-  }, [resetSelection]);
+  }, [dispatch, resetFocus, resetTeachingExperiment]);
+  const replaceRoute = useCallback(
+    (path: string) => router.replace(path),
+    [router],
+  );
+  const pushRoute = useCallback((path: string) => router.push(path), [router]);
+  usePlaygroundBootstrap({
+    scenarioId,
+    clearRunSelection,
+    onConnection: setConnection,
+    onScenarios: setScenarios,
+    onSnapshot: applySnapshot,
+    replaceRoute,
+    setActionError,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadConnectionStatus().then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        setConnection(result.data);
-        return;
-      }
-      setConnection(null);
-      setActionError(result.message);
-    });
-    void loadScenarioDefinitions().then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        setScenarios(result.data);
-        return;
-      }
-      setScenarios([]);
-      setActionError(result.message);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [setActionError]);
+  const handleRunStarted = useCallback(
+    (snapshot: RunSnapshot) => {
+      applySnapshot(snapshot);
+      resetFocus();
+      resetTeachingExperiment();
+      setShouldFrameTopology(true);
+      selectLowerPanelTab("controls");
+    },
+    [applySnapshot, resetFocus, resetTeachingExperiment, selectLowerPanelTab],
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) clearRunSelection();
-    });
+  const handleMessageProduced = useCallback(
+    (snapshot: RunSnapshot) => {
+      applySnapshot(snapshot);
+      setShouldFrameTopology(true);
+      const message = snapshot.recentMessages.at(-1);
+      setFocus(
+        message
+          ? messageFocus(
+              message.messageId,
+              message.partition ?? undefined,
+              message.offset ?? undefined,
+            )
+          : null,
+      );
+      setInspectorOpen(true);
+    },
+    [applySnapshot, setFocus],
+  );
 
-    void (async () => {
-      try {
-        const result = await loadActiveRunSnapshot();
-        if (cancelled) return;
-        if (!result.ok) {
-          setActionError(result.message);
-          return;
-        }
-        const snapshot = result.data;
-        if (!snapshot) return;
-        if (snapshot.scenarioId === scenarioId) {
-          dispatch({ type: "snapshot", snapshot });
-          return;
-        }
-        router.replace(`/scenarios/${snapshot.scenarioId}`);
-      } catch {
-        if (!cancelled) setActionError("Unable to load the active run.");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router, scenarioId, clearRunSelection, setActionError]);
+  const {
+    mutate,
+    navigateToScenario,
+    produceOne,
+    resetRun,
+    startRun,
+    testRemoteConnection,
+    updateSettings,
+  } = usePlaygroundRunCommands({
+    scenarioId,
+    runId: run?.runId ?? null,
+    runAction,
+    pushRoute,
+    closeLiveUpdates,
+    clearRunSelection,
+    onSnapshot: applySnapshot,
+    onRunStarted: handleRunStarted,
+    onMessageProduced: handleMessageProduced,
+  });
 
   useEffect(() => {
     if (!shouldFrameTopology || !run) return;
+    if (!showExploreDock) return;
     const frame = requestAnimationFrame(() => {
       if (window.matchMedia("(max-width: 767px)").matches) {
         topologySectionRef.current?.scrollIntoView({ block: "start" });
@@ -204,157 +207,23 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       setShouldFrameTopology(false);
     });
     return () => cancelAnimationFrame(frame);
-  }, [run, shouldFrameTopology]);
+  }, [run, shouldFrameTopology, showExploreDock]);
 
-  const selectedEvent = useMemo(() => {
-    if (selectedEventSequence === null) return null;
-    return (
-      (state.events ?? []).find(
-        (event) => event.sequence === selectedEventSequence,
-      ) ?? null
-    );
-  }, [state.events, selectedEventSequence]);
-  const selectedMessage = useMemo(() => {
-    const messages = run?.recentMessages ?? [];
-    if (selectedMessageId) {
-      return (
-        messages.find((message) => message.messageId === selectedMessageId) ??
-        null
-      );
-    }
-    const eventMessageId =
-      selectedEvent && "messageId" in selectedEvent
-        ? selectedEvent.messageId
-        : null;
-    if (eventMessageId) {
-      return (
-        messages.find((message) => message.messageId === eventMessageId) ?? null
-      );
-    }
-    if (selectedEventSequence !== null || selectedTopologyNode) return null;
-    return messages.at(-1) ?? null;
-  }, [
-    run?.recentMessages,
-    selectedEvent,
-    selectedEventSequence,
-    selectedMessageId,
-    selectedTopologyNode,
-  ]);
-
-  async function startRun(input: {
-    mode: UserSelectableKafkaMode;
-    remoteKafkaConfig?: RemoteKafkaConfig;
-  }) {
-    await runAction(async () => {
-      const snapshot = await api<RunSnapshot>("/api/v1/runs", {
-        method: "POST",
-        body: JSON.stringify({
-          scenarioId,
-          mode: input.mode,
-          remoteKafkaConfig: input.remoteKafkaConfig,
-        }),
-      });
-      dispatch({ type: "snapshot", snapshot });
-      setShouldFrameTopology(true);
-      selectLowerPanelTab("controls");
-    });
-  }
-
-  async function testRemoteConnection(remoteKafkaConfig: RemoteKafkaConfig) {
-    return api<ConnectionStatus>("/api/v1/connection/test", {
-      method: "POST",
-      body: JSON.stringify({
-        mode: "remote",
-        remoteKafkaConfig,
-      }),
-    });
-  }
-
-  async function resetRun() {
-    if (!run) return;
-    await runAction(() => retireActiveRun(run.runId));
-  }
-
-  async function navigateToScenario(nextScenarioId: string) {
-    if (nextScenarioId === scenarioId) return;
-    if (!run) {
-      router.push(`/scenarios/${nextScenarioId}`);
-      return;
-    }
-    await runAction(async () => {
-      await retireActiveRun(run.runId);
-      router.push(`/scenarios/${nextScenarioId}`);
-    });
-  }
-
-  async function retireActiveRun(runId: string) {
-    closeLiveUpdates();
-    await retireRun(runId);
-    clearRunSelection();
-  }
-
-  async function mutate(path: string, init?: RequestInit) {
-    if (!run) return;
-    await runAction(async () => {
-      const snapshot = await api<RunSnapshot>(
-        `/api/v1/runs/${run.runId}${path}`,
-        init,
-      );
-      dispatch({ type: "snapshot", snapshot });
-    });
-  }
-
-  async function updateSettings(settings: {
-    productionRate?: number;
-    keyStrategy?: KeyStrategy;
-    processingLatencyMs?: number;
-  }) {
-    await mutate("/settings", {
-      method: "PATCH",
-      body: JSON.stringify(settings),
-    });
-  }
-
-  async function produceOne() {
-    if (!run) return;
-    await runAction(async () => {
-      const snapshot = await produceMessage(run.runId);
-      dispatch({ type: "snapshot", snapshot });
-      setShouldFrameTopology(true);
-      resetSelection();
-      setSelectedTopologyNode(null);
-      setInspectorOpen(true);
-    });
-  }
-
-  async function runScenarioAction(action: ScenarioAction) {
-    if (!run) return;
-    await runAction(async () => {
-      if (action.settings) {
-        const snapshot = await api<RunSnapshot>(
-          `/api/v1/runs/${run.runId}/settings`,
-          {
-            method: "PATCH",
-            body: JSON.stringify(action.settings),
-          },
-        );
-        dispatch({ type: "snapshot", snapshot });
-      }
-
-      for (let index = 0; index < (action.produceCount ?? 0); index += 1) {
-        const snapshot = await produceMessage(run.runId, action.keyStrategy);
-        dispatch({ type: "snapshot", snapshot });
-      }
-
-      resetSelection();
-      setSelectedTopologyNode(null);
-    });
-  }
+  const selectedTopologyNode = showGuidedView
+    ? null
+    : exploreTopologyFocus.selectedCoreNode;
 
   function selectMessage(messageId: string) {
-    setSelectedMessageId(messageId);
-    setSelectedEventSequence(null);
-    setSelectedTopologyNode(null);
+    const message = run?.recentMessages.find(
+      (candidate) => candidate.messageId === messageId,
+    );
+    setFocus(
+      messageFocus(
+        messageId,
+        message?.partition ?? undefined,
+        message?.offset ?? undefined,
+      ),
+    );
     setInspectorOpen(true);
   }
 
@@ -372,29 +241,27 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
     if (nextMessage) selectMessage(nextMessage.messageId);
   }
 
-  function selectEvent(sequence: number) {
-    setSelectedMessageId(null);
-    setSelectedEventSequence(sequence);
-    setSelectedTopologyNode(null);
-    setInspectorOpen(true);
-  }
-
-  function selectTopologyNode(selection: TopologySelection) {
-    resetSelection();
-    setSelectedTopologyNode(selection);
+  function selectFocus(nextFocus: FocusRef) {
+    setFocus(nextFocus);
     setInspectorOpen(true);
   }
 
   const inspectorButtonStyle = {
-    bottom: run ? `${timelineHeight + 20}px` : "1.25rem",
-  };
+    "--inspector-desktop-bottom": showExploreDock
+      ? `${timelineHeight + 20}px`
+      : "1.25rem",
+  } as CSSProperties;
 
   return (
     <main className="min-h-screen overflow-auto bg-[var(--kplay-bg)] text-[var(--kplay-text)] lg:h-screen lg:overflow-hidden">
       <WorkspaceHeader
         run={run}
         connection={connection}
-        disabled={isActionPending}
+        disabled={isActionPending || pendingExperimentId !== null}
+        workspaceView={workspaceView}
+        showWorkspaceViewSwitch={showWorkspaceViewSwitch}
+        canSwitchWorkspaceView={canUseGuidedView}
+        onWorkspaceViewChange={setWorkspaceView}
         onReset={resetRun}
       />
       {actionError && (
@@ -412,8 +279,16 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         variant="secondary"
         aria-controls="message-inspector-drawer"
         aria-expanded={isInspectorOpen}
-        aria-label="Open message inspector"
-        className="fixed right-4 z-30 h-10 px-3 shadow-[5px_5px_0_rgba(15,118,110,0.18)]"
+        aria-label={
+          focus?.kind === "entity"
+            ? !showGuidedView && selectedTopologyNode
+              ? "Open topology inspector"
+              : "Open evidence inspector"
+            : focus?.kind === "event"
+              ? "Open event inspector"
+              : "Open message inspector"
+        }
+        className="fixed bottom-4 right-4 z-30 min-h-11 px-3 shadow-[5px_5px_0_rgba(15,118,110,0.18)] lg:bottom-[var(--inspector-desktop-bottom)]"
         style={inspectorButtonStyle}
       >
         <PanelRightOpen size={16} aria-hidden />
@@ -423,15 +298,15 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       <div
         ref={workspaceGridRef}
         className={`grid min-h-[calc(100vh-4rem)] grid-cols-1 overflow-visible rounded-b-[28px] border-b-[16px] border-teal-700 lg:h-[calc(100vh-4rem)] lg:grid-cols-[260px_minmax(680px,1fr)] lg:overflow-hidden ${
-          run
+          showExploreDock
             ? "lg:grid-rows-[minmax(320px,1fr)_var(--timeline-height)]"
             : "lg:grid-rows-[1fr]"
         }`}
         style={workspaceStyle}
       >
         <aside
-          className={`max-h-[420px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 lg:max-h-none lg:border-b-0 lg:border-r-[3px] ${
-            run ? "lg:row-span-2" : ""
+          className={`max-h-[260px] min-h-0 overflow-y-auto border-b-[3px] border-teal-700 bg-[#fff7ed] p-4 sm:max-h-[420px] lg:max-h-none lg:border-b-0 lg:border-r-[3px] ${
+            showExploreDock ? "lg:row-span-2" : ""
           }`}
         >
           <ScenarioSidebar
@@ -441,11 +316,6 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
             onNavigateScenario={(nextScenarioId) => {
               void navigateToScenario(nextScenarioId);
             }}
-          />
-          <EducationPanel
-            scenarioId={scenarioId}
-            snapshot={run}
-            selectedMessage={selectedMessage}
           />
         </aside>
 
@@ -461,150 +331,80 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
               onTestRemoteConnection={testRemoteConnection}
               scenario={selectedScenario}
             />
+          ) : showGuidedView && experienceResolution?.kind === "experience" ? (
+            <div
+              className="h-full overflow-y-auto"
+              data-testid="teaching-experience-region"
+              id="workspace-guided-panel"
+              role="tabpanel"
+              aria-labelledby="workspace-view-guided-tab"
+            >
+              <ScenarioLearningSurface
+                frame={experienceResolution.frame}
+                focus={focus}
+                graphFocus={graphFocus}
+                evidenceFocus={evidenceFocus}
+                runtimeMode={run.mode}
+                pendingExperimentId={pendingExperimentId}
+                experimentError={experimentError}
+                announcement={announcement}
+                experimentTransitions={experimentTransitions}
+                selectedCheckpointOptionId={selectedCheckpointOptionId}
+                onFocus={selectFocus}
+                onRunExperiment={(experimentId) => {
+                  void runTeachingExperiment(experimentId);
+                }}
+                onAnswerCheckpoint={setSelectedCheckpointOptionId}
+              />
+            </div>
           ) : (
-            <KafkaTopology
-              snapshot={run}
-              selectedMessageId={
-                selectedTopologyNode || selectedEventSequence
-                  ? null
-                  : (selectedMessage?.messageId ?? null)
+            <div
+              className="flex h-full min-h-0 flex-col"
+              data-testid="explore-workspace-region"
+              id="workspace-explore-panel"
+              role={canUseGuidedView ? "tabpanel" : undefined}
+              aria-labelledby={
+                canUseGuidedView ? "workspace-view-explore-tab" : undefined
               }
-              selectedNode={selectedTopologyNode}
-              onSelectMessage={selectMessage}
-              onSelectNode={selectTopologyNode}
-            />
+            >
+              <ExploreTopology
+                snapshot={run}
+                focus={focus}
+                selectedEvent={selectedEvent}
+                entityDetails={entityDetails}
+                scenarioFrame={
+                  experienceResolution?.kind === "experience"
+                    ? experienceResolution.frame
+                    : undefined
+                }
+                onFocus={selectFocus}
+              />
+            </div>
           )}
         </section>
 
-        {run && (
-          <section
-            className="flex min-h-[520px] flex-col bg-[#fff7ed] lg:min-h-0 lg:border-r-[3px] lg:border-t-[3px] lg:border-teal-700"
-            data-testid="timeline-region"
-          >
-            <div
-              aria-label="Resize lower panel"
-              aria-orientation="horizontal"
-              aria-valuemax={MAX_TIMELINE_HEIGHT}
-              aria-valuemin={MIN_TIMELINE_HEIGHT}
-              aria-valuenow={timelineHeight}
-              className="hidden h-3 shrink-0 cursor-row-resize items-center justify-center border-b-2 border-teal-700 bg-[#fff7ed] focus:outline-none focus:ring-4 focus:ring-sky-200 lg:flex"
-              data-testid="timeline-resize-handle"
-              onKeyDown={adjustTimelineHeightWithKeyboard}
-              onPointerCancel={stopTimelineResize}
-              onPointerDown={startTimelineResize}
-              onPointerMove={moveTimelineResize}
-              onPointerUp={stopTimelineResize}
-              role="separator"
-              tabIndex={0}
-            >
-              <span className="h-1 w-12 rounded-full bg-teal-700/55" />
-            </div>
-            <div className="flex min-h-0 flex-1" data-testid="lower-panel-tabs">
-              <div
-                aria-label="Run workspace panels"
-                className="flex w-12 shrink-0 flex-col items-center gap-2 border-r-2 border-teal-700 bg-[#fff7ed] px-1.5 py-2"
-                role="tablist"
-              >
-                {lowerPanelTabs.map((tab) => {
-                  const Icon = tab.Icon;
-                  const isActive = activeLowerPanelTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      ref={(element) => {
-                        lowerPanelTabRefs.current[tab.id] = element;
-                      }}
-                      aria-controls={`lower-panel-${tab.id}`}
-                      aria-label={tab.label}
-                      aria-selected={isActive}
-                      className={`grid size-9 place-items-center rounded-xl border-2 text-teal-800 transition focus:outline-none focus:ring-4 focus:ring-sky-200 ${
-                        isActive
-                          ? "border-sky-500 bg-sky-100 shadow-[3px_3px_0_rgba(14,165,233,0.18)]"
-                          : "border-teal-700 bg-[#fffdf5] hover:bg-teal-50"
-                      }`}
-                      data-testid={`lower-panel-tab-${tab.id}`}
-                      id={`lower-panel-tab-${tab.id}`}
-                      onClick={() => selectLowerPanelTab(tab.id)}
-                      onKeyDown={(event) =>
-                        navigateLowerPanelTabs(event, tab.id)
-                      }
-                      role="tab"
-                      tabIndex={isActive ? 0 : -1}
-                      title={tab.label}
-                      type="button"
-                    >
-                      <Icon size={17} aria-hidden />
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col">
-                <div
-                  aria-labelledby="lower-panel-tab-controls"
-                  className="min-h-0 flex-1 overflow-auto"
-                  data-testid="lower-panel-controls"
-                  hidden={activeLowerPanelTab !== "controls"}
-                  id="lower-panel-controls"
-                  role="tabpanel"
-                >
-                  <ControlsPanel
-                    snapshot={run}
-                    disabled={isActionPending}
-                    onStartProducer={() =>
-                      mutate("/producer/start", { method: "POST" })
-                    }
-                    onPauseProducer={() =>
-                      mutate("/producer/pause", { method: "POST" })
-                    }
-                    onStopProducer={() =>
-                      mutate("/producer/stop", { method: "POST" })
-                    }
-                    onProduceOne={produceOne}
-                    onAddConsumer={() =>
-                      mutate("/consumers", { method: "POST" })
-                    }
-                    onStopConsumer={(consumerId) =>
-                      mutate(`/consumers/${consumerId}`, { method: "DELETE" })
-                    }
-                    onCrashConsumer={(consumerId) =>
-                      mutate(`/consumers/${consumerId}/crash`, {
-                        method: "POST",
-                      })
-                    }
-                    onUpdateSettings={updateSettings}
-                  />
-                </div>
-                <div
-                  aria-labelledby="lower-panel-tab-insights"
-                  className="min-h-0 flex-1 overflow-auto"
-                  data-testid="lower-panel-insights"
-                  hidden={activeLowerPanelTab !== "insights"}
-                  id="lower-panel-insights"
-                  role="tabpanel"
-                >
-                  <ScenarioInsightPanel
-                    snapshot={run}
-                    disabled={isActionPending}
-                    onRunAction={runScenarioAction}
-                  />
-                </div>
-                <div
-                  aria-labelledby="lower-panel-tab-timeline"
-                  className="flex min-h-0 flex-1 flex-col overflow-hidden pt-3"
-                  data-testid="lower-panel-timeline"
-                  hidden={activeLowerPanelTab !== "timeline"}
-                  id="lower-panel-timeline"
-                  role="tabpanel"
-                >
-                  <EventTimeline
-                    events={state.events ?? []}
-                    hasSequenceGap={state.hasSequenceGap}
-                    onSelect={selectEvent}
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
+        {run && showExploreDock && (
+          <WorkspaceLowerPanel
+            run={run}
+            disabled={isActionPending}
+            activeTab={activeLowerPanelTab}
+            tabRefs={lowerPanelTabRefs}
+            timelineHeight={timelineHeight}
+            events={state.events ?? []}
+            focus={focus}
+            hasSequenceGap={state.hasSequenceGap}
+            onFocus={selectFocus}
+            onNavigateTabs={navigateLowerPanelTabs}
+            onSelectTab={selectLowerPanelTab}
+            onMutate={mutate}
+            onProduceOne={produceOne}
+            onUpdateSettings={updateSettings}
+            onResizeKeyDown={adjustTimelineHeightWithKeyboard}
+            onResizePointerCancel={stopTimelineResize}
+            onResizePointerDown={startTimelineResize}
+            onResizePointerMove={moveTimelineResize}
+            onResizePointerUp={stopTimelineResize}
+          />
         )}
       </div>
 
@@ -612,8 +412,18 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         <InspectorDrawer
           message={selectedMessage}
           event={selectedEvent}
+          entityDetail={
+            focus?.kind === "entity" &&
+            (showGuidedView || selectedTopologyNode === null)
+              ? entityDetail
+              : null
+          }
           snapshot={run}
-          selectedNode={selectedTopologyNode}
+          selectedNode={
+            focus?.kind === "entity" && !showGuidedView
+              ? selectedTopologyNode
+              : null
+          }
           onPreviousMessage={() => selectAdjacentMessage(-1)}
           onNextMessage={() => selectAdjacentMessage(1)}
           onClose={() => setInspectorOpen(false)}

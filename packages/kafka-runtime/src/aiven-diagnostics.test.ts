@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AivenKafkaRuntimeAdapter, loadServerEnv } from "./index";
 
+const fsMocks = vi.hoisted(() => ({
+  readFile: vi.fn(),
+}));
+
 const kafkaMocks = vi.hoisted(() => ({
   adminConnect: vi.fn(),
   adminDisconnect: vi.fn(),
@@ -19,6 +23,10 @@ const kafkaMocks = vi.hoisted(() => ({
   >(),
   consumerRun: vi.fn(),
   consumerSubscribe: vi.fn(),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  readFile: fsMocks.readFile,
 }));
 
 vi.mock("kafkajs", () => ({
@@ -60,6 +68,7 @@ vi.mock("kafkajs", () => ({
 describe("AivenKafkaRuntimeAdapter diagnostics", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    fsMocks.readFile.mockResolvedValue("TEST_CA_CERTIFICATE");
     kafkaMocks.consumerHandlers.clear();
     kafkaMocks.adminConnect.mockResolvedValue(undefined);
     kafkaMocks.adminListTopics.mockResolvedValue(["topic"]);

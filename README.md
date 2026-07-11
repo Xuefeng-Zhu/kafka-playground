@@ -30,13 +30,48 @@ Scenario catalog:
 
 ![Kafka Visual Playground scenario catalog](docs/screenshots/home.png)
 
-Partitioning run with message inspector:
+Partitioning in the default **Guided** view:
 
-![Partitioning scenario run with message inspector](docs/screenshots/partitioning-run.png)
+![Partitioning lesson with causal and before-current-after evidence](docs/screenshots/partitioning-run.png)
 
-Hot partition detector:
+The same partitioning run in desktop **Explore**:
 
-![Hot partitions scenario with skewed key distribution](docs/screenshots/hot-partitions-run.png)
+![Partitioning React Flow topology with scenario-specific causal nodes and labels](docs/screenshots/partitioning-explore.png)
+
+Hot-partition Guided comparison:
+
+![Independent equal-size hot-key and no-key comparison](docs/screenshots/hot-partitions-run.png)
+
+Teaching-first visualization V2 concept:
+
+![Teaching-first desktop and mobile scenario experience](docs/design/visualization-v2-concept.png)
+
+Refresh the tracked Guided and Explore screenshots at 1440 by 900 whenever the
+workspace structure changes. CI captures the same active run in desktop and
+mobile Explore under `docs/screenshots/evidence/`; that generated evidence is
+intentionally ignored by Git.
+
+## Guided and Explore
+
+Demo scenarios start in **Guided** for first-time users. Guided dedicates the
+workspace to the causal story, experiment, authoritative evidence, explanation,
+transition trail, and checkpoint; raw controls and React Flow are not mounted.
+
+Choose **Explore** in the workspace header to inspect the same active run as a
+runtime topology. Demo scenarios combine the shared producer, topic,
+partitions, messages, ownership, and consumer-group cards with their
+scenario-specific causal nodes and labeled connections. On desktop and tablet,
+Explore renders that projection in React Flow and exposes raw **Controls** and
+the complete **Timeline** in the lower dock. Below 768 pixels it renders the
+same causal order as a semantic list with normal page scrolling instead of a
+transformed canvas.
+
+The selected view is remembered in this browser under
+`kplay.workspace.view`. Switching views does not reset the run, experiment,
+selection, inspector, or active Explore dock tab. Remote and Aiven runs are
+Explore-only because they show observed broker behavior and do not run
+deterministic teaching experiments. Remote and Aiven topology remains
+core-only; scenario extensions are never inferred from broker state.
 
 ## Architecture
 
@@ -83,7 +118,7 @@ If the app adds an `apps/web/public` directory later, copy it to `apps/web/.next
 
 ## Remote Kafka Mode
 
-Open a scenario, choose **Remote Kafka**, and configure the connection in the web drawer. Remote mode supports comma-separated brokers, SASL username/password, `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, TLS on/off, and optional CA certificate text for providers that require a custom CA.
+Open a scenario, choose **Remote Kafka**, and configure the connection in the web drawer. Remote runs open directly in the Explore workspace and label their topology **Observed broker topology**. Remote mode supports comma-separated brokers, SASL username/password, `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, TLS on/off, and optional CA certificate text for providers that require a custom CA.
 
 The browser saves the remote connection form in `localStorage`, including the password, so users can revisit the playground without retyping it. The server receives the config only for connection tests and active runs, stores it only in memory for the current Node.js process, and never returns raw usernames, passwords, certificate text, or raw Kafka configuration in API responses.
 
@@ -125,26 +160,27 @@ Connection tests return only sanitized status, masked broker host, broker count,
 
 The UI uses the versioned `/api/v1` routes directly:
 
-| Method   | Route                                             | Behavior                                                                                                     |
-| -------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GET`    | `/api/v1/health`                                  | Returns process health.                                                                                      |
-| `GET`    | `/api/v1/scenarios`                               | Returns the scenario catalog.                                                                                |
-| `GET`    | `/api/v1/connection`                              | Returns sanitized Kafka connection status.                                                                   |
-| `POST`   | `/api/v1/connection/test`                         | Re-runs the sanitized connection check.                                                                      |
-| `GET`    | `/api/v1/runs`                                    | Returns the active run snapshot or `null`.                                                                   |
-| `POST`   | `/api/v1/runs`                                    | Creates a run for `{ "scenarioId": "partitioning" }`; only one active run is supported.                      |
-| `GET`    | `/api/v1/runs/:runId`                             | Returns a run snapshot.                                                                                      |
-| `DELETE` | `/api/v1/runs/:runId`                             | Deletes a run and requests resource cleanup.                                                                 |
-| `GET`    | `/api/v1/runs/:runId/events`                      | Opens the SSE stream for snapshots, live events, heartbeats, and bounded-history replay via `Last-Event-ID`. |
-| `PATCH`  | `/api/v1/runs/:runId/settings`                    | Updates `productionRate`, `keyStrategy`, or `processingLatencyMs`.                                           |
-| `POST`   | `/api/v1/runs/:runId/messages`                    | Produces one message, optionally with an override `keyStrategy`.                                             |
-| `POST`   | `/api/v1/runs/:runId/producer/start`              | Starts scheduled production.                                                                                 |
-| `POST`   | `/api/v1/runs/:runId/producer/pause`              | Pauses scheduled production.                                                                                 |
-| `POST`   | `/api/v1/runs/:runId/producer/stop`               | Stops scheduled production.                                                                                  |
-| `POST`   | `/api/v1/runs/:runId/consumers`                   | Adds one consumer to the run.                                                                                |
-| `DELETE` | `/api/v1/runs/:runId/consumers/:consumerId`       | Removes a consumer.                                                                                          |
-| `POST`   | `/api/v1/runs/:runId/consumers/:consumerId/crash` | Simulates a consumer crash.                                                                                  |
-| `POST`   | `/api/v1/runs/:runId/reset`                       | Stops producers, disconnects consumers, closes SSE subscribers, and requests resource cleanup.               |
+| Method   | Route                                             | Behavior                                                                                                                                  |
+| -------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/health`                                  | Returns process health.                                                                                                                   |
+| `GET`    | `/api/v1/scenarios`                               | Returns the scenario catalog.                                                                                                             |
+| `GET`    | `/api/v1/connection`                              | Returns sanitized Kafka connection status.                                                                                                |
+| `POST`   | `/api/v1/connection/test`                         | Re-runs the sanitized connection check.                                                                                                   |
+| `GET`    | `/api/v1/runs`                                    | Returns the active run snapshot or `null`.                                                                                                |
+| `POST`   | `/api/v1/runs`                                    | Creates a run for `{ "scenarioId": "partitioning" }`; only one active run is supported.                                                   |
+| `GET`    | `/api/v1/runs/:runId`                             | Returns a run snapshot.                                                                                                                   |
+| `DELETE` | `/api/v1/runs/:runId`                             | Deletes a run and requests resource cleanup.                                                                                              |
+| `GET`    | `/api/v1/runs/:runId/events`                      | Opens the SSE stream for snapshots, live events, heartbeats, and bounded-history replay via `Last-Event-ID`.                              |
+| `PATCH`  | `/api/v1/runs/:runId/settings`                    | Updates `productionRate`, `keyStrategy`, or `processingLatencyMs`.                                                                        |
+| `POST`   | `/api/v1/runs/:runId/messages`                    | Produces one message, optionally with an override `keyStrategy`.                                                                          |
+| `POST`   | `/api/v1/runs/:runId/experiments/:experimentId`   | Runs one deterministic, serialized demo experiment and returns authoritative scenario state; unsupported remote experiments return `409`. |
+| `POST`   | `/api/v1/runs/:runId/producer/start`              | Starts scheduled production.                                                                                                              |
+| `POST`   | `/api/v1/runs/:runId/producer/pause`              | Pauses scheduled production.                                                                                                              |
+| `POST`   | `/api/v1/runs/:runId/producer/stop`               | Stops scheduled production.                                                                                                               |
+| `POST`   | `/api/v1/runs/:runId/consumers`                   | Adds one consumer to the run.                                                                                                             |
+| `DELETE` | `/api/v1/runs/:runId/consumers/:consumerId`       | Removes a consumer.                                                                                                                       |
+| `POST`   | `/api/v1/runs/:runId/consumers/:consumerId/crash` | Simulates a consumer crash.                                                                                                               |
+| `POST`   | `/api/v1/runs/:runId/reset`                       | Stops producers, disconnects consumers, closes SSE subscribers, and requests resource cleanup.                                            |
 
 Routes that accept JSON bodies use these shapes:
 

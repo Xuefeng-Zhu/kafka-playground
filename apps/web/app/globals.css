@@ -84,7 +84,12 @@ select {
 }
 
 .kplay-topology-flow .react-flow__pane {
+  cursor: grab;
   z-index: 1;
+}
+
+.kplay-topology-flow .react-flow__pane.dragging {
+  cursor: grabbing;
 }
 
 .kplay-topology-flow .react-flow__renderer,
@@ -173,5 +178,17 @@ select {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 767px) {
+  button,
+  a[role="button"],
+  input,
+  select,
+  textarea,
+  [role="tab"] {
+    min-height: 44px;
+    min-width: 44px;
   }
 }

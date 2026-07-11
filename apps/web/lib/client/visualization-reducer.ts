@@ -10,8 +10,6 @@ export type VisualizationState = {
   messages: PlaygroundMessage[];
   lastSequence: number;
   hasSequenceGap: boolean;
-  selectedMessageId: string | null;
-  selectedEventSequence: number | null;
 };
 
 export const initialVisualizationState: VisualizationState = {
@@ -20,8 +18,6 @@ export const initialVisualizationState: VisualizationState = {
   messages: [],
   lastSequence: 0,
   hasSequenceGap: false,
-  selectedMessageId: null,
-  selectedEventSequence: null,
 };
 
 export function initializeFromSnapshot(

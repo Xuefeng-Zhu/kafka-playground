@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { scenarioStateSchema } from "./scenario-state";
+
+export * from "./scenario-state";
 
 export const kafkaModeSchema = z.enum(["demo", "aiven", "remote"]);
 export type KafkaMode = z.infer<typeof kafkaModeSchema>;
@@ -193,7 +196,91 @@ export const detailedRuntimeEventTypes = [
 export const runtimeEventTypes = [
   ...simpleRuntimeEventTypes,
   ...detailedRuntimeEventTypes,
+  "scenario.experiment.started",
+  "scenario.experiment.transition",
+  "scenario.experiment.completed",
+  "scenario.experiment.failed",
 ] as const;
+
+const scenarioExperimentTransitionIds = [
+  "acl.allowed",
+  "acl.denied",
+  "acl.evaluated",
+  "acl.granted",
+  "capacity.increased",
+  "cdc.retry_deduplicated",
+  "consumer.crashed",
+  "cursor.reset",
+  "database.transaction_committed",
+  "event.produced",
+  "event.replayed",
+  "group.assignment_changed",
+  "idempotency.checked",
+  "kafka.publish_acknowledged",
+  "key.hashed",
+  "lag.decreased",
+  "lag.increased",
+  "log.appended",
+  "log.compacted",
+  "offset.commit_held",
+  "offset.out_of_range",
+  "offset.recovered",
+  "partition.order.extended",
+  "phase.completed",
+  "producer.deduplicated",
+  "producer.settings_changed",
+  "projection.cleared",
+  "rebalance.compared",
+  "rebalance.cooperative",
+  "rebalance.eager",
+  "record.attempt_started",
+  "record.backoff_elapsed",
+  "record.dead_lettered",
+  "record.delivered",
+  "record.partitioned",
+  "record.redelivered",
+  "record.retry_scheduled",
+  "record.succeeded",
+  "retention.expired",
+  "schema.accepted",
+  "schema.diffed",
+  "schema.rejected",
+  "side_effect.applied",
+  "skew.compared",
+  "tombstone.expired",
+  "transaction.aborted",
+  "transaction.committed",
+  "transaction.staged",
+  "virtual_time.advanced",
+  "wal.recorded",
+  "window.join_emitted",
+  "window.record_buffered",
+  "window.record_late",
+  "window.record_unmatched",
+] as const;
+export const scenarioExperimentTransitionSchema = z.enum(
+  scenarioExperimentTransitionIds,
+);
+export type ScenarioExperimentTransitionId = z.infer<
+  typeof scenarioExperimentTransitionSchema
+>;
+
+const scenarioExperimentEventBaseSchema = eventBaseSchema.extend({
+  scenarioId: z.string(),
+  experimentId: z.string(),
+  entityIds: z.array(z.string()).min(1),
+  provenance: z.enum(["observed", "derived", "simulated"]),
+  virtualTimeMs: z.number().int().nonnegative(),
+  messageId: z.string().optional(),
+  partition: z.number().int().nonnegative().optional(),
+  offset: z.string().optional(),
+  step: z.object({
+    id: z.string(),
+    index: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
+    label: z.string(),
+  }),
+});
 
 export const runtimeEventSchema = z.discriminatedUnion("type", [
   eventBaseSchema.extend({
@@ -267,6 +354,21 @@ export const runtimeEventSchema = z.discriminatedUnion("type", [
     messageId: z.string(),
     errorCode: z.string(),
   }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.started"),
+  }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.transition"),
+    transition: scenarioExperimentTransitionSchema,
+  }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.completed"),
+  }),
+  scenarioExperimentEventBaseSchema.extend({
+    type: z.literal("scenario.experiment.failed"),
+    errorCode: z.string(),
+    message: z.string(),
+  }),
 ]);
 export type RuntimeEvent = z.infer<typeof runtimeEventSchema>;
 
@@ -304,6 +406,7 @@ export const runSnapshotSchema = z.object({
   recentEvents: z.array(runtimeEventSchema),
   cleanupStatus: cleanupStatusSchema,
   sequence: z.number().int().nonnegative(),
+  scenarioState: scenarioStateSchema.nullable().optional(),
 });
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 

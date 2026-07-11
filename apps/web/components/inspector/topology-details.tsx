@@ -5,8 +5,11 @@ import {
   formatTaskDuration,
   type ConsumerTask,
 } from "@/lib/client/current-consumer-task";
-import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { keyStrategyLabel } from "@/lib/client/key-strategy-label";
+import {
+  topologyProvenance,
+  topologyProvenanceLabel,
+} from "@/lib/client/topology-provenance";
 
 export function TopologyDetails({
   snapshot,
@@ -17,6 +20,9 @@ export function TopologyDetails({
   selectedNode: TopologySelection;
   taskNowMs: number;
 }) {
+  const provenance = topologyProvenance(snapshot);
+  const provenanceLabel = topologyProvenanceLabel(provenance);
+
   if (selectedNode.type === "producer") {
     return (
       <>
@@ -32,7 +38,10 @@ export function TopologyDetails({
             ["Run status", snapshot.status],
             ["Rate", `${snapshot.productionRate} messages/sec`],
             ["Key strategy", keyStrategyLabel(snapshot.keyStrategy, "detail")],
-            ["Recent messages", String(snapshot.recentMessages.length)],
+            [
+              `Recent ${provenance} messages`,
+              String(snapshot.recentMessages.length),
+            ],
           ]}
         />
       </>
@@ -48,7 +57,7 @@ export function TopologyDetails({
           rows={[
             ["Partitions", String(snapshot.partitionCount)],
             ["Consumer group", snapshot.consumerGroupId],
-            ["Total observed messages", String(totalMessages(snapshot))],
+            [`Total ${provenance} messages`, String(totalMessages(snapshot))],
             [
               "Latest offsets",
               partitionRecord(
@@ -96,7 +105,7 @@ export function TopologyDetails({
               snapshot.latestCommittedOffsets[String(partition)] ?? "None",
             ],
             [
-              "Observed messages",
+              `${provenanceLabel} messages`,
               String(snapshot.messageCounts[String(partition)] ?? 0),
             ],
             [
@@ -113,39 +122,58 @@ export function TopologyDetails({
     );
   }
 
-  if (selectedNode.type === "scenarioNode") {
-    const hotspot = deriveScenarioVisualization(snapshot).hotspots.find(
-      (item) => item.id === selectedNode.nodeId,
+  if (selectedNode.type === "consumerGroup") {
+    const assignedPartitions = new Set(
+      snapshot.consumers.flatMap((consumer) =>
+        consumer.assignments.map((assignment) => assignment.partition),
+      ),
     );
-    if (!hotspot) {
-      return (
-        <>
-          <TopologyHeader
-            title="Scenario overlay"
-            detail="This overlay is no longer active in the current snapshot."
-            tone="teal"
-          />
-          <div className="p-5 text-sm text-[#466778]">
-            Select another topology node to inspect current run details.
-          </div>
-        </>
-      );
-    }
-
+    const activeConsumers = snapshot.consumers.filter(
+      (consumer) =>
+        consumer.status === "running" && consumer.assignments.length > 0,
+    ).length;
+    const idleConsumers = snapshot.consumers.filter(
+      (consumer) =>
+        consumer.status === "running" && consumer.assignments.length === 0,
+    ).length;
+    const crashedConsumers = snapshot.consumers.filter(
+      (consumer) => consumer.status === "crashed",
+    ).length;
     return (
       <>
         <TopologyHeader
-          title={hotspot.title}
-          detail={hotspot.description}
-          tone={hotspot.tone}
+          title="Consumer Group"
+          detail={snapshot.consumerGroupId}
+          tone="teal"
         />
         <DetailSection
-          title={hotspot.eyebrow}
+          title={`${provenanceLabel} group state`}
           rows={[
-            [hotspot.metricLabel, hotspot.metricValue],
-            ...hotspot.details,
+            ["Members", String(snapshot.consumers.length)],
+            ["Active members", String(activeConsumers)],
+            ["Idle members", String(idleConsumers)],
+            ["Crashed members", String(crashedConsumers)],
+            [
+              "Assigned partitions",
+              `${assignedPartitions.size} of ${snapshot.partitionCount}`,
+            ],
           ]}
         />
+      </>
+    );
+  }
+
+  if (selectedNode.type === "scenarioNode") {
+    return (
+      <>
+        <TopologyHeader
+          title="Scenario evidence"
+          detail="Scenario nodes are described by the evidence inspector."
+          tone="teal"
+        />
+        <div className="p-5 text-sm text-[#466778]">
+          Select the scenario node again to inspect its current evidence.
+        </div>
       </>
     );
   }
@@ -169,7 +197,7 @@ export function TopologyDetails({
       {consumer ? (
         <>
           <DetailSection
-            title="Consumer Metrics"
+            title={`${provenanceLabel} consumer state`}
             rows={consumerMetricRows(snapshot, consumer)}
           />
           <ActiveTasksSection

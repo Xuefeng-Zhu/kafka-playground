@@ -7,6 +7,7 @@ import type {
   RuntimeEvent,
 } from "@kplay/contracts";
 import { InspectorPanel } from "@/components/inspector/inspector-panel";
+import type { EntityDetailModel } from "@/lib/client/scenario-experience";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 
 export function InspectorDrawer({
@@ -14,6 +15,7 @@ export function InspectorDrawer({
   event,
   snapshot,
   selectedNode,
+  entityDetail = null,
   onPreviousMessage,
   onNextMessage,
   onClose,
@@ -22,16 +24,19 @@ export function InspectorDrawer({
   event: RuntimeEvent | null;
   snapshot: RunSnapshot | null;
   selectedNode: TopologySelection | null;
+  entityDetail?: EntityDetailModel | null;
   onPreviousMessage: () => void;
   onNextMessage: () => void;
   onClose: () => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
-  const inspectorLabel = selectedNode
-    ? "Topology inspector"
-    : event
-      ? "Event inspector"
-      : "Message inspector";
+  const inspectorLabel = entityDetail
+    ? "Evidence inspector"
+    : selectedNode
+      ? "Topology inspector"
+      : event
+        ? "Event inspector"
+        : "Message inspector";
 
   useEffect(() => {
     const previouslyFocused =
@@ -98,6 +103,7 @@ export function InspectorDrawer({
           event={event}
           snapshot={snapshot}
           selectedNode={selectedNode}
+          entityDetail={entityDetail}
           onPreviousMessage={onPreviousMessage}
           onNextMessage={onNextMessage}
           onClose={onClose}

@@ -1,19 +1,14 @@
 import { create } from "zustand";
+import type { FocusRef } from "./scenario-experience";
 
 type PlaygroundUiState = {
-  selectedMessageId: string | null;
-  selectedEventSequence: number | null;
-  setSelectedMessageId(messageId: string | null): void;
-  setSelectedEventSequence(sequence: number | null): void;
-  resetSelection(): void;
+  focus: FocusRef | null;
+  setFocus(focus: FocusRef | null): void;
+  resetFocus(): void;
 };
 
 export const usePlaygroundUiStore = create<PlaygroundUiState>((set) => ({
-  selectedMessageId: null,
-  selectedEventSequence: null,
-  setSelectedMessageId: (selectedMessageId) => set({ selectedMessageId }),
-  setSelectedEventSequence: (selectedEventSequence) =>
-    set({ selectedEventSequence }),
-  resetSelection: () =>
-    set({ selectedMessageId: null, selectedEventSequence: null }),
+  focus: null,
+  setFocus: (focus) => set({ focus }),
+  resetFocus: () => set({ focus: null }),
 }));
