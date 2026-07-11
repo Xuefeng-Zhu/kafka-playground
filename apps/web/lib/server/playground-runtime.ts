@@ -806,17 +806,19 @@ export class PlaygroundRuntime {
           await this.addConsumer(run.runId, sessionId);
         }
       }
-      for (const message of produced) {
-        const timer = run.processingTimers.get(message.messageId);
-        if (timer) clearTimeout(timer);
-        run.processingTimers.delete(message.messageId);
-        if (message.assignedConsumerId) {
-          await this.processMessage(
-            run.runId,
-            message.messageId,
-            message.assignedConsumerId,
-            { commit: growGroup || message !== produced.at(-1) },
-          );
+      if (!simulateConsumerGrowth) {
+        for (const message of produced) {
+          const timer = run.processingTimers.get(message.messageId);
+          if (timer) clearTimeout(timer);
+          run.processingTimers.delete(message.messageId);
+          if (message.assignedConsumerId) {
+            await this.processMessage(
+              run.runId,
+              message.messageId,
+              message.assignedConsumerId,
+              { commit: growGroup || message !== produced.at(-1) },
+            );
+          }
         }
       }
 
@@ -838,26 +840,13 @@ export class PlaygroundRuntime {
               (assignment) => assignment.partition,
             ),
           }));
-      return {
-        partitioning: {
-          routingTraces: produced.flatMap((message, index) =>
-            message.partition === null || message.offset === null
-              ? []
-              : [
-                  {
-                    id: `routing-${message.messageId}`,
-                    provenance: "simulated" as const,
-                    messageId: message.messageId,
-                    key: message.key,
-                    partition: message.partition,
-                    offset: message.offset,
-                    sequence: index + 1,
-                  },
-                ],
-          ),
-          partitionPositions: Array.from(
-            { length: run.partitionCount },
-            (_, partition) => {
+      const partitionPositions =
+        simulateConsumerGrowth &&
+        run.scenarioState?.scenarioId === "partitioning"
+          ? run.scenarioState.partitionPositions.map((position) => ({
+              ...position,
+            }))
+          : Array.from({ length: run.partitionCount }, (_, partition) => {
               const partitionMessages = produced.filter(
                 (message) => message.partition === partition,
               );
@@ -876,8 +865,25 @@ export class PlaygroundRuntime {
                 committedOffset:
                   run.latestCommittedOffsets[String(partition)] ?? null,
               };
-            },
+            });
+      return {
+        partitioning: {
+          routingTraces: produced.flatMap((message, index) =>
+            message.partition === null || message.offset === null
+              ? []
+              : [
+                  {
+                    id: `routing-${message.messageId}`,
+                    provenance: "simulated" as const,
+                    messageId: message.messageId,
+                    key: message.key,
+                    partition: message.partition,
+                    offset: message.offset,
+                    sequence: index + 1,
+                  },
+                ],
           ),
+          partitionPositions,
           consumers: experimentConsumers.map((consumer) => ({
             id: `assignment-${consumer.consumerId}-${assignmentEpoch}`,
             provenance: "simulated" as const,

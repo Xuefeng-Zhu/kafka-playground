@@ -154,31 +154,73 @@ describe("PlaygroundRuntime teaching experiments", () => {
     },
   );
 
-  it("does not reuse crashed runtime IDs in low-cap guided evidence", async () => {
-    mockedServerEnv.maxConsumersPerRun = 2;
-    const { PlaygroundRuntime } = await import("./playground-runtime");
-    const runtime = new PlaygroundRuntime();
-    const started = await runtime.createRun("partitioning");
+  it.each([1, 2])(
+    "preserves crash watermarks in guided evidence under a consumer cap of %i",
+    async (consumerLimit) => {
+      mockedServerEnv.maxConsumersPerRun = consumerLimit;
+      const { PlaygroundRuntime } = await import("./playground-runtime");
+      const runtime = new PlaygroundRuntime();
+      const started = await runtime.createRun("partitioning");
 
-    await runtime.runExperiment(started.runId, "produce-keyed-record");
-    await runtime.crashConsumer(started.runId, "consumer-1");
-    const grown = await runtime.runExperiment(
-      started.runId,
-      "grow-consumer-group",
-    );
-    if (grown.scenarioState?.scenarioId !== "partitioning") {
-      throw new Error("Missing partitioning state");
-    }
+      const routed = await runtime.runExperiment(
+        started.runId,
+        "produce-keyed-record",
+      );
+      if (routed.scenarioState?.scenarioId !== "partitioning") {
+        throw new Error("Missing partitioning state");
+      }
+      const partitionPositions = structuredClone(
+        routed.scenarioState.partitionPositions,
+      );
+      const gapPosition = partitionPositions.find(
+        (position) =>
+          position.processedOffset !== null &&
+          position.committedOffset !== null &&
+          BigInt(position.committedOffset) !==
+            BigInt(position.processedOffset) + 1n,
+      );
+      const committedOffsets = structuredClone(routed.latestCommittedOffsets);
+      const uncommittedMessageId =
+        routed.scenarioState.routingTraces.at(-1)?.messageId;
+      expect(gapPosition).toBeDefined();
+      expect(uncommittedMessageId).toBeDefined();
 
-    expect(grown.consumers).toEqual([
-      expect.objectContaining({ consumerId: "consumer-1", status: "crashed" }),
-    ]);
-    expect(
-      grown.scenarioState.consumers.map((consumer) => consumer.consumerId),
-    ).toEqual(["guided-consumer-1", "guided-consumer-2", "guided-consumer-3"]);
+      await runtime.crashConsumer(started.runId, "consumer-1");
+      const grown = await runtime.runExperiment(
+        started.runId,
+        "grow-consumer-group",
+      );
+      if (grown.scenarioState?.scenarioId !== "partitioning") {
+        throw new Error("Missing partitioning state");
+      }
 
-    await runtime.reset(started.runId);
-  });
+      expect(grown.consumerLimit).toBe(consumerLimit);
+      expect(grown.consumers).toEqual([
+        expect.objectContaining({
+          consumerId: "consumer-1",
+          status: "crashed",
+        }),
+      ]);
+      expect(
+        grown.scenarioState.consumers.map((consumer) => consumer.consumerId),
+      ).toEqual([
+        "guided-consumer-1",
+        "guided-consumer-2",
+        "guided-consumer-3",
+      ]);
+      expect(grown.scenarioState.partitionPositions).toEqual(
+        partitionPositions,
+      );
+      expect(grown.latestCommittedOffsets).toEqual(committedOffsets);
+      expect(
+        grown.recentMessages.find(
+          (message) => message.messageId === uncommittedMessageId,
+        ),
+      ).toMatchObject({ state: "produced", assignedConsumerId: null });
+
+      await runtime.reset(started.runId);
+    },
+  );
 
   it("simulates every load-balancing epoch without consuming raw-control capacity", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
