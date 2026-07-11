@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runtimeEventSchema } from "@kplay/contracts";
 
+const mockedServerEnv = vi.hoisted(() => ({ maxConsumersPerRun: 3 }));
+
 vi.mock("./env", () => ({
   getServerEnv: () => ({
     KAFKA_MODE: "demo",
@@ -10,7 +12,7 @@ vi.mock("./env", () => ({
     AIVEN_KAFKA_SASL_MECHANISM: "SCRAM-SHA-256",
     AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
     KAFKA_TOPIC_PREFIX: "kplay",
-    MAX_CONSUMERS_PER_RUN: 3,
+    MAX_CONSUMERS_PER_RUN: mockedServerEnv.maxConsumersPerRun,
     MAX_PRODUCE_RATE: 10,
     EVENT_HISTORY_LIMIT: 2000,
     TIMELINE_DISPLAY_LIMIT: 1000,
@@ -20,6 +22,7 @@ vi.mock("./env", () => ({
 
 describe("PlaygroundRuntime teaching experiments", () => {
   afterEach(() => {
+    mockedServerEnv.maxConsumersPerRun = 3;
     vi.restoreAllMocks();
   });
 
@@ -80,6 +83,144 @@ describe("PlaygroundRuntime teaching experiments", () => {
 
     await runtime.reset(started.runId);
   });
+
+  it("excludes crashed consumers from partitioning assignment evidence", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("partitioning");
+
+    await runtime.runExperiment(started.runId, "produce-keyed-record");
+    await runtime.crashConsumer(started.runId, "consumer-1");
+    const grown = await runtime.runExperiment(
+      started.runId,
+      "grow-consumer-group",
+    );
+    if (grown.scenarioState?.scenarioId !== "partitioning") {
+      throw new Error("Missing partitioning state");
+    }
+
+    expect(grown.consumers).toContainEqual(
+      expect.objectContaining({ consumerId: "consumer-1", status: "crashed" }),
+    );
+    expect(
+      grown.scenarioState.consumers.map((consumer) => consumer.consumerId),
+    ).toEqual(["consumer-2", "consumer-3", "consumer-4"]);
+    expect(
+      grown.scenarioState.consumers.filter(
+        (consumer) => consumer.status === "idle",
+      ),
+    ).toHaveLength(1);
+
+    await runtime.reset(started.runId);
+  });
+
+  it.each([1, 2])(
+    "keeps three-member partitioning evidence simulated under a consumer cap of %i",
+    async (consumerLimit) => {
+      mockedServerEnv.maxConsumersPerRun = consumerLimit;
+      const { PlaygroundRuntime } = await import("./playground-runtime");
+      const runtime = new PlaygroundRuntime();
+      const started = await runtime.createRun("partitioning");
+
+      await runtime.runExperiment(started.runId, "produce-keyed-record");
+      const grown = await runtime.runExperiment(
+        started.runId,
+        "grow-consumer-group",
+      );
+      if (grown.scenarioState?.scenarioId !== "partitioning") {
+        throw new Error("Missing partitioning state");
+      }
+
+      expect(grown.consumerLimit).toBe(consumerLimit);
+      expect(grown.consumers).toHaveLength(1);
+      expect(grown.scenarioState.consumers).toHaveLength(3);
+      expect(
+        grown.scenarioState.consumers.every((consumer) =>
+          consumer.consumerId.startsWith("guided-consumer-"),
+        ),
+      ).toBe(true);
+      expect(
+        grown.scenarioState.consumers.filter(
+          (consumer) => consumer.status === "idle",
+        ),
+      ).toHaveLength(1);
+      expect(
+        grown.recentEvents.some(
+          (event) => event.type === "scenario.experiment.failed",
+        ),
+      ).toBe(false);
+
+      await runtime.reset(started.runId);
+    },
+  );
+
+  it.each([1, 2])(
+    "preserves crash watermarks in guided evidence under a consumer cap of %i",
+    async (consumerLimit) => {
+      mockedServerEnv.maxConsumersPerRun = consumerLimit;
+      const { PlaygroundRuntime } = await import("./playground-runtime");
+      const runtime = new PlaygroundRuntime();
+      const started = await runtime.createRun("partitioning");
+
+      const routed = await runtime.runExperiment(
+        started.runId,
+        "produce-keyed-record",
+      );
+      if (routed.scenarioState?.scenarioId !== "partitioning") {
+        throw new Error("Missing partitioning state");
+      }
+      const partitionPositions = structuredClone(
+        routed.scenarioState.partitionPositions,
+      );
+      const gapPosition = partitionPositions.find(
+        (position) =>
+          position.processedOffset !== null &&
+          position.committedOffset !== null &&
+          BigInt(position.committedOffset) !==
+            BigInt(position.processedOffset) + 1n,
+      );
+      const committedOffsets = structuredClone(routed.latestCommittedOffsets);
+      const uncommittedMessageId =
+        routed.scenarioState.routingTraces.at(-1)?.messageId;
+      expect(gapPosition).toBeDefined();
+      expect(uncommittedMessageId).toBeDefined();
+
+      await runtime.crashConsumer(started.runId, "consumer-1");
+      const grown = await runtime.runExperiment(
+        started.runId,
+        "grow-consumer-group",
+      );
+      if (grown.scenarioState?.scenarioId !== "partitioning") {
+        throw new Error("Missing partitioning state");
+      }
+
+      expect(grown.consumerLimit).toBe(consumerLimit);
+      expect(grown.consumers).toEqual([
+        expect.objectContaining({
+          consumerId: "consumer-1",
+          status: "crashed",
+        }),
+      ]);
+      expect(
+        grown.scenarioState.consumers.map((consumer) => consumer.consumerId),
+      ).toEqual([
+        "guided-consumer-1",
+        "guided-consumer-2",
+        "guided-consumer-3",
+      ]);
+      expect(grown.scenarioState.partitionPositions).toEqual(
+        partitionPositions,
+      );
+      expect(grown.latestCommittedOffsets).toEqual(committedOffsets);
+      expect(
+        grown.recentMessages.find(
+          (message) => message.messageId === uncommittedMessageId,
+        ),
+      ).toMatchObject({ state: "produced", assignedConsumerId: null });
+
+      await runtime.reset(started.runId);
+    },
+  );
 
   it("simulates every load-balancing epoch without consuming raw-control capacity", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");

@@ -397,6 +397,37 @@ describe("learning component accessibility", () => {
     expect(screen.queryByText(/This contrast builds on/)).toBeNull();
   });
 
+  it("keeps a failed contrast enabled for retry after its primary completed", () => {
+    const failedContrastFrame: ScenarioExperienceFrame = {
+      ...frame,
+      experiment: {
+        ...frame.experiment,
+        experimentId: "route-more-keys",
+        status: "failed",
+        error: {
+          code: "EXPERIMENT_STEP_FAILED",
+          message: "The contrast could not complete.",
+        },
+        completedExperimentIds: ["route-a-b-a"],
+      },
+    };
+    render(
+      <ScenarioLearningSurface
+        frame={failedContrastFrame}
+        focus={null}
+        onFocus={vi.fn()}
+        onRunExperiment={vi.fn()}
+        onAnswerCheckpoint={vi.fn()}
+      />,
+    );
+
+    const contrast = screen.getByTestId("experiment-route-more-keys");
+    expect((contrast as HTMLButtonElement).disabled).toBe(false);
+    expect(contrast.textContent).toContain("Run");
+    expect(contrast.textContent).not.toContain("Rerun");
+    expect(screen.queryByText(/This contrast builds on/)).toBeNull();
+  });
+
   it("renders selectable server transitions with virtual time and provenance", () => {
     const onFocus = vi.fn();
     render(

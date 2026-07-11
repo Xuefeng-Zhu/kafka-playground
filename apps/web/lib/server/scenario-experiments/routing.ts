@@ -18,7 +18,7 @@ export const buildPartitioningExperiment: ScenarioExperimentHandler<
           "assign-consumers",
           "Assign three consumers",
           "group.assignment_changed",
-          ["consumer-1", "consumer-2", "consumer-3"],
+          [],
           100,
         ),
       ]
@@ -36,7 +36,7 @@ export const buildPartitioningExperiment: ScenarioExperimentHandler<
           "assign-primary-consumer",
           "Assign the processing consumer",
           "group.assignment_changed",
-          ["consumer-1"],
+          [],
           100,
         ),
       ];
@@ -92,10 +92,10 @@ export const buildPartitioningExperiment: ScenarioExperimentHandler<
           transition.id === "assign-primary-consumer"
         ? {
             ...transition,
-            entityIds: [
-              ...partitioning.consumers.map((consumer) => consumer.id),
-              ...transition.entityIds,
-            ],
+            entityIds: partitioning.consumers.flatMap((consumer) => [
+              consumer.id,
+              consumer.consumerId,
+            ]),
           }
         : transition;
   });
@@ -254,45 +254,63 @@ export const buildCooperativeRebalancingExperiment: ScenarioExperimentHandler<
 > = ({ state, experimentId, startedAtVirtualMs }) => {
   const simulated = "simulated" as const;
 
-  const compare = experimentId === "compare-rebalance";
-  const transitions = compare
+  const pressure = experimentId === "cooperative-pressure";
+  const transitions = [
+    step(
+      pressure ? "eager-pressure" : "eager",
+      pressure ? "Run eager rebalance under pressure" : "Run eager rebalance",
+      "rebalance.eager",
+      ["eager-comparison"],
+      100,
+    ),
+    step(
+      pressure ? "sticky-pressure" : "sticky",
+      pressure
+        ? "Run cooperative-sticky rebalance under pressure"
+        : "Run cooperative-sticky rebalance",
+      "rebalance.cooperative",
+      ["sticky-comparison"],
+      100,
+    ),
+    step(
+      pressure ? "compare-pressure" : "compare",
+      pressure ? "Compare ownership pressure" : "Compare disruption",
+      "rebalance.compared",
+      ["eager-comparison", "sticky-comparison"],
+      100,
+    ),
+  ];
+  const before = [{ consumerId: "consumer-1", partitions: [0, 1, 2] }];
+  const after = pressure
     ? [
-        step(
-          "eager",
-          "Run eager rebalance",
-          "rebalance.eager",
-          ["eager-comparison"],
-          100,
-        ),
-        step(
-          "sticky",
-          "Run cooperative-sticky rebalance",
-          "rebalance.cooperative",
-          ["sticky-comparison"],
-          100,
-        ),
-        step(
-          "compare",
-          "Compare disruption",
-          "rebalance.compared",
-          ["eager-comparison", "sticky-comparison"],
-          100,
-        ),
+        { consumerId: "consumer-1", partitions: [0] },
+        { consumerId: "consumer-2", partitions: [1] },
+        { consumerId: "consumer-3", partitions: [2] },
       ]
     : [
-        step(
-          "eager",
-          "Run eager rebalance",
-          "rebalance.eager",
-          ["eager-comparison"],
-          100,
-        ),
+        { consumerId: "consumer-1", partitions: [0, 2] },
+        { consumerId: "consumer-2", partitions: [1] },
       ];
-  const before = [{ consumerId: "consumer-1", partitions: [0, 1, 2] }];
-  const after = [
-    { consumerId: "consumer-1", partitions: [0, 2] },
-    { consumerId: "consumer-2", partitions: [1] },
-  ];
+  const movedPartitions = pressure
+    ? [
+        {
+          partition: 1,
+          fromConsumerId: "consumer-1",
+          toConsumerId: "consumer-2",
+        },
+        {
+          partition: 2,
+          fromConsumerId: "consumer-1",
+          toConsumerId: "consumer-3",
+        },
+      ]
+    : [
+        {
+          partition: 1,
+          fromConsumerId: "consumer-1",
+          toConsumerId: "consumer-2",
+        },
+      ];
   const eager = {
     id: "eager-comparison",
     provenance: simulated,
@@ -300,13 +318,7 @@ export const buildCooperativeRebalancingExperiment: ScenarioExperimentHandler<
     before,
     after,
     keptPartitions: [],
-    movedPartitions: [
-      {
-        partition: 1,
-        fromConsumerId: "consumer-1",
-        toConsumerId: "consumer-2",
-      },
-    ],
+    movedPartitions,
     revokedPartitions: [0, 1, 2],
     pausedPartitions: [0, 1, 2],
   };
@@ -316,23 +328,15 @@ export const buildCooperativeRebalancingExperiment: ScenarioExperimentHandler<
     strategy: "cooperative_sticky" as const,
     before,
     after,
-    keptPartitions: [0, 2],
-    movedPartitions: [
-      {
-        partition: 1,
-        fromConsumerId: "consumer-1",
-        toConsumerId: "consumer-2",
-      },
-    ],
-    revokedPartitions: [1],
-    pausedPartitions: [1],
+    keptPartitions: pressure ? [0] : [0, 2],
+    movedPartitions,
+    revokedPartitions: pressure ? [1, 2] : [1],
+    pausedPartitions: pressure ? [1, 2] : [1],
   };
   const nextState = complete(
     {
       ...state,
-      comparisons: compare
-        ? [eager, sticky].reduce(upsertReducer, state.comparisons)
-        : upsertById(state.comparisons, eager),
+      comparisons: [eager, sticky].reduce(upsertReducer, state.comparisons),
     },
     experimentId,
     startedAtVirtualMs,

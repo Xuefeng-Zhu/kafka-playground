@@ -299,6 +299,13 @@ export const compactionScenarioStateSchema = z.object({
   ),
 });
 
+const offsetOutOfRangeSchema = z.object({
+  code: z.literal("offset_out_of_range"),
+  requestedOffset: offsetSchema,
+  recoveryOptions: z.array(z.enum(["earliest", "latest", "restore"])),
+  provenance: evidenceProvenanceSchema,
+});
+
 export const retentionScenarioStateSchema = z.object({
   ...scenarioBase("retention-data-loss"),
   records: z.array(
@@ -313,14 +320,8 @@ export const retentionScenarioStateSchema = z.object({
   cutoffVirtualMs: z.number().int().nonnegative(),
   logStartOffset: offsetSchema,
   committedOffset: offsetSchema,
-  error: z
-    .object({
-      code: z.literal("offset_out_of_range"),
-      requestedOffset: offsetSchema,
-      recoveryOptions: z.array(z.enum(["earliest", "latest", "restore"])),
-      provenance: evidenceProvenanceSchema,
-    })
-    .nullable(),
+  error: offsetOutOfRangeSchema.nullable(),
+  lastOffsetOutOfRange: offsetOutOfRangeSchema.nullable().default(null),
 });
 
 const ownershipSnapshotSchema = z.array(assignmentSchema);

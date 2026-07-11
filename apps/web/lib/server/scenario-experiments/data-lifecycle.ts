@@ -329,6 +329,14 @@ export const buildRetentionExperiment: ScenarioExperimentHandler<
     String(Number(retainedRecords.at(-1)?.offset ?? "-1") + 1);
   const committedOffset =
     state.records.length === 0 ? "1" : state.committedOffset;
+  const offsetOutOfRange: NonNullable<
+    StateFor<"retention-data-loss">["error"]
+  > = {
+    code: "offset_out_of_range",
+    requestedOffset: committedOffset,
+    recoveryOptions: ["earliest", "latest", "restore"],
+    provenance: simulated,
+  };
   const nextState = complete(
     {
       ...state,
@@ -340,16 +348,12 @@ export const buildRetentionExperiment: ScenarioExperimentHandler<
         : advance
           ? committedOffset
           : state.logStartOffset,
-      error: advance
-        ? {
-            code: "offset_out_of_range",
-            requestedOffset: committedOffset,
-            recoveryOptions: ["earliest", "latest", "restore"],
-            provenance: simulated,
-          }
+      error: advance ? offsetOutOfRange : null,
+      lastOffsetOutOfRange: advance
+        ? offsetOutOfRange
         : fill
           ? null
-          : null,
+          : state.lastOffsetOutOfRange,
     },
     experimentId,
     startedAtVirtualMs,

@@ -184,6 +184,20 @@ describe("scenario experiment models", () => {
     expect(retentionRecovered.committedOffset).toBe(
       retentionRecovered.logStartOffset,
     );
+    expect(retentionRecovered.lastOffsetOutOfRange).toEqual({
+      code: "offset_out_of_range",
+      requestedOffset: expired.error?.requestedOffset,
+      recoveryOptions: ["earliest", "latest", "restore"],
+      provenance: "simulated",
+    });
+    const retentionRecoveredAgain = rerun(
+      retentionRecovered,
+      "recover-retention",
+    );
+    expect(retentionRecoveredAgain.error).toBeNull();
+    expect(retentionRecoveredAgain.lastOffsetOutOfRange).toEqual(
+      retentionRecovered.lastOffsetOutOfRange,
+    );
 
     const joined = run("streams-joins-windows", "window-pair");
     expect(joined.joins).toHaveLength(1);
@@ -216,6 +230,43 @@ describe("scenario experiment models", () => {
       decision: "allowed",
       matchedPolicyId: "policy-orders-write",
     });
+  });
+
+  it("produces distinct cooperative ownership-pressure evidence", () => {
+    const compared = run("cooperative-rebalancing", "compare-rebalance");
+    const baselineComparisons = structuredClone(compared.comparisons);
+
+    const pressured = rerun(compared, "cooperative-pressure");
+    expect(pressured.comparisons).toHaveLength(2);
+    expect(pressured.comparisons).not.toEqual(baselineComparisons);
+    expect(
+      pressured.comparisons.find(
+        (comparison) => comparison.strategy === "eager",
+      ),
+    ).toMatchObject({
+      keptPartitions: [],
+      movedPartitions: [{ partition: 1 }, { partition: 2 }],
+      revokedPartitions: [0, 1, 2],
+      pausedPartitions: [0, 1, 2],
+    });
+    expect(
+      pressured.comparisons.find(
+        (comparison) => comparison.strategy === "cooperative_sticky",
+      ),
+    ).toMatchObject({
+      keptPartitions: [0],
+      movedPartitions: [{ partition: 1 }, { partition: 2 }],
+      revokedPartitions: [1, 2],
+      pausedPartitions: [1, 2],
+      after: [
+        { consumerId: "consumer-1", partitions: [0] },
+        { consumerId: "consumer-2", partitions: [1] },
+        { consumerId: "consumer-3", partitions: [2] },
+      ],
+    });
+
+    const pressuredAgain = rerun(pressured, "cooperative-pressure");
+    expect(pressuredAgain.comparisons).toEqual(pressured.comparisons);
   });
 
   it("declares every teaching contrast prerequisite explicitly", () => {

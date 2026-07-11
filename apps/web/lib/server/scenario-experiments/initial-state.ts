@@ -98,6 +98,7 @@ export function createInitialScenarioState(
         logStartOffset: "0",
         committedOffset: "0",
         error: null,
+        lastOffsetOutOfRange: null,
       };
     case "cooperative-rebalancing":
       return { ...base(scenarioId), comparisons: [] };

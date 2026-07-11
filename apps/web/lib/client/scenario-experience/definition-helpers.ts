@@ -72,8 +72,12 @@ function completedExperiments<Id extends ScenarioExperienceId>(
   status: ScenarioExperimentEvidence["status"],
 ): readonly string[] {
   const { primary, contrast } = definition.experiments;
+  if (activeId === contrast.id) {
+    if (status === "completed") return [primary.id, contrast.id];
+    if (status === "running" || status === "failed") return [primary.id];
+    return [];
+  }
   if (status !== "completed") return [];
-  if (activeId === contrast.id) return [primary.id, contrast.id];
   return activeId === primary.id ? [primary.id] : [];
 }
 

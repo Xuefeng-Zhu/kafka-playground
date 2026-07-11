@@ -299,7 +299,16 @@ const retentionInitial = state({
   logStartOffset: "0",
   committedOffset: "0",
   error: null,
+  lastOffsetOutOfRange: null,
 });
+const retentionOffsetOutOfRange: NonNullable<
+  Extract<ScenarioState, { scenarioId: "retention-data-loss" }>["error"]
+> = {
+  code: "offset_out_of_range",
+  requestedOffset: "0",
+  recoveryOptions: ["earliest", "latest", "restore"],
+  provenance: "simulated",
+};
 const retentionPivotal = state({
   ...retentionInitial,
   revision: 1,
@@ -314,12 +323,8 @@ const retentionPivotal = state({
   ],
   cutoffVirtualMs: 1_000,
   logStartOffset: "3",
-  error: {
-    code: "offset_out_of_range",
-    requestedOffset: "0",
-    recoveryOptions: ["earliest", "latest", "restore"],
-    provenance: "simulated",
-  },
+  error: retentionOffsetOutOfRange,
+  lastOffsetOutOfRange: retentionOffsetOutOfRange,
 });
 const retentionContrast = state({
   ...retentionPivotal,
@@ -346,7 +351,18 @@ const cooperativePivotal = state({
 const cooperativeContrast = state({
   ...cooperativePivotal,
   revision: 2,
-  experiment: complete("cooperative-pressure", 1),
+  experiment: complete("cooperative-pressure", 3),
+  comparisons: [
+    rebalance("rebalance-eager", "eager", [], [0, 1, 2], [0, 1, 2], true),
+    rebalance(
+      "rebalance-cooperative",
+      "cooperative_sticky",
+      [0],
+      [1, 2],
+      [1, 2],
+      true,
+    ),
+  ],
 });
 
 const streamsInitial = state({
@@ -571,7 +587,7 @@ export const teachingScenarioTestManifest = [
     "assignment",
     ["eager-kept", 0],
     ["eager-revoked", 3],
-    ["cooperative-kept", 2],
+    ["cooperative-kept", 1],
   ),
   testCase(
     "streams-joins-windows",
@@ -934,16 +950,23 @@ function rebalance(
   keptPartitions: number[],
   revokedPartitions: number[],
   pausedPartitions: number[],
+  pressure = false,
 ) {
   return {
     ...simulated,
     id,
     strategy,
     before: [{ consumerId: "consumer-1", partitions: [0, 1, 2] }],
-    after: [
-      { consumerId: "consumer-1", partitions: [0, 2] },
-      { consumerId: "consumer-2", partitions: [1] },
-    ],
+    after: pressure
+      ? [
+          { consumerId: "consumer-1", partitions: [0] },
+          { consumerId: "consumer-2", partitions: [1] },
+          { consumerId: "consumer-3", partitions: [2] },
+        ]
+      : [
+          { consumerId: "consumer-1", partitions: [0, 2] },
+          { consumerId: "consumer-2", partitions: [1] },
+        ],
     keptPartitions,
     movedPartitions: [
       {
@@ -951,6 +974,15 @@ function rebalance(
         fromConsumerId: "consumer-1",
         toConsumerId: "consumer-2",
       },
+      ...(pressure
+        ? [
+            {
+              partition: 2,
+              fromConsumerId: "consumer-1",
+              toConsumerId: "consumer-3",
+            },
+          ]
+        : []),
     ],
     revokedPartitions,
     pausedPartitions,

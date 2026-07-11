@@ -435,6 +435,31 @@ function assertContrastInvariant(
       break;
     case "retention-data-loss":
       expect(state.error).toBeNull();
+      expect(objectField(state, "lastOffsetOutOfRange")).toMatchObject({
+        code: "offset_out_of_range",
+        requestedOffset: "1",
+        recoveryOptions: ["earliest", "latest", "restore"],
+      });
+      expect(state.committedOffset).toBe(state.logStartOffset);
+      break;
+    case "cooperative-rebalancing":
+      expect(arrayField(state, "comparisons")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            strategy: "eager",
+            movedPartitions: [
+              expect.objectContaining({ partition: 1 }),
+              expect.objectContaining({ partition: 2 }),
+            ],
+          }),
+          expect.objectContaining({
+            strategy: "cooperative_sticky",
+            keptPartitions: [0],
+            revokedPartitions: [1, 2],
+            pausedPartitions: [1, 2],
+          }),
+        ]),
+      );
       break;
     case "streams-joins-windows":
       expect(arrayField(state, "lateRecords")).toContain("payment-99");

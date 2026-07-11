@@ -445,8 +445,12 @@ export const retentionExperience = experienceDefinition(
     const expired = scenarioState.records.filter((record) => record.expired);
     const isRecovery =
       scenarioState.experiment.experimentId === "recover-retention";
+    const recoveryContext =
+      scenarioState.error ?? scenarioState.lastOffsetOutOfRange;
     const committedBeforeRecovery =
-      expired.at(0)?.offset ?? scenarioState.committedOffset;
+      scenarioState.lastOffsetOutOfRange?.requestedOffset ??
+      expired.at(0)?.offset ??
+      scenarioState.committedOffset;
     const facts = [
       fact(
         "retention-duration",
@@ -538,13 +542,13 @@ export const retentionExperience = experienceDefinition(
         { key: "choice", label: "Recovery choice" },
         { key: "effect", label: "Effect" },
       ],
-      (scenarioState.error?.recoveryOptions ?? []).map((option) =>
+      (recoveryContext?.recoveryOptions ?? []).map((option) =>
         row(
           `recovery-${option}`,
           {
             choice: evidence(
               option,
-              scenarioState.error?.provenance ?? "simulated",
+              recoveryContext?.provenance ?? "simulated",
               "current",
             ),
             effect: evidence(

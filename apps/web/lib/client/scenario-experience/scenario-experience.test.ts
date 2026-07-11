@@ -139,6 +139,35 @@ describe("scenario experience registry", () => {
     });
   });
 
+  it("preserves primary completion when a contrast experiment fails", () => {
+    const entry = teachingScenarioTestManifest[0];
+    if (entry.pivotal.scenarioId !== "partitioning") {
+      throw new Error("Unexpected fixture scenario");
+    }
+    const failedContrast = {
+      ...entry.pivotal,
+      experiment: {
+        status: "failed" as const,
+        experimentId: "grow-consumer-group",
+        stepIndex: 0,
+        totalSteps: 1,
+        startedAtVirtualMs: entry.pivotal.virtualTimeMs,
+        completedAtVirtualMs: entry.pivotal.virtualTimeMs,
+        error: {
+          code: "CONSUMER_LIMIT_REACHED",
+          message: "The contrast could not complete.",
+        },
+      },
+    };
+
+    const frame = project("partitioning", failedContrast, 2);
+
+    expect(frame.experiment.status).toBe("failed");
+    expect(frame.experiment.completedExperimentIds).toEqual([
+      frame.experiments.primary.id,
+    ]);
+  });
+
   for (const entry of teachingScenarioTestManifest) {
     describe(entry.scenarioId, () => {
       const phases = [
@@ -425,6 +454,30 @@ describe("scenario experience registry", () => {
     expect(
       findFact(retention.experiment.after, "retention-error")?.value.value,
     ).toBe("Available");
+    expect(
+      collectTables(retention.lens)
+        .find((table) => table.id === "retention-recovery-options")
+        ?.rows.map((row) => row.cells.choice?.value),
+    ).toEqual(["earliest", "latest", "restore"]);
+
+    const cooperative = project(
+      "cooperative-rebalancing",
+      teachingScenarioTestManifest[11].contrast,
+      3,
+    );
+    expect(cooperative.lens.kind).toBe("assignment");
+    if (cooperative.lens.kind !== "assignment") return;
+    expect(
+      cooperative.lens.deltas.map((delta) => [
+        delta.partition,
+        delta.status,
+        delta.afterOwner,
+      ]),
+    ).toEqual([
+      [0, "kept", "consumer-1"],
+      [1, "moved", "consumer-2"],
+      [2, "moved", "consumer-3"],
+    ]);
   });
 
   it("treats committed offsets as the next resume position", () => {
