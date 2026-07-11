@@ -16,10 +16,10 @@ export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  // The demo runtime and mutation limiter are process-local. CI keeps one
-  // worker per isolated browser job so scenario resets and experiments cannot
-  // race through the same server process.
-  workers: process.env.CI ? 1 : undefined,
+  // The demo runtime is process-local, and Next dev can compile route handlers
+  // in separate workers during a parallel cold start. Keep one Playwright
+  // worker so a run and its mutations always reach the same warmed runtime.
+  workers: 1,
   webServer: {
     command: "npm run dev:demo",
     url: baseURL,

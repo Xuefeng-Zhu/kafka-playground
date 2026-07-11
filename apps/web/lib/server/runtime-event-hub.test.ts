@@ -101,4 +101,5 @@ const snapshotFixture = {
   messageCounts: { produced: 0 },
   cleanupStatus: "not_requested",
   sequence: 0,
+  completedExperimentIds: [],
 } satisfies RunSnapshot;

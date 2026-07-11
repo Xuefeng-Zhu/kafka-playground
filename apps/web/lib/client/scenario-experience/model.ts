@@ -1,6 +1,7 @@
 import type {
   RunSnapshot,
   RuntimeEvent,
+  ScenarioExperimentId,
   ScenarioExperimentTransitionId,
   ScenarioState,
 } from "@kplay/contracts";
@@ -302,9 +303,12 @@ export type ScenarioLesson = {
   emptyCopy: string;
 };
 
-export type ScenarioExperimentMetadata = {
-  id: string;
-  role: "primary" | "contrast";
+export type ScenarioExperimentMetadata<
+  Id extends ScenarioExperimentId = ScenarioExperimentId,
+  Role extends "primary" | "contrast" = "primary" | "contrast",
+> = {
+  id: Id;
+  role: Role;
   label: string;
   hypothesis: string;
   description: string;
@@ -312,8 +316,8 @@ export type ScenarioExperimentMetadata = {
 };
 
 export type ScenarioExperiments = {
-  primary: ScenarioExperimentMetadata;
-  contrast: ScenarioExperimentMetadata;
+  primary: ScenarioExperimentMetadata<ScenarioExperimentId, "primary">;
+  contrast: ScenarioExperimentMetadata<ScenarioExperimentId, "contrast">;
 };
 
 export type ScenarioExploreTopologyVisualKind =
@@ -380,10 +384,10 @@ export type EntityDetailModel = {
 };
 
 export type ScenarioExperimentEvidence = {
-  experimentId: string | null;
+  experimentId: ScenarioExperimentId | null;
   status: ScenarioState["experiment"]["status"];
   error: ScenarioState["experiment"]["error"];
-  completedExperimentIds: readonly string[];
+  completedExperimentIds: readonly ScenarioExperimentId[];
   hypothesis: string;
   before: readonly EvidenceFact[];
   current: readonly EvidenceFact[];
@@ -392,7 +396,7 @@ export type ScenarioExperimentEvidence = {
 
 export type ScenarioExperimentTransitionTrailItem = {
   id: string;
-  experimentId: string;
+  experimentId: ScenarioExperimentId;
   stepLabel: string;
   stepIndex: number;
   totalSteps: number;
@@ -430,6 +434,7 @@ export type ScenarioExperienceSnapshot = Pick<
   | "partitionCount"
   | "topicName"
   | "recentMessages"
+  | "completedExperimentIds"
 >;
 
 export type ScenarioExperienceProjectionInput<

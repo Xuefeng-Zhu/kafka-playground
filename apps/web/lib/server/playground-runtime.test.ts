@@ -554,7 +554,9 @@ describe("PlaygroundRuntime demo integration", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(runtime.snapshot(snapshot.runId).messageCounts.produced).toBe(1);
 
-    await runtime.reset(snapshot.runId);
+    const reset = runtime.reset(snapshot.runId);
+    await vi.advanceTimersByTimeAsync(250);
+    await reset;
   });
 
   it("does not reschedule automatic producer ticks after reset during an in-flight send", async () => {
@@ -590,11 +592,124 @@ describe("PlaygroundRuntime demo integration", () => {
 
     await runtime.startProducer(snapshot.runId);
     await vi.advanceTimersByTimeAsync(100);
-    await runtime.reset(snapshot.runId);
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    const queuedSettings = runtime.updateSettings(snapshot.runId, {
+      productionRate: 5,
+    });
+    const queuedSettingsRejected = expect(queuedSettings).rejects.toMatchObject(
+      {
+        code: "RUN_CLEANUP_IN_PROGRESS",
+        status: 409,
+      },
+    );
+    let resetSettled = false;
+    const reset = runtime.reset(snapshot.runId).finally(() => {
+      resetSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(resetSettled).toBe(false);
+
     await actResolvedProduce(resolveProduce);
+    await queuedSettingsRejected;
+    await expect(reset).resolves.toEqual({ cleanupStatus: "completed" });
+    expect(internalRun).toMatchObject({
+      status: "stopped",
+      producerStatus: "stopped",
+      producerTimer: null,
+      messageCounts: expect.objectContaining({ produced: 1 }),
+    });
+    expect(internalRun.processingTimers.size).toBe(0);
+    expect(internalRun.consumerHandles.size).toBe(0);
+    const eventCountAfterReset = internalRun.events.length;
+
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(vi.getTimerCount()).toBe(0);
+    expect(internalRun.events).toHaveLength(eventCountAfterReset);
+    expect(runtime.activeSnapshot()).toBeNull();
+  });
+
+  it("waits for consumer creation and disconnects its handle before reset completes", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const { UserConfiguredKafkaRuntimeAdapter } =
+      await import("@kplay/kafka-runtime");
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "createRun",
+    ).mockResolvedValue(undefined);
+    const deleteRunResources = vi
+      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "deleteRunResources")
+      .mockResolvedValue({ status: "completed", steps: [] });
+    const disconnect = vi.fn().mockResolvedValue(undefined);
+    let resolveCreateConsumer:
+      | ((handle: {
+          consumerId: string;
+          commit: () => Promise<void>;
+          disconnect: () => Promise<void>;
+        }) => void)
+      | undefined;
+    const createConsumer = vi
+      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "createConsumer")
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveCreateConsumer = resolve;
+          }),
+      );
+    const runtime = new PlaygroundRuntime();
+    const snapshot = await runtime.createRun("partitioning", {
+      mode: "remote",
+      remoteKafkaConfig: {
+        brokers: "broker.example.com:9092",
+        username: "service-user",
+        password: "service-password",
+        saslMechanism: "SCRAM-SHA-256",
+        useTls: true,
+        caCertificate: "",
+      },
+    });
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+
+    const addConsumer = runtime.addConsumer(snapshot.runId);
+    await vi.waitFor(() => expect(createConsumer).toHaveBeenCalledTimes(1));
+    let resetSettled = false;
+    const reset = runtime.reset(snapshot.runId).finally(() => {
+      resetSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(resetSettled).toBe(false);
+    expect(deleteRunResources).not.toHaveBeenCalled();
+    await expect(runtime.addConsumer(snapshot.runId)).rejects.toMatchObject({
+      code: "RUN_CLEANUP_IN_PROGRESS",
+      status: 409,
+    });
+
+    resolveCreateConsumer?.({
+      consumerId: "consumer-1",
+      commit: vi.fn().mockResolvedValue(undefined),
+      disconnect,
+    });
+    await expect(addConsumer).resolves.toMatchObject({
+      consumers: [expect.objectContaining({ consumerId: "consumer-1" })],
+    });
+    await expect(reset).resolves.toEqual({ cleanupStatus: "completed" });
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(deleteRunResources).toHaveBeenCalledTimes(1);
+    expect(internalRun.consumerHandles.size).toBe(0);
+    expect(internalRun.consumers).toHaveLength(0);
+    expect(internalRun).toMatchObject({
+      status: "stopped",
+      producerStatus: "stopped",
+    });
+    const eventCountAfterReset = internalRun.events.length;
+    await Promise.resolve();
+    expect(internalRun.events).toHaveLength(eventCountAfterReset);
+    expect(runtime.activeSnapshot()).toBeNull();
   });
 
   it("logs scheduled demo processing failures instead of leaving unhandled rejections", async () => {
@@ -847,4 +962,23 @@ async function actResolvedProduce(resolveProduce: (() => void) | null) {
   expect(resolveProduce).not.toBeNull();
   resolveProduce?.();
   await Promise.resolve();
+}
+
+function getInternalRun(runtime: object) {
+  return (
+    runtime as {
+      runs: {
+        getSessionRun(sessionId: string): {
+          status: string;
+          producerStatus: string;
+          producerTimer: NodeJS.Timeout | null;
+          processingTimers: Map<string, NodeJS.Timeout>;
+          consumerHandles: Map<string, { disconnect: () => Promise<void> }>;
+          consumers: unknown[];
+          events: unknown[];
+          messageCounts: Record<string, number>;
+        } | null;
+      };
+    }
+  ).runs.getSessionRun("default");
 }

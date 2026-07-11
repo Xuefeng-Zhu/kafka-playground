@@ -3,7 +3,6 @@
 import {
   AlertTriangle,
   ArrowDown,
-  ArrowRight,
   CheckCircle2,
   Circle,
   LoaderCircle,
@@ -48,120 +47,30 @@ export function CausalGraphView({ graph, focus, onFocus }: CausalGraphProps) {
   );
 }
 
-export function CausalGraphRail({ graph, focus, onFocus }: CausalGraphProps) {
-  return (
-    <div className="overflow-x-auto pb-2" data-testid="causal-graph-rail">
-      <ol className="flex min-w-max items-stretch" aria-label="Causal steps">
-        {graph.nodes.map((node, index) => {
-          const outgoing = graph.edges.filter(
-            (edge) => edge.source === node.id,
-          );
-          return (
-            <li key={node.id} className="flex items-center">
-              <CausalNodeButton
-                node={node}
-                selected={isFocused(focus, node.focus)}
-                onFocus={onFocus}
-              />
-              {index < graph.nodes.length - 1 || outgoing.length > 0 ? (
-                <div className="flex w-32 shrink-0 flex-col items-center px-2 text-center">
-                  <ArrowRight
-                    className="text-teal-700 motion-safe:animate-pulse"
-                    size={24}
-                    aria-hidden="true"
-                  />
-                  {outgoing.length > 0 ? (
-                    <ul
-                      className="mt-1 grid gap-1"
-                      aria-label={`From ${node.title}`}
-                    >
-                      {outgoing.map((edge) => (
-                        <li key={edge.id} className="min-w-0">
-                          <span className="block break-words text-xs font-extrabold leading-4 text-[#123047] [overflow-wrap:anywhere]">
-                            {edge.label}
-                          </span>
-                          <ProvenanceBadge
-                            provenance={edge.provenance}
-                            className="mt-1"
-                          />
-                          <span className="mt-1 block text-xs font-bold text-[#466778]">
-                            {evidenceScopeText(edge.scope)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="text-xs font-bold text-[#466778]">
-                      Then
-                    </span>
-                  )}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
-      <UnplacedEdges graph={graph} />
-    </div>
-  );
-}
-
-export function CausalGraphList({
-  graph,
-  focus,
-  onFocus,
-  responsive = false,
-}: CausalGraphProps & { responsive?: boolean }) {
+function CausalGraphList({ graph, focus, onFocus }: CausalGraphProps) {
   return (
     <ol
-      className={cn(
-        "grid gap-0",
-        responsive && "md:flex md:min-w-max md:items-stretch md:pb-2",
-      )}
+      className="grid gap-0"
       aria-label="Causal steps"
       data-testid="causal-graph-list"
     >
       {graph.nodes.map((node, index) => {
         const outgoing = graph.edges.filter((edge) => edge.source === node.id);
         return (
-          <li
-            key={node.id}
-            className={cn(responsive && "md:flex md:items-center")}
-          >
+          <li key={node.id}>
             <CausalNodeButton
               node={node}
               selected={isFocused(focus, node.focus)}
               onFocus={onFocus}
-              wide
-              responsiveWide={responsive}
             />
             {index < graph.nodes.length - 1 || outgoing.length > 0 ? (
-              <div
-                className={cn(
-                  "grid grid-cols-[2.75rem_minmax(0,1fr)] items-center py-1",
-                  responsive &&
-                    "md:flex md:w-32 md:shrink-0 md:flex-col md:justify-center md:px-2 md:text-center",
-                )}
-              >
+              <div className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-center py-1">
                 <ArrowDown
-                  className={cn(
-                    "mx-auto text-teal-700 motion-safe:animate-pulse",
-                    responsive && "md:hidden",
-                  )}
+                  className="mx-auto text-teal-700 motion-safe:animate-pulse"
                   size={22}
                   aria-hidden="true"
                 />
-                {responsive ? (
-                  <ArrowRight
-                    className="hidden text-teal-700 motion-safe:animate-pulse md:block"
-                    size={24}
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <ul
-                  className={cn("grid gap-1", responsive && "md:mt-1")}
-                  aria-label={`From ${node.title}`}
-                >
+                <ul className="grid gap-1" aria-label={`From ${node.title}`}>
                   {outgoing.length > 0 ? (
                     outgoing.map((edge) => (
                       <li
@@ -202,22 +111,16 @@ function CausalNodeButton({
   node,
   selected,
   onFocus,
-  wide = false,
-  responsiveWide = false,
 }: {
   node: CausalNode;
   selected: boolean;
   onFocus: (focus: FocusRef) => void;
-  wide?: boolean;
-  responsiveWide?: boolean;
 }) {
   return (
     <button
       type="button"
       className={cn(
-        "min-h-11 rounded-2xl border-2 border-teal-700 bg-[#fffdf5] p-3 text-left shadow-[4px_4px_0_rgba(15,118,110,0.12)] transition motion-reduce:transition-none focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-200",
-        wide ? "w-full" : "w-48 shrink-0",
-        responsiveWide && "md:w-48 md:shrink-0",
+        "min-h-11 w-full rounded-2xl border-2 border-teal-700 bg-[#fffdf5] p-3 text-left shadow-[4px_4px_0_rgba(15,118,110,0.12)] transition motion-reduce:transition-none focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-200",
         selected && "bg-teal-100 outline-2 outline-offset-2 outline-teal-800",
       )}
       aria-pressed={selected}
@@ -272,31 +175,6 @@ function NodeStateLabel({
       <Icon size={14} strokeWidth={2.5} aria-hidden="true" />
       {state.charAt(0).toUpperCase() + state.slice(1)}
     </span>
-  );
-}
-
-function UnplacedEdges({ graph }: { graph: CausalGraphModel }) {
-  const nodeIds = new Set(graph.nodes.map((node) => node.id));
-  const unplaced = graph.edges.filter(
-    (edge) => !nodeIds.has(edge.source) || !nodeIds.has(edge.target),
-  );
-  if (unplaced.length === 0) return null;
-
-  return (
-    <ul className="mt-3 grid gap-2" aria-label="Additional causal connections">
-      {unplaced.map((edge) => (
-        <li
-          key={edge.id}
-          className="flex min-h-11 items-center gap-2 rounded-xl border-2 border-dashed border-teal-700 bg-white px-3 py-2 text-xs font-bold text-[#123047]"
-        >
-          {edge.source} → {edge.target}: {edge.label}
-          <ProvenanceBadge provenance={edge.provenance} />
-          <span className="text-xs font-bold text-[#466778]">
-            {evidenceScopeText(edge.scope)}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }
 

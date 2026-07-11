@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runtimeEventSchema } from "@kplay/contracts";
+import type { KafkaRuntimeAdapter } from "@kplay/kafka-runtime";
 
 const mockedServerEnv = vi.hoisted(() => ({ maxConsumersPerRun: 3 }));
 
@@ -24,6 +25,7 @@ describe("PlaygroundRuntime teaching experiments", () => {
   afterEach(() => {
     mockedServerEnv.maxConsumersPerRun = 3;
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("uses demo adapter routing and assignments for the partitioning experiments", async () => {
@@ -315,18 +317,114 @@ describe("PlaygroundRuntime teaching experiments", () => {
     await runtime.reset(started.runId);
   });
 
+  it("queues ordinary production until guided observations are complete", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("partitioning");
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    const observationStarted = createDeferred();
+    const releaseObservation = createDeferred();
+    const produce = internalRun.adapter.produce.bind(internalRun.adapter);
+    let adapterCalls = 0;
+    vi.spyOn(internalRun.adapter, "produce").mockImplementation(
+      async (input) => {
+        adapterCalls += 1;
+        if (adapterCalls === 1) {
+          observationStarted.resolve();
+          await releaseObservation.promise;
+        }
+        return produce(input);
+      },
+    );
+
+    const experiment = runtime.runExperiment(
+      started.runId,
+      "produce-keyed-record",
+    );
+    await observationStarted.promise;
+
+    let ordinaryProduceSettled = false;
+    const ordinaryProduce = runtime
+      .produceOne(started.runId, { type: "fixed", value: "ordinary" })
+      .finally(() => {
+        ordinaryProduceSettled = true;
+      });
+    await Promise.resolve();
+
+    expect(adapterCalls).toBe(1);
+    expect(ordinaryProduceSettled).toBe(false);
+
+    releaseObservation.resolve();
+    const completed = await experiment;
+    await ordinaryProduce;
+
+    if (completed.scenarioState?.scenarioId !== "partitioning") {
+      throw new Error("Missing partitioning state");
+    }
+    expect(
+      completed.scenarioState.routingTraces.map((trace) => trace.key),
+    ).toEqual(["A", "B", "A"]);
+    expect(adapterCalls).toBe(4);
+    expect(
+      runtime
+        .snapshot(started.runId)
+        .recentMessages.map((message) => message.key),
+    ).toEqual(["A", "B", "A", "ordinary"]);
+
+    await runtime.reset(started.runId);
+  });
+
+  it("resumes automatic production in the run's owning session", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const sessionId = "experiment-owner";
+    const started = await runtime.createRun(
+      "acl-least-privilege",
+      {},
+      sessionId,
+    );
+    await runtime.updateSettings(
+      started.runId,
+      { productionRate: 10 },
+      sessionId,
+    );
+    await runtime.startProducer(started.runId, sessionId);
+
+    const completed = await runtime.runExperiment(
+      started.runId,
+      "trigger-acl-denial",
+      sessionId,
+    );
+    expect(completed.producerStatus).toBe("running");
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(
+      runtime.snapshot(started.runId, sessionId).messageCounts.produced,
+    ).toBe(1);
+    expect(runtime.activeSnapshot()).toBeNull();
+
+    await runtime.reset(started.runId, sessionId);
+  });
+
   it("lets an in-flight experiment finish before resetting the run", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
     const started = await runtime.createRun("partitioning");
     const observationStarted = createDeferred();
     const releaseObservation = createDeferred();
-    const produceOne = runtime.produceOne.bind(runtime);
-    vi.spyOn(runtime, "produceOne").mockImplementationOnce(async (...args) => {
-      observationStarted.resolve();
-      await releaseObservation.promise;
-      return produceOne(...args);
-    });
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    const produce = internalRun.adapter.produce.bind(internalRun.adapter);
+    vi.spyOn(internalRun.adapter, "produce").mockImplementationOnce(
+      async (input) => {
+        observationStarted.resolve();
+        await releaseObservation.promise;
+        return produce(input);
+      },
+    );
 
     const experiment = runtime.runExperiment(
       started.runId,
@@ -363,6 +461,48 @@ describe("PlaygroundRuntime teaching experiments", () => {
       },
     });
     expect(cleanup).toEqual({ cleanupStatus: "completed" });
+    expect(runtime.activeSnapshot()).toBeNull();
+  });
+
+  it("waits for a reserved experiment before cleaning up its run", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("partitioning");
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    const ordinaryProduceStarted = createDeferred();
+    const releaseOrdinaryProduce = createDeferred();
+    const produce = internalRun.adapter.produce.bind(internalRun.adapter);
+    vi.spyOn(internalRun.adapter, "produce").mockImplementationOnce(
+      async (input) => {
+        ordinaryProduceStarted.resolve();
+        await releaseOrdinaryProduce.promise;
+        return produce(input);
+      },
+    );
+
+    const ordinaryProduce = runtime.produceOne(started.runId);
+    await ordinaryProduceStarted.promise;
+    const experiment = runtime.runExperiment(
+      started.runId,
+      "produce-keyed-record",
+    );
+    const experimentRejected = expect(experiment).rejects.toMatchObject({
+      code: "SCENARIO_EXPERIMENT_UNAVAILABLE",
+      status: 409,
+    });
+    let resetSettled = false;
+    const reset = runtime.reset(started.runId).finally(() => {
+      resetSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(resetSettled).toBe(false);
+
+    releaseOrdinaryProduce.resolve();
+    await ordinaryProduce;
+    await experimentRejected;
+    await expect(reset).resolves.toEqual({ cleanupStatus: "completed" });
     expect(runtime.activeSnapshot()).toBeNull();
   });
 
@@ -434,6 +574,96 @@ describe("PlaygroundRuntime teaching experiments", () => {
     });
 
     await runtime.reset(started.runId);
+  });
+
+  it("rolls back a second-step observation failure and retries cleanly", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("partitioning");
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    const before = structuredClone(runtime.snapshot(started.runId));
+    const produce = internalRun.adapter.produce.bind(internalRun.adapter);
+    let adapterCalls = 0;
+    const produceSpy = vi
+      .spyOn(internalRun.adapter, "produce")
+      .mockImplementation(async (input) => {
+        adapterCalls += 1;
+        if (adapterCalls === 2) {
+          throw new Error("second guided produce failed");
+        }
+        return produce(input);
+      });
+
+    await expect(
+      runtime.runExperiment(started.runId, "produce-keyed-record"),
+    ).rejects.toThrow("second guided produce failed");
+
+    const failed = runtime.snapshot(started.runId);
+    expect(failed.recentMessages).toEqual(before.recentMessages);
+    expect(failed.consumers).toEqual(before.consumers);
+    expect(failed.messageCounts).toEqual(before.messageCounts);
+    expect(failed.latestPartitionOffsets).toEqual(
+      before.latestPartitionOffsets,
+    );
+    expect(failed.latestCommittedOffsets).toEqual(
+      before.latestCommittedOffsets,
+    );
+    expect(
+      failed.recentEvents
+        .slice(before.recentEvents.length)
+        .map((event) => event.type),
+    ).toEqual(["scenario.experiment.failed"]);
+    expect(internalRun.processingTimers.size).toBe(0);
+
+    produceSpy.mockRestore();
+    const retried = await runtime.runExperiment(
+      started.runId,
+      "produce-keyed-record",
+    );
+    if (retried.scenarioState?.scenarioId !== "partitioning") {
+      throw new Error("Missing partitioning state");
+    }
+    expect(
+      retried.scenarioState.routingTraces.map((trace) => trace.key),
+    ).toEqual(["A", "B", "A"]);
+    expect(retried.recentMessages).toHaveLength(3);
+    expect(
+      retried.recentMessages.map((message) => message.value.sequence),
+    ).toEqual([1, 2, 3]);
+    expect(
+      new Set(
+        retried.scenarioState.routingTraces.map((trace) => trace.messageId),
+      ),
+    ).toEqual(
+      new Set(retried.recentMessages.map((message) => message.messageId)),
+    );
+
+    const cleanStarted = await runtime.createRun(
+      "partitioning",
+      {},
+      "clean-reference",
+    );
+    const clean = await runtime.runExperiment(
+      cleanStarted.runId,
+      "produce-keyed-record",
+      "clean-reference",
+    );
+    if (clean.scenarioState?.scenarioId !== "partitioning") {
+      throw new Error("Missing partitioning state");
+    }
+    const routeCoordinates = (snapshot: typeof clean) => {
+      if (snapshot.scenarioState?.scenarioId !== "partitioning") return [];
+      return snapshot.scenarioState.routingTraces.map((trace) => ({
+        key: trace.key,
+        partition: trace.partition,
+        offset: trace.offset,
+      }));
+    };
+    expect(routeCoordinates(retried)).toEqual(routeCoordinates(clean));
+
+    await runtime.reset(started.runId);
+    await runtime.reset(cleanStarted.runId, "clean-reference");
   });
 
   it("rejects every contrast until its primary experiment completes", async () => {
@@ -580,10 +810,12 @@ function getInternalRun(runtime: object) {
     runtime as {
       runs: {
         getSessionRun(sessionId: string): {
+          adapter: KafkaRuntimeAdapter;
           scenarioState: unknown;
           virtualTimeMs: number;
           inFlightExperimentId: string | null;
           completedExperimentIds: Set<string>;
+          processingTimers: Map<string, NodeJS.Timeout>;
           consumerHandles: Map<string, { disconnect: () => Promise<void> }>;
         } | null;
       };

@@ -90,5 +90,6 @@ function snapshotFor(
     partitionCount: 3,
     topicName: "descriptor-test-topic",
     recentMessages: [],
+    completedExperimentIds: [],
   };
 }

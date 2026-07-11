@@ -28,13 +28,15 @@ export function useScenarioExperience({
   const experiencePartitionCount = run?.partitionCount ?? null;
   const experienceTopicName = run?.topicName ?? null;
   const experienceRecentMessages = run?.recentMessages ?? null;
+  const experienceCompletedExperimentIds = run?.completedExperimentIds ?? null;
   const experienceSnapshot = useMemo<ScenarioExperienceSnapshot | null>(() => {
     if (
       experienceScenarioId === null ||
       experienceMode === null ||
       experiencePartitionCount === null ||
       experienceTopicName === null ||
-      experienceRecentMessages === null
+      experienceRecentMessages === null ||
+      experienceCompletedExperimentIds === null
     ) {
       return null;
     }
@@ -45,9 +47,11 @@ export function useScenarioExperience({
       partitionCount: experiencePartitionCount,
       topicName: experienceTopicName,
       recentMessages: experienceRecentMessages,
+      completedExperimentIds: experienceCompletedExperimentIds,
     };
   }, [
     experienceMode,
+    experienceCompletedExperimentIds,
     experiencePartitionCount,
     experienceRecentMessages,
     experienceScenarioId,

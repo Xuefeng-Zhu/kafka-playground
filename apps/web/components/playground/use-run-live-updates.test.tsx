@@ -480,4 +480,5 @@ const snapshotFixture = {
   recentEvents: [runtimeEventFixture],
   cleanupStatus: "not_requested",
   sequence: 1,
+  completedExperimentIds: [],
 } satisfies RunSnapshot;

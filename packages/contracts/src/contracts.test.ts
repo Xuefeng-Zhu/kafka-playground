@@ -6,8 +6,13 @@ import {
   getMissingRemoteKafkaConfigFields,
   parseRemoteKafkaBrokerList,
   remoteKafkaConfigSchema,
+  runSnapshotSchema,
   runtimeEventTypes,
   runtimeEventSchema,
+  scenarioExperimentCatalog,
+  scenarioExperimentIds,
+  scenarioExperimentIdSchema,
+  scenarioExperimentStatusSchema,
   scenarioStateSchema,
   scenarioExperimentTransitionSchema,
   settingsRequestSchema,
@@ -217,4 +222,281 @@ describe("contracts", () => {
         .success,
     ).toBe(false);
   });
+
+  it("shares one typed experiment descriptor catalog across client and server code", () => {
+    expect(scenarioExperimentCatalog.partitioning).toEqual([
+      {
+        id: "produce-keyed-record",
+        role: "primary",
+        prerequisite: null,
+      },
+      {
+        id: "grow-consumer-group",
+        role: "contrast",
+        prerequisite: "produce-keyed-record",
+      },
+    ]);
+    expect(scenarioExperimentIds.partitioning).toEqual([
+      "produce-keyed-record",
+      "grow-consumer-group",
+    ]);
+    expect(
+      scenarioExperimentIdSchema.safeParse("produce-keyed-record").success,
+    ).toBe(true);
+    expect(
+      scenarioExperimentIdSchema.safeParse("produce_keyed_record").success,
+    ).toBe(false);
+
+    for (const descriptors of Object.values(scenarioExperimentCatalog)) {
+      const ids = descriptors.map(({ id }) => id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(descriptors.filter(({ role }) => role === "primary")).toHaveLength(
+        1,
+      );
+      expect(
+        descriptors.filter(({ role }) => role === "contrast"),
+      ).toHaveLength(1);
+      for (const descriptor of descriptors) {
+        if (descriptor.prerequisite !== null) {
+          expect(ids).toContain(descriptor.prerequisite);
+        }
+      }
+    }
+  });
+
+  it("rejects arbitrary experiment IDs in state and runtime event fields", () => {
+    expect(
+      scenarioExperimentStatusSchema.safeParse({
+        status: "completed",
+        experimentId: "not-a-real-experiment",
+        stepIndex: 1,
+        totalSteps: 1,
+        startedAtVirtualMs: 0,
+        completedAtVirtualMs: 1,
+        error: null,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      runtimeEventSchema.safeParse(
+        experimentStartedEventFixture("not-a-real-experiment"),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("rejects cross-scenario experiment IDs in state and runtime events", () => {
+    const state = scenarioStateSchema.safeParse(
+      partitioningScenarioStateFixture("cdc-batch"),
+    );
+    expect(state.success).toBe(false);
+    if (!state.success) {
+      expect(state.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["experiment", "experimentId"],
+            message: "cdc-batch does not belong to partitioning.",
+          }),
+        ]),
+      );
+    }
+
+    const event = runtimeEventSchema.safeParse(
+      experimentStartedEventFixture("cdc-batch"),
+    );
+    expect(event.success).toBe(false);
+    if (!event.success) {
+      expect(event.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["experimentId"],
+            message: "cdc-batch does not belong to partitioning.",
+          }),
+        ]),
+      );
+    }
+  });
+
+  it("rejects completed experiment IDs from another snapshot scenario", () => {
+    expect(
+      runSnapshotSchema.safeParse(
+        runSnapshotFixture(["produce-keyed-record", "grow-consumer-group"]),
+      ).success,
+    ).toBe(true);
+
+    const result = runSnapshotSchema.safeParse(
+      runSnapshotFixture(["cdc-batch"]),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ["completedExperimentIds", 0],
+          message: "cdc-batch does not belong to partitioning.",
+        }),
+      ]),
+    );
+  });
+
+  it("requires prerequisite-closed completion history in insertion order", () => {
+    const missingPrerequisite = runSnapshotSchema.safeParse(
+      runSnapshotFixture(["grow-consumer-group"]),
+    );
+    expect(missingPrerequisite.success).toBe(false);
+    if (!missingPrerequisite.success) {
+      expect(missingPrerequisite.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["completedExperimentIds", 0],
+            message:
+              "grow-consumer-group requires earlier completion of produce-keyed-record.",
+          }),
+        ]),
+      );
+    }
+
+    const reversed = runSnapshotSchema.safeParse(
+      runSnapshotFixture(["grow-consumer-group", "produce-keyed-record"]),
+    );
+    expect(reversed.success).toBe(false);
+
+    expect(
+      runSnapshotSchema.safeParse(
+        runSnapshotFixture(["produce-keyed-record", "grow-consumer-group"]),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("keeps completed scenario state coherent with completion history", () => {
+    const completedState = partitioningScenarioStateFixture(
+      "grow-consumer-group",
+    );
+    const missingActive = runSnapshotSchema.safeParse(
+      runSnapshotFixture(["produce-keyed-record"], {
+        scenarioState: completedState,
+      }),
+    );
+    expect(missingActive.success).toBe(false);
+    if (!missingActive.success) {
+      expect(missingActive.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["completedExperimentIds"],
+            message:
+              "grow-consumer-group is completed in scenario state but missing from completion history.",
+          }),
+        ]),
+      );
+    }
+
+    expect(
+      runSnapshotSchema.safeParse(
+        runSnapshotFixture(["produce-keyed-record", "grow-consumer-group"], {
+          scenarioState: completedState,
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("rejects duplicate completion history and mismatched scenario state", () => {
+    const duplicate = runSnapshotSchema.safeParse(
+      runSnapshotFixture(["produce-keyed-record", "produce-keyed-record"]),
+    );
+    expect(duplicate.success).toBe(false);
+    if (!duplicate.success) {
+      expect(duplicate.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: ["completedExperimentIds", 1] }),
+        ]),
+      );
+    }
+
+    const mismatch = runSnapshotSchema.safeParse(
+      runSnapshotFixture([], {
+        scenarioId: "fan-out-load-balancing",
+        scenarioState: partitioningScenarioStateFixture(null),
+      }),
+    );
+    expect(mismatch.success).toBe(false);
+    if (!mismatch.success) {
+      expect(mismatch.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: ["scenarioState", "scenarioId"] }),
+        ]),
+      );
+    }
+  });
 });
+
+function runSnapshotFixture(
+  completedExperimentIds: string[],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    runId: "run-1",
+    scenarioId: "partitioning",
+    mode: "demo",
+    status: "running",
+    topicName: "kplay.test",
+    partitionCount: 2,
+    consumerLimit: 3,
+    consumerGroupId: "kplay.test.workers",
+    producerStatus: "stopped",
+    productionRate: 1,
+    keyStrategy: { type: "round_robin_users" },
+    processingLatencyMs: 500,
+    consumers: [],
+    latestPartitionOffsets: {},
+    latestCommittedOffsets: {},
+    messageCounts: {},
+    recentMessages: [],
+    recentEvents: [],
+    cleanupStatus: "not_requested",
+    sequence: 0,
+    completedExperimentIds,
+    ...overrides,
+  };
+}
+
+function partitioningScenarioStateFixture(experimentId: string | null) {
+  return {
+    version: 1,
+    scenarioId: "partitioning",
+    virtualTimeMs: 0,
+    revision: experimentId === null ? 0 : 1,
+    experiment: {
+      status: experimentId === null ? "idle" : "completed",
+      experimentId,
+      stepIndex: experimentId === null ? 0 : 1,
+      totalSteps: experimentId === null ? 0 : 1,
+      startedAtVirtualMs: experimentId === null ? null : 0,
+      completedAtVirtualMs: experimentId === null ? null : 1,
+      error: null,
+    },
+    routingTraces: [],
+    partitionPositions: [],
+    consumers: [],
+    assignmentEpoch: 0,
+  };
+}
+
+function experimentStartedEventFixture(experimentId: string) {
+  return {
+    eventId: "experiment-event",
+    runId: "run-1",
+    sequence: 1,
+    occurredAt: "2026-07-09T00:00:00.000Z",
+    type: "scenario.experiment.started",
+    scenarioId: "partitioning",
+    experimentId,
+    entityIds: ["scenario-partitioning"],
+    provenance: "simulated",
+    virtualTimeMs: 0,
+    step: {
+      id: "experiment-started",
+      index: 0,
+      total: 1,
+      label: "Experiment started",
+    },
+  };
+}

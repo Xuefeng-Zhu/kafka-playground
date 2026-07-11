@@ -5,7 +5,7 @@ import type {
   RemoteKafkaConfig,
   UserSelectableKafkaMode,
   RuntimeEvent,
-  ScenarioState,
+  ScenarioExperimentId,
 } from "@kplay/contracts";
 import {
   DemoKafkaRuntimeAdapter,
@@ -49,11 +49,23 @@ import {
   PlaygroundRunRegistry,
 } from "./playground-run-registry";
 import {
-  buildScenarioExperimentResult,
   scenarioExperimentPrerequisite,
   supportsScenarioExperiment,
-  type ScenarioExperimentObservations,
 } from "./scenario-experiments";
+import { executeScenarioExperiment } from "./scenario-experiment-execution";
+import { prepareScenarioExperimentObservations } from "./scenario-experiment-observations";
+import {
+  captureScenarioExperimentCheckpoint,
+  restoreScenarioExperimentCheckpoint,
+  restoreScenarioExperimentProducerStatus,
+  suspendScenarioExperimentTimers,
+  type ScenarioExperimentCheckpoint,
+} from "./scenario-experiment-transaction";
+
+type BufferedRuntimeEvent = {
+  type: RuntimeEvent["type"];
+  payload: Record<string, unknown>;
+};
 
 export class PlaygroundRuntime {
   private readonly env = getServerEnv();
@@ -84,6 +96,15 @@ export class PlaygroundRuntime {
   );
   private readonly runs = new PlaygroundRunRegistry();
   private readonly inFlightExperiments = new Map<string, Promise<void>>();
+  private readonly runMutationTails = new Map<string, Promise<void>>();
+  private readonly reservedExperimentIds = new Map<
+    string,
+    ScenarioExperimentId
+  >();
+  private readonly bufferedExperimentEvents = new Map<
+    string,
+    BufferedRuntimeEvent[]
+  >();
   private readonly cleanupRequestedRunIds = new Set<string>();
   private readonly cleanupOperations = new Map<string, Promise<void>>();
   private shutdownStarted = false;
@@ -207,71 +228,80 @@ export class PlaygroundRuntime {
     >,
     sessionId = DEFAULT_SESSION_ID,
   ) {
-    const run = this.requireRun(runId, sessionId);
-    const scenario = this.scenarioForRun(run);
-    if (settings.productionRate !== undefined) {
-      if (
-        settings.productionRate >
-        Math.min(this.env.MAX_PRODUCE_RATE, scenario.limits.maxProduceRate)
-      ) {
-        throw new ApiError(
-          "RATE_LIMIT_EXCEEDED",
-          "Production rate exceeds the configured maximum.",
-          429,
-        );
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      const scenario = this.scenarioForRun(run);
+      if (settings.productionRate !== undefined) {
+        if (
+          settings.productionRate >
+          Math.min(this.env.MAX_PRODUCE_RATE, scenario.limits.maxProduceRate)
+        ) {
+          throw new ApiError(
+            "RATE_LIMIT_EXCEEDED",
+            "Production rate exceeds the configured maximum.",
+            429,
+          );
+        }
+        run.productionRate = settings.productionRate;
+        if (run.producerStatus === "running") {
+          restartProducerTimer(run, (id) =>
+            this.produceOne(id, undefined, sessionId),
+          );
+        }
       }
-      run.productionRate = settings.productionRate;
-      if (run.producerStatus === "running") {
-        restartProducerTimer(run, (id) =>
-          this.produceOne(id, undefined, sessionId),
-        );
+      if (settings.keyStrategy) run.keyStrategy = settings.keyStrategy;
+      if (settings.processingLatencyMs !== undefined) {
+        if (
+          settings.processingLatencyMs <
+            scenario.limits.minProcessingLatencyMs ||
+          settings.processingLatencyMs > scenario.limits.maxProcessingLatencyMs
+        ) {
+          throw new ApiError(
+            "LATENCY_OUT_OF_RANGE",
+            "Processing latency is outside this scenario's limits.",
+            400,
+          );
+        }
+        run.processingLatencyMs = settings.processingLatencyMs;
       }
-    }
-    if (settings.keyStrategy) run.keyStrategy = settings.keyStrategy;
-    if (settings.processingLatencyMs !== undefined) {
-      if (
-        settings.processingLatencyMs < scenario.limits.minProcessingLatencyMs ||
-        settings.processingLatencyMs > scenario.limits.maxProcessingLatencyMs
-      ) {
-        throw new ApiError(
-          "LATENCY_OUT_OF_RANGE",
-          "Processing latency is outside this scenario's limits.",
-          400,
-        );
-      }
-      run.processingLatencyMs = settings.processingLatencyMs;
-    }
-    return this.snapshot(runId, sessionId);
+      return this.snapshot(runId, sessionId);
+    });
   }
 
   async startProducer(runId: string, sessionId = DEFAULT_SESSION_ID) {
-    const run = this.requireRun(runId, sessionId);
-    if (run.producerStatus === "running")
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      if (run.producerStatus === "running")
+        return this.snapshot(runId, sessionId);
+      run.producerStatus = "starting";
+      this.emit(run, "producer.starting", { actor: "producer" });
+      run.producerStatus = "running";
+      this.emit(run, "producer.started", { actor: "producer" });
+      restartProducerTimer(run, (id) =>
+        this.produceOne(id, undefined, sessionId),
+      );
       return this.snapshot(runId, sessionId);
-    run.producerStatus = "starting";
-    this.emit(run, "producer.starting", { actor: "producer" });
-    run.producerStatus = "running";
-    this.emit(run, "producer.started", { actor: "producer" });
-    restartProducerTimer(run, (id) =>
-      this.produceOne(id, undefined, sessionId),
-    );
-    return this.snapshot(runId, sessionId);
+    });
   }
 
   async pauseProducer(runId: string, sessionId = DEFAULT_SESSION_ID) {
-    const run = this.requireRun(runId, sessionId);
-    clearProducerTimer(run);
-    run.producerStatus = "paused";
-    this.emit(run, "producer.paused", { actor: "producer" });
-    return this.snapshot(runId, sessionId);
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      clearProducerTimer(run);
+      run.producerStatus = "paused";
+      this.emit(run, "producer.paused", { actor: "producer" });
+      return this.snapshot(runId, sessionId);
+    });
   }
 
   async stopProducer(runId: string, sessionId = DEFAULT_SESSION_ID) {
-    const run = this.requireRun(runId, sessionId);
-    clearProducerTimer(run);
-    run.producerStatus = "stopped";
-    this.emit(run, "producer.stopped", { actor: "producer" });
-    return this.snapshot(runId, sessionId);
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      clearProducerTimer(run);
+      run.producerStatus = "stopped";
+      this.emit(run, "producer.stopped", { actor: "producer" });
+      return this.snapshot(runId, sessionId);
+    });
   }
 
   async produceOne(
@@ -279,19 +309,26 @@ export class PlaygroundRuntime {
     override?: KeyStrategy,
     sessionId = DEFAULT_SESSION_ID,
   ) {
-    const run = this.requireRun(runId, sessionId);
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      await this.produceMessage(run, override);
+      return this.snapshot(runId, sessionId);
+    });
+  }
+
+  private async produceMessage(run: InternalRun, override?: KeyStrategy) {
     const keyStrategy = override ?? run.keyStrategy;
     const eventId = crypto.randomUUID();
     const messageKey = run.keyState.next(keyStrategy);
     const value = createPlaygroundValue({
       eventId,
-      runId,
+      runId: run.runId,
       scenarioId: run.scenarioId,
       sequence: run.keyState.currentSequence,
       userId: messageKey,
     });
     const headers = createHeaders({
-      runId,
+      runId: run.runId,
       eventId,
       scenarioId: run.scenarioId,
       sequence: run.keyState.currentSequence,
@@ -300,7 +337,7 @@ export class PlaygroundRuntime {
     const now = new Date().toISOString();
     const message: PlaygroundMessage = {
       messageId: eventId,
-      runId,
+      runId: run.runId,
       topic: run.topicName,
       partition: null,
       offset: null,
@@ -323,7 +360,7 @@ export class PlaygroundRuntime {
     let delivery;
     try {
       delivery = await run.adapter.produce({
-        runId,
+        runId: run.runId,
         topicName: run.topicName,
         key: messageKey,
         value,
@@ -360,11 +397,18 @@ export class PlaygroundRuntime {
       actor: "producer",
     });
     if (run.mode === "demo") this.maybeDeliverMessage(run, message);
-    return this.snapshot(runId, sessionId);
+    return message;
   }
 
   async addConsumer(runId: string, sessionId = DEFAULT_SESSION_ID) {
-    const run = this.requireRun(runId, sessionId);
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      await this.addConsumerToRun(run);
+      return this.snapshot(runId, sessionId);
+    });
+  }
+
+  private async addConsumerToRun(run: InternalRun) {
     const consumerLimit = this.consumerLimit(run);
     if (this.activeConsumers(run).length >= consumerLimit) {
       throw new ApiError(
@@ -392,6 +436,12 @@ export class PlaygroundRuntime {
           onMessage: (message) =>
             this.handleConsumedMessage(run.runId, consumerId, message),
           onError: (error) => {
+            if (
+              this.cleanupRequestedRunIds.has(run.runId) ||
+              !this.findRun(run.runId)
+            ) {
+              return;
+            }
             logger.error(
               { runId: run.runId, consumerId, error },
               "Kafka consumer error",
@@ -422,13 +472,22 @@ export class PlaygroundRuntime {
     if (run.mode === "demo") {
       this.rebalanceAndDeliverProducedMessages(run);
     }
-    return this.snapshot(runId, sessionId);
   }
 
   async stopConsumer(
     runId: string,
     consumerId: string,
     sessionId = DEFAULT_SESSION_ID,
+  ) {
+    return this.mutateRun(runId, () =>
+      this.stopConsumerFromRun(runId, consumerId, sessionId),
+    );
+  }
+
+  private async stopConsumerFromRun(
+    runId: string,
+    consumerId: string,
+    sessionId: string,
   ) {
     const run = this.requireRun(runId, sessionId);
     const consumer = run.consumers.find(
@@ -472,6 +531,16 @@ export class PlaygroundRuntime {
     runId: string,
     consumerId: string,
     sessionId = DEFAULT_SESSION_ID,
+  ) {
+    return this.mutateRun(runId, () =>
+      this.crashConsumerInRun(runId, consumerId, sessionId),
+    );
+  }
+
+  private async crashConsumerInRun(
+    runId: string,
+    consumerId: string,
+    sessionId: string,
   ) {
     const run = this.requireRun(runId, sessionId);
     const consumer = run.consumers.find(
@@ -520,27 +589,30 @@ export class PlaygroundRuntime {
     sessionId = DEFAULT_SESSION_ID,
   ) {
     const run = this.requireRun(runId, sessionId);
+    const reservedExperimentId = this.reservedExperimentIds.get(runId);
     if (
       this.cleanupRequestedRunIds.has(runId) ||
       run.mode !== "demo" ||
       !run.scenarioState ||
       !supportsScenarioExperiment(run.scenarioState, experimentId) ||
-      run.inFlightExperimentId
+      run.inFlightExperimentId ||
+      reservedExperimentId
     ) {
       throw new ApiError(
         "SCENARIO_EXPERIMENT_UNAVAILABLE",
-        run.inFlightExperimentId
-          ? `Experiment ${run.inFlightExperimentId} is already running.`
+        run.inFlightExperimentId || reservedExperimentId
+          ? `Experiment ${run.inFlightExperimentId ?? reservedExperimentId} is already running.`
           : run.mode !== "demo"
             ? "Teaching experiments are unavailable for remote Kafka runs because their deterministic evidence is demo-only."
             : "This experiment is unavailable for the active scenario.",
         409,
       );
     }
+    const validatedExperimentId = experimentId;
 
     const prerequisite = scenarioExperimentPrerequisite(
       run.scenarioState,
-      experimentId,
+      validatedExperimentId,
     );
     if (prerequisite && !run.completedExperimentIds.has(prerequisite)) {
       throw new ApiError(
@@ -550,157 +622,106 @@ export class PlaygroundRuntime {
       );
     }
 
-    run.inFlightExperimentId = experimentId;
+    this.reservedExperimentIds.set(runId, validatedExperimentId);
     let resolveExperiment: (() => void) | undefined;
     const experimentCompleted = new Promise<void>((resolve) => {
       resolveExperiment = resolve;
     });
     this.inFlightExperiments.set(runId, experimentCompleted);
-    const startedAtVirtualMs = run.virtualTimeMs;
-    let totalSteps = 0;
-
     try {
-      const preview = buildScenarioExperimentResult({
-        state: run.scenarioState,
-        experimentId,
-        startedAtVirtualMs,
-      });
-      totalSteps = preview.transitions.length;
-      run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
-        status: "running",
-        experimentId,
-        stepIndex: 0,
-        totalSteps,
-        startedAtVirtualMs,
-        completedAtVirtualMs: null,
-        error: null,
-      });
-      this.emit(run, "scenario.experiment.started", {
-        scenarioId: run.scenarioId,
-        experimentId,
-        entityIds: [`scenario-${run.scenarioId}`],
-        provenance: "simulated",
-        virtualTimeMs: run.virtualTimeMs,
-        step: {
-          id: "experiment-started",
-          index: 0,
-          total: totalSteps,
-          label: "Experiment started",
-        },
-      });
-
-      // Yield once without using wall-clock time. This keeps the per-run guard
-      // observable to a concurrent request while all domain time stays virtual.
-      await Promise.resolve();
-      const observations = await this.prepareExperimentObservations(
-        run,
-        experimentId,
-        sessionId,
-      );
-      const result = buildScenarioExperimentResult({
-        state: run.scenarioState,
-        experimentId,
-        startedAtVirtualMs,
-        observations,
-      });
-
-      result.transitions.forEach((transition, index) => {
-        run.virtualTimeMs += transition.advanceMs;
-        if (run.scenarioState) {
-          run.scenarioState = this.updateExperimentProgress(
-            {
-              ...run.scenarioState,
-              revision: run.scenarioState.revision + 1,
-              virtualTimeMs: run.virtualTimeMs,
-            } as ScenarioState,
-            {
-              status: "running",
+      return await this.mutateRun(
+        runId,
+        async () => {
+          const currentRun = this.requireRun(runId, sessionId);
+          if (
+            this.cleanupRequestedRunIds.has(runId) ||
+            currentRun.mode !== "demo" ||
+            !currentRun.scenarioState ||
+            !supportsScenarioExperiment(
+              currentRun.scenarioState,
               experimentId,
-              stepIndex: index + 1,
-              totalSteps,
-              startedAtVirtualMs,
-              completedAtVirtualMs: null,
-              error: null,
-            },
+            ) ||
+            currentRun.inFlightExperimentId
+          ) {
+            throw new ApiError(
+              "SCENARIO_EXPERIMENT_UNAVAILABLE",
+              "This experiment is unavailable for the active scenario.",
+              409,
+            );
+          }
+          const currentPrerequisite = scenarioExperimentPrerequisite(
+            currentRun.scenarioState,
+            validatedExperimentId,
           );
-        }
-        this.emit(run, "scenario.experiment.transition", {
-          scenarioId: run.scenarioId,
-          experimentId,
-          entityIds: transition.entityIds,
-          provenance: transition.provenance,
-          virtualTimeMs: run.virtualTimeMs,
-          messageId: transition.messageId,
-          partition: transition.partition,
-          offset: transition.offset,
-          transition: transition.transition,
-          step: {
-            id: transition.id,
-            index: index + 1,
-            total: totalSteps,
-            label: transition.label,
-          },
-        });
-      });
-
-      run.scenarioState = result.state;
-      run.virtualTimeMs = result.state.virtualTimeMs;
-      run.completedExperimentIds.add(experimentId);
-      const lastStep = result.transitions.at(-1);
-      this.emit(run, "scenario.experiment.completed", {
-        scenarioId: run.scenarioId,
-        experimentId,
-        entityIds: [`scenario-${run.scenarioId}`],
-        provenance: "simulated",
-        virtualTimeMs: run.virtualTimeMs,
-        step: {
-          id: "experiment-completed",
-          index: totalSteps,
-          total: totalSteps,
-          label: lastStep?.label ?? "Experiment completed",
+          if (
+            currentPrerequisite &&
+            !currentRun.completedExperimentIds.has(currentPrerequisite)
+          ) {
+            throw new ApiError(
+              "SCENARIO_EXPERIMENT_UNAVAILABLE",
+              `Complete experiment ${currentPrerequisite} before running ${validatedExperimentId}.`,
+              409,
+            );
+          }
+          return this.executeScenarioExperimentForRun(
+            currentRun,
+            validatedExperimentId,
+            sessionId,
+          );
         },
-      });
-      return this.snapshot(runId, sessionId);
-    } catch (error) {
-      const errorCode =
-        error instanceof ApiError ? error.code : "SCENARIO_EXPERIMENT_FAILED";
-      const message =
-        error instanceof Error ? error.message : "Experiment execution failed.";
-      const failedEventTotalSteps = Math.max(totalSteps, 1);
-      if (run.scenarioState) {
-        run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
-          status: "failed",
-          experimentId,
-          stepIndex: run.scenarioState.experiment.stepIndex,
-          totalSteps,
-          startedAtVirtualMs,
-          completedAtVirtualMs: run.virtualTimeMs,
-          error: { code: errorCode, message },
-        });
-      }
-      this.emit(run, "scenario.experiment.failed", {
-        scenarioId: run.scenarioId,
-        experimentId,
-        entityIds: [`scenario-${run.scenarioId}`],
-        provenance: "simulated",
-        virtualTimeMs: run.virtualTimeMs,
-        errorCode,
-        message,
-        step: {
-          id: "experiment-failed",
-          index: run.scenarioState?.experiment.stepIndex ?? 0,
-          total: failedEventTotalSteps,
-          label: "Experiment failed",
-        },
-      });
-      throw error;
+        { cleanupBehavior: "allow" },
+      );
     } finally {
-      run.inFlightExperimentId = null;
+      if (this.reservedExperimentIds.get(runId) === validatedExperimentId) {
+        this.reservedExperimentIds.delete(runId);
+      }
       resolveExperiment?.();
       if (this.inFlightExperiments.get(runId) === experimentCompleted) {
         this.inFlightExperiments.delete(runId);
       }
     }
+  }
+
+  private async executeScenarioExperimentForRun(
+    run: InternalRun,
+    experimentId: ScenarioExperimentId,
+    sessionId: string,
+  ) {
+    return executeScenarioExperiment({
+      run,
+      experimentId,
+      prepareObservations: () =>
+        prepareScenarioExperimentObservations({
+          run,
+          experimentId,
+          operations: {
+            produce: (keyStrategy) => this.produceMessage(run, keyStrategy),
+            addConsumer: () => this.addConsumerToRun(run),
+            processMessage: (messageId, expectedConsumerId, options) =>
+              this.processMessageInRun(
+                run,
+                messageId,
+                expectedConsumerId,
+                options,
+              ),
+            consumerLimit: this.consumerLimit(run),
+            activeConsumers: () => this.activeConsumers(run),
+          },
+        }),
+      emit: (type, payload) => this.emit(run, type, payload),
+      beginEventBuffer: () => this.bufferedExperimentEvents.set(run.runId, []),
+      discardEventBuffer: () => this.bufferedExperimentEvents.delete(run.runId),
+      flushEventBuffer: () => this.flushBufferedExperimentEvents(run),
+      captureCheckpoint: () => captureScenarioExperimentCheckpoint(run),
+      restoreCheckpoint: (checkpoint) =>
+        restoreScenarioExperimentCheckpoint(run, checkpoint),
+      suspendTimers: () => suspendScenarioExperimentTimers(run),
+      restoreProducerStatus: (checkpoint) =>
+        restoreScenarioExperimentProducerStatus(run, checkpoint.producerStatus),
+      resumeTimers: (checkpoint) =>
+        this.resumeScenarioExperimentTimers(run, checkpoint, sessionId),
+      snapshot: () => this.snapshot(run.runId, sessionId),
+    });
   }
 
   async reset(runId: string, sessionId = DEFAULT_SESSION_ID) {
@@ -765,199 +786,102 @@ export class PlaygroundRuntime {
     return this.runs.findRun(runId);
   }
 
-  private updateExperimentProgress(
-    state: ScenarioState,
-    experiment: ScenarioState["experiment"],
-  ): ScenarioState {
-    return { ...state, experiment } as ScenarioState;
+  private mutateRun<T>(
+    runId: string,
+    operation: () => T | Promise<T>,
+    options: {
+      cleanupBehavior?: "allow" | "reject" | "skip";
+    } = {},
+  ): Promise<T> {
+    const cleanupBehavior = options.cleanupBehavior ?? "reject";
+    if (cleanupBehavior !== "allow" && this.cleanupRequestedRunIds.has(runId)) {
+      return cleanupBehavior === "skip"
+        ? Promise.resolve(undefined as T)
+        : Promise.reject(this.cleanupInProgressError());
+    }
+    const previous = this.runMutationTails.get(runId);
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.runMutationTails.set(runId, current);
+
+    const execute = async () => {
+      if (previous) await previous;
+      try {
+        if (
+          cleanupBehavior !== "allow" &&
+          this.cleanupRequestedRunIds.has(runId)
+        ) {
+          if (cleanupBehavior === "skip") return undefined as T;
+          throw this.cleanupInProgressError();
+        }
+        return await operation();
+      } finally {
+        release();
+        if (this.runMutationTails.get(runId) === current) {
+          this.runMutationTails.delete(runId);
+        }
+      }
+    };
+    return execute();
   }
 
-  private async prepareExperimentObservations(
+  private cleanupInProgressError() {
+    return new ApiError(
+      "RUN_CLEANUP_IN_PROGRESS",
+      "The scenario run is being cleaned up.",
+      409,
+    );
+  }
+
+  private resumeScenarioExperimentTimers(
     run: InternalRun,
-    experimentId: string,
+    checkpoint: ScenarioExperimentCheckpoint,
     sessionId: string,
-  ): Promise<ScenarioExperimentObservations | undefined> {
-    if (run.scenarioId === "partitioning") {
-      const growGroup = experimentId === "grow-consumer-group";
-      const produced: PlaygroundMessage[] = growGroup
-        ? run.messages.filter((message) =>
-            run.scenarioState?.scenarioId === "partitioning"
-              ? run.scenarioState.routingTraces.some(
-                  (trace) => trace.messageId === message.messageId,
-                )
-              : false,
-          )
-        : [];
-      if (!growGroup) {
-        for (const key of ["A", "B", "A"]) {
-          await this.produceOne(
-            run.runId,
-            { type: "fixed", value: key },
-            sessionId,
-          );
-          const message = run.messages.at(-1);
-          if (message) produced.push(message);
-        }
-      }
-      const simulateConsumerGrowth = growGroup && this.consumerLimit(run) < 3;
-      if (!simulateConsumerGrowth) {
-        const targetConsumerCount = growGroup ? 3 : 1;
-        while (this.activeConsumers(run).length < targetConsumerCount) {
-          await this.addConsumer(run.runId, sessionId);
-        }
-      }
-      if (!simulateConsumerGrowth) {
-        for (const message of produced) {
-          const timer = run.processingTimers.get(message.messageId);
-          if (timer) clearTimeout(timer);
-          run.processingTimers.delete(message.messageId);
-          if (message.assignedConsumerId) {
-            await this.processMessage(
-              run.runId,
-              message.messageId,
-              message.assignedConsumerId,
-              { commit: growGroup || message !== produced.at(-1) },
-            );
-          }
-        }
-      }
-
-      const assignmentEpoch =
-        run.scenarioState?.scenarioId === "partitioning"
-          ? run.scenarioState.assignmentEpoch + 1
-          : 1;
-      const experimentConsumers = simulateConsumerGrowth
-        ? Array.from({ length: 3 }, (_, index) => ({
-            consumerId: `guided-consumer-${index + 1}`,
-            partitions: Array.from(
-              { length: run.partitionCount },
-              (_, partition) => partition,
-            ).filter((partition) => partition % 3 === index),
-          }))
-        : this.activeConsumers(run).map((consumer) => ({
-            consumerId: consumer.consumerId,
-            partitions: consumer.assignments.map(
-              (assignment) => assignment.partition,
-            ),
-          }));
-      const partitionPositions =
-        simulateConsumerGrowth &&
-        run.scenarioState?.scenarioId === "partitioning"
-          ? run.scenarioState.partitionPositions.map((position) => ({
-              ...position,
-            }))
-          : Array.from({ length: run.partitionCount }, (_, partition) => {
-              const partitionMessages = produced.filter(
-                (message) => message.partition === partition,
-              );
-              const processed = partitionMessages
-                .filter((message) =>
-                  ["processed", "commit_requested", "committed"].includes(
-                    message.state,
-                  ),
-                )
-                .at(-1);
-              return {
-                id: `partition-${partition}-position`,
-                provenance: "simulated" as const,
-                partition,
-                processedOffset: processed?.offset ?? null,
-                committedOffset:
-                  run.latestCommittedOffsets[String(partition)] ?? null,
-              };
-            });
-      return {
-        partitioning: {
-          routingTraces: produced.flatMap((message, index) =>
-            message.partition === null || message.offset === null
-              ? []
-              : [
-                  {
-                    id: `routing-${message.messageId}`,
-                    provenance: "simulated" as const,
-                    messageId: message.messageId,
-                    key: message.key,
-                    partition: message.partition,
-                    offset: message.offset,
-                    sequence: index + 1,
-                  },
-                ],
-          ),
-          partitionPositions,
-          consumers: experimentConsumers.map((consumer) => ({
-            id: `assignment-${consumer.consumerId}-${assignmentEpoch}`,
-            provenance: "simulated" as const,
-            consumerId: consumer.consumerId,
-            partitions: consumer.partitions,
-            status: consumer.partitions.length > 0 ? "running" : "idle",
-            epoch: assignmentEpoch,
-          })),
-          assignmentEpoch,
-        },
-      };
+  ) {
+    if (this.cleanupRequestedRunIds.has(run.runId)) {
+      clearProducerTimer(run);
+      run.producerStatus = "stopped";
+      for (const timer of run.processingTimers.values()) clearTimeout(timer);
+      run.processingTimers.clear();
+      return;
     }
-
-    if (run.scenarioId === "fan-out-load-balancing") {
-      const routes: Array<{
-        messageId: string;
-        partition: number;
-        offset: string;
-      }> = [];
-      if (experimentId === "produce-unkeyed-burst") {
-        for (let index = 0; index < 3; index += 1) {
-          await this.produceOne(run.runId, { type: "no_key" }, sessionId);
-          const message = run.messages.at(-1);
-          if (
-            message &&
-            message.partition !== null &&
-            message.offset !== null
-          ) {
-            routes.push({
-              messageId: message.messageId,
-              partition: message.partition,
-              offset: message.offset,
-            });
-          }
-        }
+    for (const messageId of checkpoint.pendingProcessingMessageIds) {
+      if (run.processingTimers.has(messageId)) continue;
+      const message = run.messages.find((item) => item.messageId === messageId);
+      if (
+        !message?.assignedConsumerId ||
+        !["received", "processing"].includes(message.state)
+      ) {
+        continue;
       }
-      const epochs: NonNullable<
-        ScenarioExperimentObservations["loadBalancing"]
-      >["epochs"] = [];
-      if (experimentId === "grow-consumer-group") {
-        // This experiment teaches a four-member assignment independently of
-        // the raw-controls consumer pool. The pool can be capped below four
-        // and can already contain user-created members, so mutating it here
-        // would either exceed run capacity or skip the early assignment
-        // epochs. Keep the authoritative lesson deterministic and explicitly
-        // simulated while leaving real run capacity untouched.
-        for (let epoch = 1; epoch <= 4; epoch += 1) {
-          const memberIds = Array.from(
-            { length: epoch },
-            (_, index) => `consumer-${index + 1}`,
-          );
-          const assignments = memberIds.map((consumerId, memberIndex) => ({
-            consumerId,
-            partitions: Array.from(
-              { length: run.partitionCount },
-              (_, partition) => partition,
-            ).filter((partition) => partition % epoch === memberIndex),
-          }));
-          epochs.push({
-            id: `assignment-epoch-${epoch}`,
-            provenance: "simulated",
-            epoch,
-            memberIds,
-            assignments,
-            idleConsumerIds: assignments
-              .filter((assignment) => assignment.partitions.length === 0)
-              .map((assignment) => assignment.consumerId),
-          });
-        }
-      }
-      return { loadBalancing: { epochs, routes } };
+      scheduleMessageProcessing(
+        run,
+        message,
+        message.assignedConsumerId,
+        (runId, scheduledMessageId, expectedConsumerId) =>
+          this.processMessage(runId, scheduledMessageId, expectedConsumerId),
+      );
     }
+    if (run.producerStatus === "running") {
+      restartProducerTimer(run, (runId) =>
+        this.produceOne(runId, undefined, sessionId),
+      );
+    }
+  }
 
-    return undefined;
+  private flushBufferedExperimentEvents(run: InternalRun) {
+    const events = this.bufferedExperimentEvents.get(run.runId) ?? [];
+    this.bufferedExperimentEvents.delete(run.runId);
+    for (const event of events) {
+      emitRuntimeEvent(
+        run,
+        event.type,
+        event.payload,
+        this.env.EVENT_HISTORY_LIMIT,
+      );
+    }
   }
 
   private emit(
@@ -965,6 +889,11 @@ export class PlaygroundRuntime {
     type: RuntimeEvent["type"],
     payload: Record<string, unknown> = {},
   ) {
+    const bufferedEvents = this.bufferedExperimentEvents.get(run.runId);
+    if (bufferedEvents) {
+      bufferedEvents.push({ type, payload: structuredClone(payload) });
+      return;
+    }
     emitRuntimeEvent(run, type, payload, this.env.EVENT_HISTORY_LIMIT);
   }
 
@@ -1120,6 +1049,7 @@ export class PlaygroundRuntime {
     consumerId: string,
     consumed: ConsumedMessage,
   ) {
+    if (this.cleanupRequestedRunIds.has(runId)) return;
     const run = this.findRun(runId);
     if (!run) return;
     const messageId =
@@ -1166,17 +1096,38 @@ export class PlaygroundRuntime {
     await new Promise((resolve) =>
       setTimeout(resolve, run.processingLatencyMs),
     );
+    if (this.cleanupRequestedRunIds.has(runId)) return;
     await this.processMessage(runId, message.messageId, consumerId);
   }
 
-  private async processMessage(
+  private processMessage(
     runId: string,
     messageId: string,
     expectedConsumerId?: string,
     options: { commit?: boolean } = {},
   ) {
-    const run = this.findRun(runId);
-    if (!run) return;
+    return this.mutateRun(
+      runId,
+      async () => {
+        const run = this.findRun(runId);
+        if (!run) return;
+        await this.processMessageInRun(
+          run,
+          messageId,
+          expectedConsumerId,
+          options,
+        );
+      },
+      { cleanupBehavior: "skip" },
+    );
+  }
+
+  private async processMessageInRun(
+    run: InternalRun,
+    messageId: string,
+    expectedConsumerId?: string,
+    options: { commit?: boolean } = {},
+  ) {
     const message = run.messages.find((item) => item.messageId === messageId);
     if (
       !message ||
@@ -1281,7 +1232,12 @@ export class PlaygroundRuntime {
     if (existingCleanup) return existingCleanup;
 
     this.cleanupRequestedRunIds.add(run.runId);
-    const cleanup = this.performCleanup(run);
+    clearProducerTimer(run);
+    run.producerStatus = "stopped";
+    for (const timer of run.processingTimers.values()) clearTimeout(timer);
+    run.processingTimers.clear();
+    const pendingMutations = this.runMutationTails.get(run.runId);
+    const cleanup = this.performCleanup(run, pendingMutations);
     const trackedCleanup = cleanup.finally(() => {
       this.cleanupRequestedRunIds.delete(run.runId);
       this.cleanupOperations.delete(run.runId);
@@ -1290,9 +1246,13 @@ export class PlaygroundRuntime {
     return trackedCleanup;
   }
 
-  private async performCleanup(run: InternalRun) {
+  private async performCleanup(
+    run: InternalRun,
+    pendingMutations: Promise<void> | undefined,
+  ) {
     const inFlightExperiment = this.inFlightExperiments.get(run.runId);
     if (inFlightExperiment) await inFlightExperiment;
+    if (pendingMutations) await pendingMutations;
 
     clearProducerTimer(run);
     run.producerStatus = "stopped";
@@ -1348,6 +1308,7 @@ export class PlaygroundRuntime {
     consumerId: string,
     assignments: Array<{ topic: string; partition: number }>,
   ) {
+    if (this.cleanupRequestedRunIds.has(runId)) return;
     const run = this.findRun(runId);
     if (!run) return;
     const consumer = run.consumers.find(
@@ -1376,6 +1337,7 @@ export class PlaygroundRuntime {
     consumerId: string,
     assignments: Array<{ topic: string; partition: number }>,
   ) {
+    if (this.cleanupRequestedRunIds.has(runId)) return;
     const run = this.findRun(runId);
     if (!run) return;
     const consumer = run.consumers.find(

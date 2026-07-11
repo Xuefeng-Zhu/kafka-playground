@@ -1,5 +1,6 @@
 import type {
   EvidenceProvenance,
+  ScenarioExperimentIdFor,
   ScenarioExperimentTransitionId,
   ScenarioState,
 } from "@kplay/contracts";
@@ -39,7 +40,7 @@ export type ScenarioExperimentObservations = {
 
 export type ScenarioExperimentInput<ScenarioIdValue extends ScenarioId> = {
   state: StateFor<ScenarioIdValue>;
-  experimentId: string;
+  experimentId: ScenarioExperimentIdFor<NoInfer<ScenarioIdValue>>;
   startedAtVirtualMs: number;
   observations?: ScenarioExperimentObservations;
 };

@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ScenarioState } from "@kplay/contracts";
 import { experimentTransitionTrail } from "@/lib/client/scenario-experience/definition-helpers";
 import { resolveScenarioExperience } from "@/lib/client/scenario-experience/registry";
-import { scenarioTeachingManifest } from "../../../../tests/e2e/scenario-teaching-manifest";
+import {
+  scenarioTeachingManifest,
+  type RenderedEvidenceExpectation,
+} from "../../../../tests/e2e/scenario-teaching-manifest";
 
 vi.mock("./env", () => ({
   getServerEnv: () => ({
@@ -56,6 +59,10 @@ describe("authoritative runtime to teaching projector integration", () => {
       const pivotalResolution = resolveScenarioExperience(pivotal);
       expect(pivotalResolution.kind).toBe("experience");
       if (pivotalResolution.kind !== "experience") return;
+      assertProjectedEvidence(
+        pivotalResolution.frame.lens.facts,
+        teachingCase.renderedEvidence.pivotal,
+      );
       expect(
         pivotalResolution.frame.experiment.completedExperimentIds,
       ).toContain(teachingCase.primaryExperimentId);
@@ -79,6 +86,10 @@ describe("authoritative runtime to teaching projector integration", () => {
       const contrastResolution = resolveScenarioExperience(contrast);
       expect(contrastResolution.kind).toBe("experience");
       if (contrastResolution.kind !== "experience") return;
+      assertProjectedEvidence(
+        contrastResolution.frame.lens.facts,
+        teachingCase.renderedEvidence.contrast,
+      );
       expect(
         contrastResolution.frame.experiment.completedExperimentIds,
       ).toEqual(
@@ -106,6 +117,20 @@ describe("authoritative runtime to teaching projector integration", () => {
     });
   }
 });
+
+function assertProjectedEvidence(
+  facts: readonly {
+    label: string;
+    value: { value: string | number; display?: string };
+  }[],
+  expectation: RenderedEvidenceExpectation,
+) {
+  const fact = facts.find(({ label }) => label === expectation.label);
+  expect(fact, `Missing evidence fact: ${expectation.label}`).toBeDefined();
+  expect(fact?.value.display ?? String(fact?.value.value)).toBe(
+    String(expectation.value),
+  );
+}
 
 function assertProjectedState(
   state: ScenarioState | null | undefined,

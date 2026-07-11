@@ -1,28 +1,56 @@
-export type ScenarioTeachingCase = {
-  scenarioId: string;
-  question: string;
-  primaryExperimentId: string;
-  contrastExperimentId: string;
+import type {
+  ScenarioExperimentIdForRole,
+  ScenarioState,
+} from "@kplay/contracts";
+
+export type ScenarioTeachingCase<
+  Id extends ScenarioState["scenarioId"] = ScenarioState["scenarioId"],
+> = {
+  scenarioId: Id;
+  primaryExperimentId: ScenarioExperimentIdForRole<Id, "primary">;
+  contrastExperimentId: ScenarioExperimentIdForRole<Id, "contrast">;
   extensionNodeId: string;
   causalEdgeId: string;
   initial: { revision: 0; status: "idle" };
-  pivotal: { status: "completed"; experimentId: string };
-  contrast: { status: "completed"; experimentId: string };
+  pivotal: {
+    status: "completed";
+    experimentId: ScenarioExperimentIdForRole<Id, "primary">;
+  };
+  contrast: {
+    status: "completed";
+    experimentId: ScenarioExperimentIdForRole<Id, "contrast">;
+  };
+  renderedEvidence: {
+    pivotal: RenderedEvidenceExpectation;
+    contrast: RenderedEvidenceExpectation;
+  };
   mobileRequired: boolean;
 };
 
-function teachingCase(
-  scenarioId: string,
-  question: string,
-  primaryExperimentId: string,
-  contrastExperimentId: string,
+export type RenderedEvidenceExpectation = {
+  label: string;
+  value: string | number;
+};
+
+function renderedEvidence(
+  label: string,
+  value: string | number,
+): RenderedEvidenceExpectation {
+  return { label, value };
+}
+
+function teachingCase<const Id extends ScenarioState["scenarioId"]>(
+  scenarioId: Id,
+  primaryExperimentId: ScenarioExperimentIdForRole<Id, "primary">,
+  contrastExperimentId: ScenarioExperimentIdForRole<Id, "contrast">,
   extensionNodeId: string,
   causalEdgeId: string,
+  pivotalEvidence: RenderedEvidenceExpectation,
+  contrastEvidence: RenderedEvidenceExpectation,
   mobileRequired = false,
-): ScenarioTeachingCase {
+): ScenarioTeachingCase<Id> {
   return {
     scenarioId,
-    question,
     primaryExperimentId,
     contrastExperimentId,
     extensionNodeId,
@@ -30,6 +58,10 @@ function teachingCase(
     initial: { revision: 0, status: "idle" },
     pivotal: { status: "completed", experimentId: primaryExperimentId },
     contrast: { status: "completed", experimentId: contrastExperimentId },
+    renderedEvidence: {
+      pivotal: pivotalEvidence,
+      contrast: contrastEvidence,
+    },
     mobileRequired,
   };
 }
@@ -39,130 +71,149 @@ function teachingCase(
  * scenario registry. Adding or removing a production scenario cannot silently
  * change the required teaching coverage.
  */
-export const scenarioTeachingManifest = [
-  teachingCase(
+const scenarioTeachingCases = {
+  partitioning: teachingCase(
     "partitioning",
-    "Why did both A records share a partition, and who can process them?",
     "produce-keyed-record",
     "grow-consumer-group",
     "key-router",
     "producer-router",
+    renderedEvidence("Routed records", 3),
+    renderedEvidence("Idle consumers", 1),
     true,
   ),
-  teachingCase(
+  "fan-out-load-balancing": teachingCase(
     "fan-out-load-balancing",
-    "How does adding a member change partition ownership?",
     "grow-consumer-group",
     "produce-unkeyed-burst",
     "group-balancer",
     "topic-balancer",
+    renderedEvidence("Members", 4),
+    renderedEvidence("Unkeyed routes recorded", 3),
   ),
-  teachingCase(
+  "at-least-once-duplicates": teachingCase(
     "at-least-once-duplicates",
-    "Why can one Kafka record cause two naive side effects?",
     "crash-and-redeliver",
     "duplicate-risk-records",
     "idempotent-handler",
     "group-handler",
+    renderedEvidence("Redeliveries", 1),
+    renderedEvidence("Naïve side effects", 2),
     true,
   ),
-  teachingCase(
+  "retry-dead-letter-queues": teachingCase(
     "retry-dead-letter-queues",
-    "When does a failure retry, recover, or enter the DLQ?",
     "transient-recovery",
     "poison-to-dlq",
     "retry-topic",
     "group-retry",
+    renderedEvidence("Transient recovered", 1),
+    renderedEvidence("Dead-lettered", 1),
   ),
-  teachingCase(
+  "schema-evolution-karapace": teachingCase(
     "schema-evolution-karapace",
-    "Where is schema compatibility decided?",
     "compatible-schema",
     "trigger-schema-rejection",
     "schema-registry",
     "producer-registry",
+    renderedEvidence("Topic records", 1),
+    renderedEvidence("Rejected before Kafka", 1),
   ),
-  teachingCase(
+  "transactional-producers": teachingCase(
     "transactional-producers",
-    "Which staged records become visible to read-committed consumers?",
     "transaction-pair",
     "abort-and-dedupe",
     "transaction-coordinator",
     "producer-coordinator",
+    renderedEvidence("Visible records", 2),
+    renderedEvidence("Suppressed resends", 1),
   ),
-  teachingCase(
+  "event-replay-sourcing": teachingCase(
     "event-replay-sourcing",
-    "How can a projection rebuild without producing new facts?",
     "aggregate-events",
     "rebuild-projection",
     "replay-cursor",
     "topic-cursor",
+    renderedEvidence("Produced facts", 3),
+    renderedEvidence("Produced facts", 3),
   ),
-  teachingCase(
+  "consumer-lag-backpressure": teachingCase(
     "consumer-lag-backpressure",
-    "Is the group falling behind or recovering, and why?",
     "build-lag",
     "recover-lag",
     "backlog-buffer",
     "topic-backlog",
+    renderedEvidence("Total lag", 18),
+    renderedEvidence("Total lag", 0),
   ),
-  teachingCase(
+  "hot-partitions-key-skew": teachingCase(
     "hot-partitions-key-skew",
-    "How does key strategy create or reduce skew?",
     "hot-key-burst",
     "balanced-comparison",
     "hot-key-router",
     "producer-router",
+    renderedEvidence("Hot phase size", 8),
+    renderedEvidence("Equal-size comparison", "Yes"),
     true,
   ),
-  teachingCase(
+  "log-compaction-tombstones": teachingCase(
     "log-compaction-tombstones",
-    "What survives compaction and later tombstone cleanup?",
     "run-compaction",
     "expire-tombstone",
     "compacted-state-store",
     "topic-state",
+    renderedEvidence("Removed by compaction", 2),
+    renderedEvidence("Tombstones cleaned later", 1),
   ),
-  teachingCase(
+  "retention-data-loss": teachingCase(
     "retention-data-loss",
-    "What happens when a consumer requests an expired offset?",
     "advance-retention",
     "recover-retention",
     "retention-window",
     "topic-window",
+    renderedEvidence("Replay status", "offset_out_of_range"),
+    renderedEvidence("Replay status", "Available"),
   ),
-  teachingCase(
+  "cooperative-rebalancing": teachingCase(
     "cooperative-rebalancing",
-    "Which partitions stop moving under cooperative-sticky assignment?",
     "compare-rebalance",
     "cooperative-pressure",
     "rebalance-coordinator",
     "topic-coordinator",
+    renderedEvidence("Eager revoked", 3),
+    renderedEvidence("Cooperative kept", 1),
   ),
-  teachingCase(
+  "streams-joins-windows": teachingCase(
     "streams-joins-windows",
-    "Why did two records join or remain unmatched?",
     "window-pair",
     "late-arrival",
     "orders-stream",
     "producer-orders",
+    renderedEvidence("Valid joined outputs", 1),
+    renderedEvidence("After grace", 1),
     true,
   ),
-  teachingCase(
+  "outbox-cdc": teachingCase(
     "outbox-cdc",
-    "Where is the atomic boundary and how is retry duplication prevented?",
     "cdc-batch",
     "retry-cdc",
     "database-outbox",
     "outbox-wal",
+    renderedEvidence("Acknowledged publishes", 1),
+    renderedEvidence("Suppressed retry attempts", 1),
   ),
-  teachingCase(
+  "acl-least-privilege": teachingCase(
     "acl-least-privilege",
-    "Which exact permission allowed or denied this operation?",
     "trigger-acl-denial",
     "grant-required-permission",
     "authorization-gate",
     "principal-gate",
+    renderedEvidence("Denied before Kafka", 1),
+    renderedEvidence("Allowed to Kafka", 1),
     true,
   ),
-] as const satisfies readonly ScenarioTeachingCase[];
+} as const satisfies {
+  [Id in ScenarioState["scenarioId"]]: ScenarioTeachingCase<Id>;
+};
+
+export const scenarioTeachingManifest = Object.values(scenarioTeachingCases);

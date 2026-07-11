@@ -49,36 +49,16 @@ export function experimentEvidence<Id extends ScenarioExperienceId>(
       ? definition.experiments.contrast
       : definition.experiments.primary;
   const status = input.scenarioState.experiment.status;
-  const completedExperimentIds = completedExperiments(
-    definition,
-    activeId,
-    status,
-  );
   return {
     experimentId: completedOrRunningId,
     status,
     error: input.scenarioState.experiment.error,
-    completedExperimentIds,
+    completedExperimentIds: input.snapshot.completedExperimentIds,
     hypothesis: metadata.hypothesis,
     before,
     current,
     after,
   };
-}
-
-function completedExperiments<Id extends ScenarioExperienceId>(
-  definition: ScenarioExperienceDefinition<Id>,
-  activeId: string | null,
-  status: ScenarioExperimentEvidence["status"],
-): readonly string[] {
-  const { primary, contrast } = definition.experiments;
-  if (activeId === contrast.id) {
-    if (status === "completed") return [primary.id, contrast.id];
-    if (status === "running" || status === "failed") return [primary.id];
-    return [];
-  }
-  if (status !== "completed") return [];
-  return activeId === primary.id ? [primary.id] : [];
 }
 
 export function experimentTransitionTrail(

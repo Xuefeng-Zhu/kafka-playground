@@ -12,6 +12,7 @@ describe("useLowerPanelTabs", () => {
 
   it("persists and restores the selected tab", async () => {
     const first = renderHook(() => useLowerPanelTabs());
+    await flushMountEffect();
 
     act(() => first.result.current.selectLowerPanelTab("timeline"));
 
@@ -23,10 +24,12 @@ describe("useLowerPanelTabs", () => {
     await waitFor(() => {
       expect(restored.result.current.activeLowerPanelTab).toBe("timeline");
     });
+    restored.unmount();
   });
 
-  it("navigates between the remaining tabs with the keyboard", () => {
-    const { result } = renderHook(() => useLowerPanelTabs());
+  it("navigates between the remaining tabs with the keyboard", async () => {
+    const { result, unmount } = renderHook(() => useLowerPanelTabs());
+    await flushMountEffect();
     const timelineButton = document.createElement("button");
     const focus = vi.spyOn(timelineButton, "focus");
     result.current.lowerPanelTabRefs.current.timeline = timelineButton;
@@ -37,19 +40,26 @@ describe("useLowerPanelTabs", () => {
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(focus).toHaveBeenCalledOnce();
     expect(result.current.activeLowerPanelTab).toBe("timeline");
+    unmount();
   });
 
   it("clears a saved Insights tab from the retired panel", async () => {
     window.localStorage.setItem(storageKey, "insights");
 
-    const { result } = renderHook(() => useLowerPanelTabs());
+    const { result, unmount } = renderHook(() => useLowerPanelTabs());
 
-    await waitFor(() => {
-      expect(window.localStorage.getItem(storageKey)).toBeNull();
-    });
+    await flushMountEffect();
+    expect(window.localStorage.getItem(storageKey)).toBeNull();
     expect(result.current.activeLowerPanelTab).toBe("controls");
+    unmount();
   });
 });
+
+async function flushMountEffect() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
 
 function keyboardEvent(key: string) {
   return {

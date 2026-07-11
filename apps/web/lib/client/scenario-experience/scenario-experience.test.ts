@@ -1,4 +1,8 @@
-import { scenarioStateSchema } from "@kplay/contracts";
+import {
+  scenarioStateSchema,
+  type RunSnapshot,
+  type ScenarioExperimentId,
+} from "@kplay/contracts";
 import { SCENARIO_IDS } from "@kplay/scenario-engine";
 import { describe, expect, it } from "vitest";
 import { runSnapshot } from "../run-snapshot-test-fixtures";
@@ -52,6 +56,7 @@ describe("scenario experience registry", () => {
       partitionCount: 2,
       topicName: "kplay.test",
       recentMessages: [],
+      completedExperimentIds: [],
     } satisfies ScenarioExperienceSnapshot;
 
     expect(projectScenarioExperience(snapshot, scenarioState).scenarioId).toBe(
@@ -114,7 +119,7 @@ describe("scenario experience registry", () => {
       ...entry.initial,
       experiment: {
         status: "failed" as const,
-        experimentId: "produce-keyed-record",
+        experimentId: "produce-keyed-record" as const,
         stepIndex: 1,
         totalSteps: 3,
         startedAtVirtualMs: 0,
@@ -148,7 +153,7 @@ describe("scenario experience registry", () => {
       ...entry.pivotal,
       experiment: {
         status: "failed" as const,
-        experimentId: "grow-consumer-group",
+        experimentId: "grow-consumer-group" as const,
         stepIndex: 0,
         totalSteps: 1,
         startedAtVirtualMs: entry.pivotal.virtualTimeMs,
@@ -165,6 +170,31 @@ describe("scenario experience registry", () => {
     expect(frame.experiment.status).toBe("failed");
     expect(frame.experiment.completedExperimentIds).toEqual([
       frame.experiments.primary.id,
+    ]);
+  });
+
+  it("uses authoritative completion history when an auxiliary experiment is latest", () => {
+    const entry = teachingScenarioTestManifest[1];
+    if (entry.pivotal.scenarioId !== "fan-out-load-balancing") {
+      throw new Error("Unexpected fixture scenario");
+    }
+    const auxiliaryState = {
+      ...entry.pivotal,
+      experiment: {
+        ...entry.pivotal.experiment,
+        experimentId: "balance-settings" as const,
+      },
+    };
+    const snapshot = runSnapshot({
+      scenarioId: entry.scenarioId,
+      scenarioState: auxiliaryState,
+      completedExperimentIds: ["grow-consumer-group"],
+    });
+
+    const frame = projectScenarioExperience(snapshot, auxiliaryState);
+
+    expect(frame.experiment.completedExperimentIds).toEqual([
+      "grow-consumer-group",
     ]);
   });
 
@@ -603,25 +633,66 @@ function project(
   scenarioState: (typeof teachingScenarioTestManifest)[number]["initial"],
   partitions: number,
 ) {
+  const manifestEntry = teachingScenarioTestManifest.find(
+    (entry) => entry.scenarioId === scenarioId,
+  );
+  if (!manifestEntry) throw new Error(`Missing ${scenarioId} test fixture`);
   return projectScenarioExperience(
-    snapshotFor(scenarioId, scenarioState, partitions),
+    snapshotFor(
+      scenarioId,
+      scenarioState,
+      partitions,
+      completedExperimentIdsForState(manifestEntry, scenarioState),
+    ),
     scenarioState,
   );
 }
 
 function snapshotFor(
-  scenarioId: string,
+  scenarioId: (typeof SCENARIO_IDS)[number],
   scenarioState:
     | (typeof teachingScenarioTestManifest)[number]["initial"]
     | null,
   partitionCount = 2,
+  completedExperimentIds: RunSnapshot["completedExperimentIds"] = [],
 ) {
   return runSnapshot({
     scenarioId,
     partitionCount,
     scenarioState,
     recentMessages: [],
+    completedExperimentIds,
   });
+}
+
+function completedExperimentIdsForState(
+  entry: (typeof teachingScenarioTestManifest)[number],
+  scenarioState: (typeof teachingScenarioTestManifest)[number]["initial"],
+): RunSnapshot["completedExperimentIds"] {
+  const activeId = scenarioState.experiment.experimentId;
+  if (activeId === null) return [];
+  const primaryId = requiredExperimentId(entry.pivotal.experiment.experimentId);
+  const contrastId = requiredExperimentId(
+    entry.contrast.experiment.experimentId,
+  );
+  if (activeId === contrastId) {
+    return scenarioState.experiment.status === "completed"
+      ? [primaryId, contrastId]
+      : [primaryId];
+  }
+  return activeId === primaryId &&
+    scenarioState.experiment.status === "completed"
+    ? [primaryId]
+    : [];
+}
+
+function requiredExperimentId(
+  experimentId: ScenarioExperimentId | null,
+): ScenarioExperimentId {
+  if (experimentId === null) {
+    throw new Error("Expected a completed experiment ID");
+  }
+  return experimentId;
 }
 
 function partitionCount(scenarioId: (typeof SCENARIO_IDS)[number]) {

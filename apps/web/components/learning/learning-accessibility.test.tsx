@@ -7,7 +7,7 @@ import type {
   EvidenceValue,
   ScenarioExperienceFrame,
 } from "@/lib/client/scenario-experience/model";
-import { CausalGraphList, CausalGraphRail } from "./causal-graph";
+import { CausalGraphView } from "./causal-graph";
 import { EvidenceTable } from "./evidence-table";
 import { ExpandableIdentifier } from "./evidence-value";
 import { ProvenanceLegend } from "./provenance";
@@ -132,7 +132,7 @@ const frame: ScenarioExperienceFrame = {
   },
   experiments: {
     primary: {
-      id: "route-a-b-a",
+      id: "produce-keyed-record",
       role: "primary",
       label: "Route keys A, B, A",
       hypothesis: "Equal keys choose one partition.",
@@ -140,7 +140,7 @@ const frame: ScenarioExperienceFrame = {
       remoteSupport: "demo-only",
     },
     contrast: {
-      id: "route-more-keys",
+      id: "grow-consumer-group",
       role: "contrast",
       label: "Route more keys",
       hypothesis: "Other keys can choose another partition.",
@@ -149,10 +149,10 @@ const frame: ScenarioExperienceFrame = {
     },
   },
   experiment: {
-    experimentId: "route-a-b-a",
+    experimentId: "produce-keyed-record",
     status: "completed",
     error: null,
-    completedExperimentIds: ["route-a-b-a"],
+    completedExperimentIds: ["produce-keyed-record"],
     hypothesis: "Equal keys choose one partition.",
     before: [
       {
@@ -231,12 +231,15 @@ describe("learning component accessibility", () => {
     expect(screen.getByText(veryLongId)).toBeTruthy();
   });
 
-  it("uses a semantic mobile causal list with selectable nodes and edge provenance", () => {
+  it("uses a semantic causal list with selectable nodes and edge provenance", () => {
     const onFocus = vi.fn();
     render(
-      <CausalGraphList graph={causalGraph} focus={null} onFocus={onFocus} />,
+      <CausalGraphView graph={causalGraph} focus={null} onFocus={onFocus} />,
     );
 
+    expect(
+      screen.getByRole("heading", { name: "Follow the change" }),
+    ).toBeTruthy();
     const list = screen.getByTestId("causal-graph-list");
     expect(list.tagName).toBe("OL");
     expect(list.children).toHaveLength(2);
@@ -248,19 +251,6 @@ describe("learning component accessibility", () => {
     expect(document.activeElement).toBe(node);
     fireEvent.click(node, { detail: 0 });
     expect(onFocus).toHaveBeenCalledWith({ kind: "entity", id: "producer" });
-  });
-
-  it("renders the compact desktop causal rail as normal DOM", () => {
-    render(
-      <CausalGraphRail graph={causalGraph} focus={null} onFocus={vi.fn()} />,
-    );
-
-    const rail = screen.getByTestId("causal-graph-rail");
-    expect(
-      within(rail).getByRole("list", { name: "Causal steps" }),
-    ).toBeTruthy();
-    expect(within(rail).getByText("hash(A) routes here")).toBeTruthy();
-    expect(within(rail).getByText("Simulated")).toBeTruthy();
   });
 
   it("explains every provenance label with a keyboard-accessible tooltip", () => {
@@ -327,7 +317,7 @@ describe("learning component accessibility", () => {
 
     const surface = screen.getByTestId("scenario-learning-surface");
     expect(surface.dataset.scenarioId).toBe("partitioning");
-    expect(surface.dataset.experimentId).toBe("route-a-b-a");
+    expect(surface.dataset.experimentId).toBe("produce-keyed-record");
     expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
     expect(screen.getByText("Routing evidence updated.")).toBeTruthy();
     expect(screen.getByTestId("scenario-evidence-lens")).toBeTruthy();
@@ -335,7 +325,7 @@ describe("learning component accessibility", () => {
     expect(screen.getByRole("heading", { name: "Current" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "After" })).toBeTruthy();
 
-    const primary = screen.getByTestId("experiment-route-a-b-a");
+    const primary = screen.getByTestId("experiment-produce-keyed-record");
     expect((primary as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getAllByText(/Demo mode only/).length).toBe(2);
   });
@@ -359,8 +349,8 @@ describe("learning component accessibility", () => {
       />,
     );
 
-    const primary = screen.getByTestId("experiment-route-a-b-a");
-    const contrast = screen.getByTestId("experiment-route-more-keys");
+    const primary = screen.getByTestId("experiment-produce-keyed-record");
+    const contrast = screen.getByTestId("experiment-grow-consumer-group");
     expect(primary.textContent).toContain("Run");
     expect(primary.textContent).not.toContain("Rerun");
     expect((contrast as HTMLButtonElement).disabled).toBe(true);
@@ -377,8 +367,8 @@ describe("learning component accessibility", () => {
       ...frame,
       experiment: {
         ...frame.experiment,
-        experimentId: "route-more-keys",
-        completedExperimentIds: ["route-a-b-a", "route-more-keys"],
+        experimentId: "grow-consumer-group",
+        completedExperimentIds: ["produce-keyed-record", "grow-consumer-group"],
       },
     };
     render(
@@ -391,7 +381,7 @@ describe("learning component accessibility", () => {
       />,
     );
 
-    const contrast = screen.getByTestId("experiment-route-more-keys");
+    const contrast = screen.getByTestId("experiment-grow-consumer-group");
     expect((contrast as HTMLButtonElement).disabled).toBe(false);
     expect(contrast.textContent).toContain("Rerun");
     expect(screen.queryByText(/This contrast builds on/)).toBeNull();
@@ -402,13 +392,13 @@ describe("learning component accessibility", () => {
       ...frame,
       experiment: {
         ...frame.experiment,
-        experimentId: "route-more-keys",
+        experimentId: "grow-consumer-group",
         status: "failed",
         error: {
           code: "EXPERIMENT_STEP_FAILED",
           message: "The contrast could not complete.",
         },
-        completedExperimentIds: ["route-a-b-a"],
+        completedExperimentIds: ["produce-keyed-record"],
       },
     };
     render(
@@ -421,7 +411,7 @@ describe("learning component accessibility", () => {
       />,
     );
 
-    const contrast = screen.getByTestId("experiment-route-more-keys");
+    const contrast = screen.getByTestId("experiment-grow-consumer-group");
     expect((contrast as HTMLButtonElement).disabled).toBe(false);
     expect(contrast.textContent).toContain("Run");
     expect(contrast.textContent).not.toContain("Rerun");
@@ -440,7 +430,7 @@ describe("learning component accessibility", () => {
         experimentTransitions={[
           {
             id: "transition-1",
-            experimentId: "route-a-b-a",
+            experimentId: "produce-keyed-record",
             stepLabel: "Route key A",
             stepIndex: 1,
             totalSteps: 2,
@@ -451,7 +441,7 @@ describe("learning component accessibility", () => {
           },
           {
             id: "transition-2",
-            experimentId: "route-a-b-a",
+            experimentId: "produce-keyed-record",
             stepLabel: "Extend partition order",
             stepIndex: 2,
             totalSteps: 2,
@@ -523,7 +513,7 @@ describe("learning component accessibility", () => {
         onFocus={vi.fn()}
         onRunExperiment={onRunExperiment}
         onAnswerCheckpoint={vi.fn()}
-        pendingExperimentId="route-more-keys"
+        pendingExperimentId="grow-consumer-group"
         experimentError="The simulator rejected the transition."
       />,
     );
@@ -532,14 +522,14 @@ describe("learning component accessibility", () => {
       screen.getByTestId("scenario-learning-surface").dataset.pending,
     ).toBe("true");
     expect(
-      screen.getByTestId("experiment-route-more-keys").textContent,
+      screen.getByTestId("experiment-grow-consumer-group").textContent,
     ).toContain("Running");
     expect(screen.getByTestId("experiment-error").textContent).toContain(
       "The simulator rejected the transition.",
     );
     expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
 
-    fireEvent.click(screen.getByTestId("experiment-route-more-keys"));
+    fireEvent.click(screen.getByTestId("experiment-grow-consumer-group"));
     expect(onRunExperiment).not.toHaveBeenCalled();
   });
 
@@ -586,8 +576,8 @@ describe("learning component accessibility", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("experiment-route-more-keys"));
-    expect(onRunExperiment).toHaveBeenCalledWith("route-more-keys");
+    fireEvent.click(screen.getByTestId("experiment-grow-consumer-group"));
+    expect(onRunExperiment).toHaveBeenCalledWith("grow-consumer-group");
   });
 
   it("has no serious or critical structural accessibility violations", async () => {

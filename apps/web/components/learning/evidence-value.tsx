@@ -27,7 +27,10 @@ export function EvidenceValueDisplay({
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="min-w-0 break-words text-sm font-extrabold leading-5 text-[#123047] [overflow-wrap:anywhere]">
+        <span
+          className="min-w-0 break-words text-sm font-extrabold leading-5 text-[#123047] [overflow-wrap:anywhere]"
+          data-testid="evidence-value"
+        >
           {display}
         </span>
         {showProvenance ? (

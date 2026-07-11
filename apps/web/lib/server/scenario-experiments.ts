@@ -1,5 +1,10 @@
 import "server-only";
-import type { ScenarioState } from "@kplay/contracts";
+import {
+  isScenarioExperimentIdFor,
+  type ScenarioExperimentId,
+  type ScenarioExperimentIdFor,
+  type ScenarioState,
+} from "@kplay/contracts";
 import {
   SCENARIO_EXPERIMENT_IDS,
   scenarioExperimentPrerequisite,
@@ -32,8 +37,13 @@ import {
   buildPartitioningExperiment,
 } from "./scenario-experiments/routing";
 import type {
+  ScenarioExperimentHandler,
+  ScenarioExperimentInput,
   ScenarioExperimentObservations,
+  ScenarioExperimentResult,
   ScenarioExperimentTransition,
+  ScenarioId,
+  StateFor,
 } from "./scenario-experiments/types";
 
 export {
@@ -44,56 +54,171 @@ export {
 };
 export type { ScenarioExperimentObservations, ScenarioExperimentTransition };
 
+export function buildScenarioExperimentResult<Id extends ScenarioId>(
+  input: ScenarioExperimentInput<Id>,
+): ScenarioExperimentResult<Id>;
 export function buildScenarioExperimentResult(input: {
   state: ScenarioState;
-  experimentId: string;
+  experimentId: ScenarioExperimentId;
   startedAtVirtualMs: number;
   observations?: ScenarioExperimentObservations;
-}): { state: ScenarioState; transitions: ScenarioExperimentTransition[] } {
+}): {
+  state: ScenarioState;
+  transitions: ScenarioExperimentTransition[];
+} {
   const { state, experimentId, startedAtVirtualMs, observations } = input;
-  const handlerInput = {
-    experimentId,
-    startedAtVirtualMs,
-    observations,
-  };
 
   switch (state.scenarioId) {
     case "partitioning":
-      return buildPartitioningExperiment({ ...handlerInput, state });
-    case "fan-out-load-balancing":
-      return buildLoadBalancingExperiment({ ...handlerInput, state });
-    case "at-least-once-duplicates":
-      return buildAtLeastOnceExperiment({ ...handlerInput, state });
-    case "retry-dead-letter-queues":
-      return buildRetryDeadLetterExperiment({ ...handlerInput, state });
-    case "schema-evolution-karapace":
-      return buildSchemaEvolutionExperiment({ ...handlerInput, state });
-    case "transactional-producers":
-      return buildTransactionalProducerExperiment({ ...handlerInput, state });
-    case "event-replay-sourcing":
-      return buildEventReplayExperiment({ ...handlerInput, state });
-    case "consumer-lag-backpressure":
-      return buildConsumerLagExperiment({ ...handlerInput, state });
-    case "hot-partitions-key-skew":
-      return buildHotPartitionExperiment({ ...handlerInput, state });
-    case "log-compaction-tombstones":
-      return buildLogCompactionExperiment({ ...handlerInput, state });
-    case "retention-data-loss":
-      return buildRetentionExperiment({ ...handlerInput, state });
-    case "cooperative-rebalancing":
-      return buildCooperativeRebalancingExperiment({
-        ...handlerInput,
+      return dispatchScenarioExperiment(
+        buildPartitioningExperiment,
         state,
-      });
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "fan-out-load-balancing":
+      return dispatchScenarioExperiment(
+        buildLoadBalancingExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "at-least-once-duplicates":
+      return dispatchScenarioExperiment(
+        buildAtLeastOnceExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "retry-dead-letter-queues":
+      return dispatchScenarioExperiment(
+        buildRetryDeadLetterExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "schema-evolution-karapace":
+      return dispatchScenarioExperiment(
+        buildSchemaEvolutionExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "transactional-producers":
+      return dispatchScenarioExperiment(
+        buildTransactionalProducerExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "event-replay-sourcing":
+      return dispatchScenarioExperiment(
+        buildEventReplayExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "consumer-lag-backpressure":
+      return dispatchScenarioExperiment(
+        buildConsumerLagExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "hot-partitions-key-skew":
+      return dispatchScenarioExperiment(
+        buildHotPartitionExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "log-compaction-tombstones":
+      return dispatchScenarioExperiment(
+        buildLogCompactionExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "retention-data-loss":
+      return dispatchScenarioExperiment(
+        buildRetentionExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
+    case "cooperative-rebalancing":
+      return dispatchScenarioExperiment(
+        buildCooperativeRebalancingExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
     case "streams-joins-windows":
-      return buildStreamsJoinExperiment({ ...handlerInput, state });
+      return dispatchScenarioExperiment(
+        buildStreamsJoinExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
     case "outbox-cdc":
-      return buildOutboxCdcExperiment({ ...handlerInput, state });
+      return dispatchScenarioExperiment(
+        buildOutboxCdcExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
     case "acl-least-privilege":
-      return buildAclExperiment({ ...handlerInput, state });
+      return dispatchScenarioExperiment(
+        buildAclExperiment,
+        state,
+        experimentId,
+        startedAtVirtualMs,
+        observations,
+      );
   }
 
   return assertNever(state);
+}
+
+function dispatchScenarioExperiment<Id extends ScenarioId>(
+  handler: ScenarioExperimentHandler<Id>,
+  state: StateFor<Id>,
+  experimentId: ScenarioExperimentId,
+  startedAtVirtualMs: number,
+  observations?: ScenarioExperimentObservations,
+): ScenarioExperimentResult<Id> {
+  return handler({
+    state,
+    experimentId: requireScenarioExperimentId(state.scenarioId, experimentId),
+    startedAtVirtualMs,
+    observations,
+  });
+}
+
+function requireScenarioExperimentId<Id extends ScenarioId>(
+  scenarioId: Id,
+  experimentId: ScenarioExperimentId,
+): ScenarioExperimentIdFor<Id> {
+  if (!isScenarioExperimentIdFor(scenarioId, experimentId)) {
+    throw new Error(
+      `Experiment ${experimentId} does not belong to ${scenarioId}.`,
+    );
+  }
+  return experimentId;
 }
 
 function assertNever(value: never): never {

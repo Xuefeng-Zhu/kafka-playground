@@ -123,6 +123,11 @@ export type KafkaRuntimeDiagnostics = {
   }) => void;
 };
 
+export type DemoKafkaRunCheckpoint = {
+  offsets: number[];
+  noKeyCursor: number | null;
+};
+
 export function sanitizeKafkaError(error: unknown, secrets: string[] = []) {
   if (error instanceof Error) {
     let message = error.message.replace(
@@ -180,6 +185,27 @@ export class DemoKafkaRuntimeAdapter implements KafkaRuntimeAdapter {
       offset: String(offset),
       timestamp: new Date().toISOString(),
     };
+  }
+
+  captureRunCheckpoint(topicName: string): DemoKafkaRunCheckpoint {
+    const topicOffsets = this.offsets.get(topicName);
+    if (!topicOffsets) throw new Error("Demo topic does not exist.");
+    return {
+      offsets: [...topicOffsets],
+      noKeyCursor: this.noKeyCursors.get(topicName) ?? null,
+    };
+  }
+
+  restoreRunCheckpoint(topicName: string, checkpoint: DemoKafkaRunCheckpoint) {
+    if (!this.offsets.has(topicName)) {
+      throw new Error("Demo topic does not exist.");
+    }
+    this.offsets.set(topicName, [...checkpoint.offsets]);
+    if (checkpoint.noKeyCursor === null) {
+      this.noKeyCursors.delete(topicName);
+    } else {
+      this.noKeyCursors.set(topicName, checkpoint.noKeyCursor);
+    }
   }
 
   async createConsumer(

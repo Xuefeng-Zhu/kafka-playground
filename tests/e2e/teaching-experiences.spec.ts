@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   clearWorkspaceViewPreference,
   expectMobileTargets,
@@ -8,9 +8,40 @@ import {
   resetActiveRun,
   selectWorkspaceView,
 } from "./playground-test-helpers";
-import { scenarioTeachingManifest } from "./scenario-teaching-manifest";
+import {
+  scenarioTeachingManifest,
+  type RenderedEvidenceExpectation,
+  type ScenarioTeachingCase,
+} from "./scenario-teaching-manifest";
 
 installConsoleFailureChecks();
+
+const expectedScenarioIds = [
+  "partitioning",
+  "fan-out-load-balancing",
+  "at-least-once-duplicates",
+  "retry-dead-letter-queues",
+  "schema-evolution-karapace",
+  "transactional-producers",
+  "event-replay-sourcing",
+  "consumer-lag-backpressure",
+  "hot-partitions-key-skew",
+  "log-compaction-tombstones",
+  "retention-data-loss",
+  "cooperative-rebalancing",
+  "streams-joins-windows",
+  "outbox-cdc",
+  "acl-least-privilege",
+] as const satisfies readonly ScenarioTeachingCase["scenarioId"][];
+
+test("teaching manifest covers every scenario exactly once", () => {
+  const actualIds = scenarioTeachingManifest.map(
+    ({ scenarioId }) => scenarioId,
+  );
+
+  expect(new Set(actualIds).size).toBe(actualIds.length);
+  expect([...actualIds].sort()).toEqual([...expectedScenarioIds].sort());
+});
 
 for (const scenario of scenarioTeachingManifest) {
   test(`${scenario.scenarioId} explains its authoritative change and contrast`, async ({
@@ -67,6 +98,7 @@ for (const scenario of scenarioTeachingManifest) {
       scenario.primaryExperimentId,
     );
     assertPivotalInvariant(scenario.scenarioId, pivotal);
+    await expectRenderedEvidence(evidence, scenario.renderedEvidence.pivotal);
     await expect(surface).toHaveAttribute(
       "data-experiment-id",
       scenario.primaryExperimentId,
@@ -108,6 +140,7 @@ for (const scenario of scenarioTeachingManifest) {
     );
     expect(numberField(contrast, "revision")).toBeGreaterThan(pivotalRevision);
     assertContrastInvariant(scenario.scenarioId, contrast);
+    await expectRenderedEvidence(evidence, scenario.renderedEvidence.contrast);
 
     const focusControl = evidence
       .locator('[data-testid^="evidence-row-"] button[aria-pressed="false"]')
@@ -135,7 +168,6 @@ for (const scenario of scenarioTeachingManifest) {
     if (scenario.mobileRequired) {
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.getByTestId("causal-graph-list")).toBeVisible();
-      await expect(page.getByTestId("causal-graph-rail")).toBeHidden();
       await expect(page.getByTestId("topology-flow")).toHaveCount(0);
       await expectMobileTargets(page);
       await expectStableLayout(page);
@@ -155,6 +187,9 @@ for (const scenario of scenarioTeachingManifest) {
     await expect(page.getByTestId("topology-node-scenario-visual")).toHaveCount(
       0,
     );
+    if (scenario.scenarioId === "partitioning") {
+      await expectKeyboardTimelineResize(page);
+    }
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId("semantic-topology-list")).toBeVisible();
@@ -210,7 +245,7 @@ async function waitForCompletedExperiment(page: Page, experimentId: string) {
 }
 
 function assertPivotalInvariant(
-  scenarioId: string,
+  scenarioId: ScenarioTeachingCase["scenarioId"],
   state: Record<string, unknown>,
 ) {
   switch (scenarioId) {
@@ -365,11 +400,13 @@ function assertPivotalInvariant(
         }),
       ]);
       break;
+    default:
+      assertNever(scenarioId);
   }
 }
 
 function assertContrastInvariant(
-  scenarioId: string,
+  scenarioId: ScenarioTeachingCase["scenarioId"],
   state: Record<string, unknown>,
 ) {
   switch (scenarioId) {
@@ -378,6 +415,34 @@ function assertContrastInvariant(
       expect(arrayField(state, "consumers")).toEqual(
         expect.arrayContaining([expect.objectContaining({ status: "idle" })]),
       );
+      break;
+    case "fan-out-load-balancing":
+      expect(arrayField(state, "epochs")).toHaveLength(4);
+      expect(arrayField(state, "epochs").at(-1)).toMatchObject({
+        epoch: 4,
+        idleConsumerIds: ["consumer-4"],
+      });
+      expect(objectField(state, "experiment")).toMatchObject({
+        experimentId: "produce-unkeyed-burst",
+        stepIndex: 3,
+        totalSteps: 3,
+      });
+      break;
+    case "at-least-once-duplicates":
+      expect(arrayField(state, "deliveries")).toHaveLength(2);
+      expect(arrayField(state, "deliveries")).toEqual([
+        expect.objectContaining({ partition: 0, offset: "7" }),
+        expect.objectContaining({ partition: 0, offset: "7" }),
+      ]);
+      expect(arrayField(state, "sideEffects")[0]).toMatchObject({
+        naiveCount: 2,
+        idempotentCount: 1,
+      });
+      expect(objectField(state, "experiment")).toMatchObject({
+        experimentId: "duplicate-risk-records",
+        stepIndex: 1,
+        totalSteps: 1,
+      });
       break;
     case "retry-dead-letter-queues":
       expect(arrayField(state, "records")).toEqual(
@@ -479,8 +544,67 @@ function assertContrastInvariant(
       );
       break;
     default:
-      expect(numberField(state, "revision")).toBeGreaterThan(0);
+      assertNever(scenarioId);
   }
+}
+
+async function expectRenderedEvidence(
+  evidence: Locator,
+  expectation: RenderedEvidenceExpectation,
+) {
+  const label = evidence
+    .locator("dt")
+    .getByText(expectation.label, { exact: true });
+  const exactValue = label
+    .locator("..")
+    .getByTestId("evidence-value")
+    .filter({
+      hasText: new RegExp(`^${escapeRegExp(String(expectation.value))}$`),
+    });
+  await expect(exactValue.first()).toBeVisible();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function expectKeyboardTimelineResize(page: Page) {
+  const timelineRegion = page.getByTestId("timeline-region");
+  const resizeHandle = page.getByTestId("timeline-resize-handle");
+  await expect(resizeHandle).toBeVisible();
+  const initialHeight = Number(
+    await resizeHandle.getAttribute("aria-valuenow"),
+  );
+  expect(Number.isFinite(initialHeight)).toBe(true);
+
+  await resizeHandle.focus();
+  await expect(resizeHandle).toBeFocused();
+  await resizeHandle.press("ArrowUp");
+  const expandedHeight = initialHeight + 24;
+  await expect(resizeHandle).toHaveAttribute(
+    "aria-valuenow",
+    String(expandedHeight),
+  );
+  await expect
+    .poll(() =>
+      timelineRegion.evaluate(
+        (region) =>
+          (region.parentElement as HTMLElement | null)?.style.getPropertyValue(
+            "--timeline-height",
+          ) ?? "",
+      ),
+    )
+    .toBe(`${expandedHeight}px`);
+
+  await resizeHandle.press("PageDown");
+  await expect(resizeHandle).toHaveAttribute(
+    "aria-valuenow",
+    String(initialHeight),
+  );
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled teaching scenario: ${String(value)}`);
 }
 
 function objectField(value: Record<string, unknown>, key: string) {

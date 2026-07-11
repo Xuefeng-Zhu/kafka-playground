@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   useWorkspaceView,
@@ -7,14 +7,10 @@ import {
 
 describe("useWorkspaceView", () => {
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
     window.localStorage.clear();
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: null,
-        newValue: null,
-      }),
-    );
+    dispatchStorageEvent(null, null);
   });
 
   it("defaults first-time demo users to Guided", () => {
@@ -122,12 +118,7 @@ describe("useWorkspaceView", () => {
     act(() => failedWrite.result.current.setWorkspaceView("explore"));
     failedWrite.unmount();
 
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: WORKSPACE_VIEW_STORAGE_KEY,
-        newValue: "guided",
-      }),
-    );
+    dispatchStorageEvent(WORKSPACE_VIEW_STORAGE_KEY, "guided");
 
     const remounted = renderHook(() => useWorkspaceView(true));
     expect(remounted.result.current.workspaceView).toBe("guided");
@@ -152,3 +143,9 @@ describe("useWorkspaceView", () => {
     expect(result.current.workspaceView).toBe("guided");
   });
 });
+
+function dispatchStorageEvent(key: string | null, newValue: string | null) {
+  act(() => {
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
+  });
+}

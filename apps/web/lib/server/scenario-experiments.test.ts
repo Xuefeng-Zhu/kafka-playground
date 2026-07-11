@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { scenarioStateSchema } from "@kplay/contracts";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import {
+  scenarioStateSchema,
+  type ScenarioExperimentIdFor,
+} from "@kplay/contracts";
 import { SCENARIOS } from "@kplay/scenario-engine";
 import {
   buildScenarioExperimentResult,
@@ -7,6 +10,7 @@ import {
   SCENARIO_EXPERIMENT_IDS,
   scenarioExperimentPrerequisite,
 } from "./scenario-experiments";
+import { complete, step } from "./scenario-experiments/shared";
 
 const pivotalExperiments = {
   partitioning: "produce-keyed-record",
@@ -27,6 +31,40 @@ const pivotalExperiments = {
 } as const;
 
 describe("scenario experiment models", () => {
+  it("keeps scenario state and experiment IDs correlated through completion and dispatch", () => {
+    const initial = createInitialScenarioState("partitioning");
+    if (!initial || initial.scenarioId !== "partitioning") {
+      throw new Error("Missing partitioning state");
+    }
+    const transitions = [
+      step("route", "Route a record", "key.hashed", ["key-router"], 100),
+    ];
+
+    const completed = complete(initial, "produce-keyed-record", 0, transitions);
+    expectTypeOf(completed).toEqualTypeOf(initial);
+    expect(completed.experiment.experimentId).toBe("produce-keyed-record");
+
+    const dispatched = buildScenarioExperimentResult({
+      state: initial,
+      experimentId: "produce-keyed-record",
+      startedAtVirtualMs: 0,
+    });
+    expectTypeOf(dispatched.state).toEqualTypeOf(initial);
+
+    if (false) {
+      // @ts-expect-error Outbox IDs cannot complete partitioning state.
+      complete(initial, "cdc-batch", 0, transitions);
+    }
+    expect(() =>
+      buildScenarioExperimentResult({
+        state: initial,
+        // @ts-expect-error Cross-scenario dispatch is rejected at compile time.
+        experimentId: "cdc-batch",
+        startedAtVirtualMs: 0,
+      }),
+    ).toThrow("Experiment cdc-batch does not belong to partitioning.");
+  });
+
   it("creates a schema-valid authoritative initial state for all 15 scenarios", () => {
     expect(SCENARIOS).toHaveLength(15);
     for (const scenario of SCENARIOS) {
@@ -530,7 +568,7 @@ describe("scenario experiment models", () => {
 
 function run<Id extends keyof typeof pivotalExperiments>(
   scenarioId: Id,
-  experimentId: string,
+  experimentId: ScenarioExperimentIdFor<NoInfer<Id>>,
 ) {
   const state = createInitialScenarioState(scenarioId);
   if (!state || state.scenarioId !== scenarioId) {
@@ -545,7 +583,7 @@ function run<Id extends keyof typeof pivotalExperiments>(
 
 function rerun<State extends ReturnType<typeof run>>(
   state: State,
-  experimentId: string,
+  experimentId: ScenarioExperimentIdFor<NoInfer<State["scenarioId"]>>,
 ) {
   return buildScenarioExperimentResult({
     state,

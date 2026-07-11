@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  isScenarioExperimentIdFor,
+  scenarioExperimentIdSchema,
+} from "./scenario-experiments";
 
 export const scenarioStateIds = [
   "partitioning",
@@ -18,6 +22,7 @@ export const scenarioStateIds = [
   "acl-least-privilege",
 ] as const;
 export type ScenarioStateId = (typeof scenarioStateIds)[number];
+export const scenarioStateIdSchema = z.enum(scenarioStateIds);
 
 export const evidenceProvenanceSchema = z.enum([
   "observed",
@@ -28,7 +33,7 @@ export type EvidenceProvenance = z.infer<typeof evidenceProvenanceSchema>;
 
 export const scenarioExperimentStatusSchema = z.object({
   status: z.enum(["idle", "running", "completed", "failed"]),
-  experimentId: z.string().nullable(),
+  experimentId: scenarioExperimentIdSchema.nullable(),
   stepIndex: z.number().int().nonnegative(),
   totalSteps: z.number().int().nonnegative(),
   startedAtVirtualMs: z.number().int().nonnegative().nullable(),
@@ -465,22 +470,36 @@ export const aclScenarioStateSchema = z.object({
     .nullable(),
 });
 
-export const scenarioStateSchema = z.discriminatedUnion("scenarioId", [
-  partitioningScenarioStateSchema,
-  loadBalancingScenarioStateSchema,
-  duplicateScenarioStateSchema,
-  retryScenarioStateSchema,
-  schemaEvolutionScenarioStateSchema,
-  transactionScenarioStateSchema,
-  replayScenarioStateSchema,
-  lagScenarioStateSchema,
-  hotPartitionScenarioStateSchema,
-  compactionScenarioStateSchema,
-  retentionScenarioStateSchema,
-  cooperativeScenarioStateSchema,
-  streamsScenarioStateSchema,
-  outboxScenarioStateSchema,
-  aclScenarioStateSchema,
-]);
+export const scenarioStateSchema = z
+  .discriminatedUnion("scenarioId", [
+    partitioningScenarioStateSchema,
+    loadBalancingScenarioStateSchema,
+    duplicateScenarioStateSchema,
+    retryScenarioStateSchema,
+    schemaEvolutionScenarioStateSchema,
+    transactionScenarioStateSchema,
+    replayScenarioStateSchema,
+    lagScenarioStateSchema,
+    hotPartitionScenarioStateSchema,
+    compactionScenarioStateSchema,
+    retentionScenarioStateSchema,
+    cooperativeScenarioStateSchema,
+    streamsScenarioStateSchema,
+    outboxScenarioStateSchema,
+    aclScenarioStateSchema,
+  ])
+  .superRefine((state, context) => {
+    const experimentId = state.experiment.experimentId;
+    if (
+      experimentId !== null &&
+      !isScenarioExperimentIdFor(state.scenarioId, experimentId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["experiment", "experimentId"],
+        message: `${experimentId} does not belong to ${state.scenarioId}.`,
+      });
+    }
+  });
 
 export type ScenarioState = z.infer<typeof scenarioStateSchema>;

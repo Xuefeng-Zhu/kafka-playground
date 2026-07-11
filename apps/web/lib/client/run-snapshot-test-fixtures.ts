@@ -32,6 +32,7 @@ export function runSnapshot(overrides: Partial<RunSnapshot> = {}): RunSnapshot {
     recentEvents: [],
     cleanupStatus: "not_requested",
     sequence: 0,
+    completedExperimentIds: [],
     ...overrides,
   };
 }

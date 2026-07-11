@@ -128,6 +128,57 @@ describe("kafka runtime", () => {
     expect([first.partition, second.partition]).toEqual([0, 1]);
   });
 
+  it("restores demo offsets and the no-key routing cursor", async () => {
+    const adapter = new DemoKafkaRuntimeAdapter();
+    await adapter.createRun({
+      runId: "run",
+      scenarioId: "partitioning",
+      topicName: "topic",
+      consumerGroupId: "group",
+      partitionCount: 2,
+    });
+    await adapter.produce({
+      runId: "run",
+      topicName: "topic",
+      key: null,
+      value: {},
+      headers: {},
+      keyStrategy: { type: "no_key" },
+    });
+    const checkpoint = adapter.captureRunCheckpoint("topic");
+    const expected = await adapter.produce({
+      runId: "run",
+      topicName: "topic",
+      key: null,
+      value: {},
+      headers: {},
+      keyStrategy: { type: "no_key" },
+    });
+    await adapter.produce({
+      runId: "run",
+      topicName: "topic",
+      key: "user-1",
+      value: {},
+      headers: {},
+      keyStrategy: { type: "fixed", value: "user-1" },
+    });
+
+    adapter.restoreRunCheckpoint("topic", checkpoint);
+    const replayed = await adapter.produce({
+      runId: "run",
+      topicName: "topic",
+      key: null,
+      value: {},
+      headers: {},
+      keyStrategy: { type: "no_key" },
+    });
+
+    expect(replayed).toMatchObject({
+      partition: expected.partition,
+      offset: expected.offset,
+    });
+  });
+
   it("rejects user-configured remote brokers that target localhost", async () => {
     const adapter = new UserConfiguredKafkaRuntimeAdapter({
       brokers: "127.0.0.1:9092",

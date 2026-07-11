@@ -1,4 +1,8 @@
-import type { ScenarioExperimentStatus, ScenarioState } from "@kplay/contracts";
+import type {
+  ScenarioExperimentId,
+  ScenarioExperimentStatus,
+  ScenarioState,
+} from "@kplay/contracts";
 
 export type TeachingScenarioTestCase = {
   scenarioId: ScenarioState["scenarioId"];
@@ -671,19 +675,19 @@ function idle(): ScenarioExperimentStatus {
   };
 }
 
-function complete(
-  experimentId: string,
+function complete<const Id extends ScenarioExperimentId>(
+  experimentId: Id,
   totalSteps = 1,
-): ScenarioExperimentStatus {
+) {
   return {
-    status: "completed",
+    status: "completed" as const,
     experimentId,
     stepIndex: totalSteps,
     totalSteps,
     startedAtVirtualMs: 0,
     completedAtVirtualMs: totalSteps * 100,
     error: null,
-  };
+  } satisfies ScenarioExperimentStatus;
 }
 
 function position(

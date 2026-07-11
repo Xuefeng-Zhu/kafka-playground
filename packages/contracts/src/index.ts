@@ -1,7 +1,13 @@
 import { z } from "zod";
-import { scenarioStateSchema } from "./scenario-state";
+import { scenarioStateIdSchema, scenarioStateSchema } from "./scenario-state";
+import {
+  isScenarioExperimentIdFor,
+  scenarioExperimentDescriptorFor,
+  scenarioExperimentIdSchema,
+} from "./scenario-experiments";
 
 export * from "./scenario-state";
+export * from "./scenario-experiments";
 
 export const kafkaModeSchema = z.enum(["demo", "aiven", "remote"]);
 export type KafkaMode = z.infer<typeof kafkaModeSchema>;
@@ -266,8 +272,8 @@ export type ScenarioExperimentTransitionId = z.infer<
 >;
 
 const scenarioExperimentEventBaseSchema = eventBaseSchema.extend({
-  scenarioId: z.string(),
-  experimentId: z.string(),
+  scenarioId: scenarioStateIdSchema,
+  experimentId: scenarioExperimentIdSchema,
   entityIds: z.array(z.string()).min(1),
   provenance: z.enum(["observed", "derived", "simulated"]),
   virtualTimeMs: z.number().int().nonnegative(),
@@ -282,94 +288,111 @@ const scenarioExperimentEventBaseSchema = eventBaseSchema.extend({
   }),
 });
 
-export const runtimeEventSchema = z.discriminatedUnion("type", [
-  eventBaseSchema.extend({
-    type: z.enum(simpleRuntimeEventTypes),
-    message: z.string().optional(),
-    consumerId: z.string().optional(),
-    messageId: z.string().optional(),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("message.produced"),
-    messageId: z.string(),
-    topic: z.string(),
-    partition: z.number().int().nonnegative(),
-    offset: z.string(),
-    key: z.string().nullable(),
-    kafkaTimestamp: z.string().nullable(),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("message.received"),
-    messageId: z.string(),
-    consumerId: z.string(),
-    topic: z.string(),
-    partition: z.number().int().nonnegative(),
-    offset: z.string(),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("consumer.partitions_assigned"),
-    consumerId: z.string(),
-    assignments: z.array(
-      z.object({
-        topic: z.string(),
-        partition: z.number().int().nonnegative(),
-      }),
-    ),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("consumer.partitions_revoked"),
-    consumerId: z.string(),
-    assignments: z.array(
-      z.object({
-        topic: z.string(),
-        partition: z.number().int().nonnegative(),
-      }),
-    ),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("offset.commit_requested"),
-    consumerId: z.string(),
-    groupId: z.string(),
-    topic: z.string(),
-    partition: z.number().int().nonnegative(),
-    committedOffset: z.string(),
-    messageId: z.string(),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("offset.committed"),
-    consumerId: z.string(),
-    groupId: z.string(),
-    topic: z.string(),
-    partition: z.number().int().nonnegative(),
-    committedOffset: z.string(),
-    messageId: z.string(),
-  }),
-  eventBaseSchema.extend({
-    type: z.literal("offset.commit_failed"),
-    consumerId: z.string(),
-    groupId: z.string(),
-    topic: z.string(),
-    partition: z.number().int().nonnegative(),
-    attemptedOffset: z.string(),
-    messageId: z.string(),
-    errorCode: z.string(),
-  }),
-  scenarioExperimentEventBaseSchema.extend({
-    type: z.literal("scenario.experiment.started"),
-  }),
-  scenarioExperimentEventBaseSchema.extend({
-    type: z.literal("scenario.experiment.transition"),
-    transition: scenarioExperimentTransitionSchema,
-  }),
-  scenarioExperimentEventBaseSchema.extend({
-    type: z.literal("scenario.experiment.completed"),
-  }),
-  scenarioExperimentEventBaseSchema.extend({
-    type: z.literal("scenario.experiment.failed"),
-    errorCode: z.string(),
-    message: z.string(),
-  }),
-]);
+export const runtimeEventSchema = z
+  .discriminatedUnion("type", [
+    eventBaseSchema.extend({
+      type: z.enum(simpleRuntimeEventTypes),
+      message: z.string().optional(),
+      consumerId: z.string().optional(),
+      messageId: z.string().optional(),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("message.produced"),
+      messageId: z.string(),
+      topic: z.string(),
+      partition: z.number().int().nonnegative(),
+      offset: z.string(),
+      key: z.string().nullable(),
+      kafkaTimestamp: z.string().nullable(),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("message.received"),
+      messageId: z.string(),
+      consumerId: z.string(),
+      topic: z.string(),
+      partition: z.number().int().nonnegative(),
+      offset: z.string(),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("consumer.partitions_assigned"),
+      consumerId: z.string(),
+      assignments: z.array(
+        z.object({
+          topic: z.string(),
+          partition: z.number().int().nonnegative(),
+        }),
+      ),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("consumer.partitions_revoked"),
+      consumerId: z.string(),
+      assignments: z.array(
+        z.object({
+          topic: z.string(),
+          partition: z.number().int().nonnegative(),
+        }),
+      ),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("offset.commit_requested"),
+      consumerId: z.string(),
+      groupId: z.string(),
+      topic: z.string(),
+      partition: z.number().int().nonnegative(),
+      committedOffset: z.string(),
+      messageId: z.string(),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("offset.committed"),
+      consumerId: z.string(),
+      groupId: z.string(),
+      topic: z.string(),
+      partition: z.number().int().nonnegative(),
+      committedOffset: z.string(),
+      messageId: z.string(),
+    }),
+    eventBaseSchema.extend({
+      type: z.literal("offset.commit_failed"),
+      consumerId: z.string(),
+      groupId: z.string(),
+      topic: z.string(),
+      partition: z.number().int().nonnegative(),
+      attemptedOffset: z.string(),
+      messageId: z.string(),
+      errorCode: z.string(),
+    }),
+    scenarioExperimentEventBaseSchema.extend({
+      type: z.literal("scenario.experiment.started"),
+    }),
+    scenarioExperimentEventBaseSchema.extend({
+      type: z.literal("scenario.experiment.transition"),
+      transition: scenarioExperimentTransitionSchema,
+    }),
+    scenarioExperimentEventBaseSchema.extend({
+      type: z.literal("scenario.experiment.completed"),
+    }),
+    scenarioExperimentEventBaseSchema.extend({
+      type: z.literal("scenario.experiment.failed"),
+      errorCode: z.string(),
+      message: z.string(),
+    }),
+  ])
+  .superRefine((event, context) => {
+    switch (event.type) {
+      case "scenario.experiment.started":
+      case "scenario.experiment.transition":
+      case "scenario.experiment.completed":
+      case "scenario.experiment.failed":
+        if (!isScenarioExperimentIdFor(event.scenarioId, event.experimentId)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["experimentId"],
+            message: `${event.experimentId} does not belong to ${event.scenarioId}.`,
+          });
+        }
+        break;
+    }
+  });
 export type RuntimeEvent = z.infer<typeof runtimeEventSchema>;
 
 export const cleanupResultSchema = z.object({
@@ -385,29 +408,92 @@ export const cleanupResultSchema = z.object({
 });
 export type CleanupResult = z.infer<typeof cleanupResultSchema>;
 
-export const runSnapshotSchema = z.object({
-  runId: z.string(),
-  scenarioId: z.string(),
-  mode: kafkaModeSchema,
-  status: runStatusSchema,
-  topicName: z.string(),
-  partitionCount: z.number().int().positive(),
-  consumerLimit: z.number().int().positive(),
-  consumerGroupId: z.string(),
-  producerStatus: producerStatusSchema,
-  productionRate: z.number().int().positive(),
-  keyStrategy: keyStrategySchema,
-  processingLatencyMs: z.number().int().min(0),
-  consumers: z.array(consumerSnapshotSchema),
-  latestPartitionOffsets: z.record(z.string(), z.string()),
-  latestCommittedOffsets: z.record(z.string(), z.string()),
-  messageCounts: z.record(z.string(), z.number().int().nonnegative()),
-  recentMessages: z.array(playgroundMessageSchema),
-  recentEvents: z.array(runtimeEventSchema),
-  cleanupStatus: cleanupStatusSchema,
-  sequence: z.number().int().nonnegative(),
-  scenarioState: scenarioStateSchema.nullable().optional(),
-});
+export const runSnapshotSchema = z
+  .object({
+    runId: z.string(),
+    scenarioId: scenarioStateIdSchema,
+    mode: kafkaModeSchema,
+    status: runStatusSchema,
+    topicName: z.string(),
+    partitionCount: z.number().int().positive(),
+    consumerLimit: z.number().int().positive(),
+    consumerGroupId: z.string(),
+    producerStatus: producerStatusSchema,
+    productionRate: z.number().int().positive(),
+    keyStrategy: keyStrategySchema,
+    processingLatencyMs: z.number().int().min(0),
+    consumers: z.array(consumerSnapshotSchema),
+    latestPartitionOffsets: z.record(z.string(), z.string()),
+    latestCommittedOffsets: z.record(z.string(), z.string()),
+    messageCounts: z.record(z.string(), z.number().int().nonnegative()),
+    recentMessages: z.array(playgroundMessageSchema),
+    recentEvents: z.array(runtimeEventSchema),
+    cleanupStatus: cleanupStatusSchema,
+    sequence: z.number().int().nonnegative(),
+    completedExperimentIds: z.array(scenarioExperimentIdSchema),
+    scenarioState: scenarioStateSchema.nullable().optional(),
+  })
+  .superRefine((snapshot, context) => {
+    const seenExperimentIds = new Set<string>();
+    snapshot.completedExperimentIds.forEach((experimentId, index) => {
+      if (seenExperimentIds.has(experimentId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["completedExperimentIds", index],
+          message: `${experimentId} is duplicated in completed experiment history.`,
+        });
+      }
+      const descriptor = scenarioExperimentDescriptorFor(
+        snapshot.scenarioId,
+        experimentId,
+      );
+      if (descriptor == null) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["completedExperimentIds", index],
+          message: `${experimentId} does not belong to ${snapshot.scenarioId}.`,
+        });
+        seenExperimentIds.add(experimentId);
+        return;
+      }
+      if (
+        descriptor.prerequisite !== null &&
+        !seenExperimentIds.has(descriptor.prerequisite)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["completedExperimentIds", index],
+          message: `${experimentId} requires earlier completion of ${descriptor.prerequisite}.`,
+        });
+      }
+      seenExperimentIds.add(experimentId);
+    });
+    if (
+      snapshot.scenarioState != null &&
+      snapshot.scenarioState.scenarioId !== snapshot.scenarioId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["scenarioState", "scenarioId"],
+        message: `${snapshot.scenarioState.scenarioId} does not match snapshot scenario ${snapshot.scenarioId}.`,
+      });
+    }
+    const activeExperiment = snapshot.scenarioState?.experiment;
+    if (
+      activeExperiment?.status === "completed" &&
+      (activeExperiment.experimentId === null ||
+        !seenExperimentIds.has(activeExperiment.experimentId))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["completedExperimentIds"],
+        message:
+          activeExperiment.experimentId === null
+            ? "Completed scenario state must identify its active experiment."
+            : `${activeExperiment.experimentId} is completed in scenario state but missing from completion history.`,
+      });
+    }
+  });
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 
 export const connectionStatusSchema = z.object({

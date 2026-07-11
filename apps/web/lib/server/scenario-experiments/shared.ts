@@ -1,5 +1,6 @@
 import "server-only";
 import type {
+  ScenarioExperimentIdFor,
   ScenarioExperimentTransitionId,
   ScenarioState,
 } from "@kplay/contracts";
@@ -21,7 +22,7 @@ export function upsertReducer<T extends { id: string }>(items: T[], item: T) {
 
 export function complete<T extends ScenarioState>(
   state: T,
-  experimentId: string,
+  experimentId: ScenarioExperimentIdFor<NoInfer<T["scenarioId"]>>,
   startedAtVirtualMs: number,
   transitions: ScenarioExperimentTransition[],
 ): T {

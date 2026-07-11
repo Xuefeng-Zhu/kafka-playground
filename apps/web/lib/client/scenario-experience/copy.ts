@@ -1,4 +1,8 @@
 import type {
+  ScenarioExperimentId,
+  ScenarioExperimentIdForRole,
+} from "@kplay/contracts";
+import type {
   ScenarioExperienceId,
   ScenarioExperimentMetadata,
   ScenarioExperiments,
@@ -9,6 +13,26 @@ export type ScenarioExperienceCopy = {
   title: string;
   lesson: ScenarioLesson;
   experiments: ScenarioExperiments;
+};
+
+type TypedExperimentMetadata<
+  Id extends ScenarioExperimentId,
+  Role extends ScenarioExperimentMetadata["role"],
+> = ScenarioExperimentMetadata<Id, Role>;
+
+type ScenarioExperienceCopyRegistry = {
+  [Id in ScenarioExperienceId]: ScenarioExperienceCopy & {
+    experiments: {
+      primary: TypedExperimentMetadata<
+        ScenarioExperimentIdForRole<Id, "primary">,
+        "primary"
+      >;
+      contrast: TypedExperimentMetadata<
+        ScenarioExperimentIdForRole<Id, "contrast">,
+        "contrast"
+      >;
+    };
+  };
 };
 
 export const scenarioExperienceCopy = {
@@ -312,16 +336,19 @@ export const scenarioExperienceCopy = {
       "Add the narrow matching allow rule and repeat the request.",
     ),
   ),
-} satisfies Record<ScenarioExperienceId, ScenarioExperienceCopy>;
+} satisfies ScenarioExperienceCopyRegistry;
 
-function copy(
+function copy<
+  PrimaryId extends ScenarioExperimentId,
+  ContrastId extends ScenarioExperimentId,
+>(
   title: string,
   objective: string,
   misconception: string,
   emptyCopy: string,
-  primary: ScenarioExperimentMetadata,
-  contrast: ScenarioExperimentMetadata,
-): ScenarioExperienceCopy {
+  primary: TypedExperimentMetadata<PrimaryId, "primary">,
+  contrast: TypedExperimentMetadata<ContrastId, "contrast">,
+) {
   return {
     title,
     lesson: { objective, misconception, emptyCopy },
@@ -329,13 +356,16 @@ function copy(
   };
 }
 
-function experiment(
-  id: string,
-  role: ScenarioExperimentMetadata["role"],
+function experiment<
+  Id extends ScenarioExperimentId,
+  Role extends ScenarioExperimentMetadata["role"],
+>(
+  id: Id,
+  role: Role,
   label: string,
   hypothesis: string,
   description: string,
-): ScenarioExperimentMetadata {
+): TypedExperimentMetadata<Id, Role> {
   return {
     id,
     role,

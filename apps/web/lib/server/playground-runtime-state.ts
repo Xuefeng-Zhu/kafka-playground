@@ -1,4 +1,5 @@
 import "server-only";
+import { scenarioStateIdSchema } from "@kplay/contracts";
 import type {
   ConsumerSnapshot,
   KafkaMode,
@@ -8,7 +9,9 @@ import type {
   RunSnapshot,
   RunStatus,
   RuntimeEvent,
+  ScenarioExperimentId,
   ScenarioState,
+  ScenarioStateId,
   ScenarioDefinition,
 } from "@kplay/contracts";
 import type {
@@ -24,7 +27,8 @@ import {
 import type { RuntimeSubscriber } from "./runtime-event-hub";
 import { createInitialScenarioState } from "./scenario-experiments";
 
-export type InternalRun = CreateRunInput & {
+export type InternalRun = Omit<CreateRunInput, "scenarioId"> & {
+  scenarioId: ScenarioStateId;
   mode: KafkaMode;
   adapter: KafkaRuntimeAdapter;
   status: RunStatus;
@@ -49,8 +53,8 @@ export type InternalRun = CreateRunInput & {
   subscribers: Map<string, RuntimeSubscriber>;
   scenarioState: ScenarioState | null;
   virtualTimeMs: number;
-  inFlightExperimentId: string | null;
-  completedExperimentIds: Set<string>;
+  inFlightExperimentId: ScenarioExperimentId | null;
+  completedExperimentIds: Set<ScenarioExperimentId>;
 };
 
 export function createInternalRun({
@@ -68,7 +72,7 @@ export function createInternalRun({
 }): InternalRun {
   return {
     runId,
-    scenarioId: scenario.id,
+    scenarioId: scenarioStateIdSchema.parse(scenario.id),
     mode,
     adapter,
     partitionCount: scenario.topic.partitions,
@@ -137,6 +141,7 @@ export function createRunSnapshot(
     recentEvents: run.events.slice(-timelineDisplayLimit),
     cleanupStatus: run.cleanupStatus,
     sequence: run.sequence,
+    completedExperimentIds: [...run.completedExperimentIds],
     scenarioState: run.scenarioState,
   };
 }
