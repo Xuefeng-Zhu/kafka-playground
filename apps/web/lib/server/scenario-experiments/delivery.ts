@@ -290,33 +290,21 @@ export const buildConsumerLagExperiment: ScenarioExperimentHandler<
   "consumer-lag-backpressure"
 > = ({ state, experimentId, startedAtVirtualMs }) => {
   const recover = experimentId === "recover-lag";
+  const partitionEntityIds = state.partitions.map(({ id }) => id);
   const transitions = recover
     ? [
         step(
           "scale",
           "Add consumers",
           "capacity.increased",
-          [
-            "lag-sample-1",
-            "consumer-2",
-            "consumer-3",
-            "lag-partition-0",
-            "lag-partition-1",
-            "lag-partition-2",
-          ],
+          ["lag-sample-1", "consumer-2", "consumer-3", ...partitionEntityIds],
           100,
         ),
         step(
           "recover",
           "Drain backlog",
           "lag.decreased",
-          [
-            "lag-sample-2",
-            "consumer-group",
-            "lag-partition-0",
-            "lag-partition-1",
-            "lag-partition-2",
-          ],
+          ["lag-sample-2", "consumer-group", ...partitionEntityIds],
           5_000,
         ),
       ]
@@ -325,13 +313,7 @@ export const buildConsumerLagExperiment: ScenarioExperimentHandler<
           "build",
           "Build lag",
           "lag.increased",
-          [
-            "lag-sample-0",
-            "consumer-group",
-            "lag-partition-0",
-            "lag-partition-1",
-            "lag-partition-2",
-          ],
+          ["lag-sample-0", "consumer-group", ...partitionEntityIds],
           5_000,
         ),
       ];
@@ -352,21 +334,39 @@ export const buildConsumerLagExperiment: ScenarioExperimentHandler<
       ? recoveredSamples.reduce(upsertReducer, state.samples)
       : upsertById(state.samples, rising)),
   ].sort((left, right) => left.atVirtualMs - right.atVirtualMs);
+  const modeledOffsets: Record<
+    number,
+    { endOffset: number; committedOffset: number }
+  > = recover
+    ? {
+        0: { endOffset: 10, committedOffset: 10 },
+        1: { endOffset: 8, committedOffset: 8 },
+        2: { endOffset: 6, committedOffset: 6 },
+      }
+    : {
+        0: { endOffset: 10, committedOffset: 3 },
+        1: { endOffset: 8, committedOffset: 3 },
+        2: { endOffset: 6, committedOffset: 0 },
+      };
+  const partitions = state.partitions.map((partition) => {
+    const modeled = modeledOffsets[partition.partition];
+    if (!modeled) {
+      return recover
+        ? { ...partition, committedOffset: partition.endOffset, lag: 0 }
+        : partition;
+    }
+    return {
+      ...partition,
+      endOffset: String(modeled.endOffset),
+      committedOffset: String(modeled.committedOffset),
+      lag: modeled.endOffset - modeled.committedOffset,
+    };
+  });
   const nextState = complete(
     {
       ...state,
       samples,
-      partitions: recover
-        ? [
-            lagPartition(0, 10, 10),
-            lagPartition(1, 8, 8),
-            lagPartition(2, 6, 6),
-          ]
-        : [
-            lagPartition(0, 10, 3),
-            lagPartition(1, 8, 3),
-            lagPartition(2, 6, 0),
-          ],
+      partitions,
       consumerCount: recover ? 3 : 1,
       drainEstimateMs: recover ? 0 : 9_000,
     },
@@ -415,20 +415,5 @@ function sample(
     processingRate,
     lag,
     trend,
-  };
-}
-
-function lagPartition(
-  partition: number,
-  endOffset: number,
-  committedOffset: number,
-) {
-  return {
-    id: `lag-partition-${partition}`,
-    provenance: "simulated" as const,
-    partition,
-    endOffset: String(endOffset),
-    committedOffset: String(committedOffset),
-    lag: endOffset - committedOffset,
   };
 }

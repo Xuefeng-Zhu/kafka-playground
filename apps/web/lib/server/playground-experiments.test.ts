@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runtimeEventSchema } from "@kplay/contracts";
-import type { KafkaRuntimeAdapter } from "@kplay/kafka-runtime";
+import { getInternalRun } from "./playground-runtime-test-helpers";
 
 const mockedServerEnv = vi.hoisted(() => ({ maxConsumersPerRun: 3 }));
 
@@ -515,6 +515,8 @@ describe("PlaygroundRuntime teaching experiments", () => {
     const internalRun = getInternalRun(runtime);
     if (!internalRun) throw new Error("Missing internal run");
     internalRun.consumerHandles.set("test-consumer", {
+      consumerId: "test-consumer",
+      commit: vi.fn().mockResolvedValue(undefined),
       disconnect: async () => {
         disconnectStarted.resolve();
         await releaseDisconnect.promise;
@@ -572,6 +574,123 @@ describe("PlaygroundRuntime teaching experiments", () => {
         experiment: expect.objectContaining({ status: "completed" }),
       }),
     });
+
+    await runtime.reset(started.runId);
+  });
+
+  it("resumes a pending processing timer exactly once after a successful experiment", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let started = await runtime.createRun("partitioning");
+    started = await runtime.updateSettings(started.runId, {
+      processingLatencyMs: 1000,
+    });
+    started = await runtime.addConsumer(started.runId);
+    const pending = await runtime.produceOne(started.runId);
+    const pendingMessageId = pending.recentMessages.at(-1)?.messageId;
+    if (!pendingMessageId) throw new Error("Missing pending message");
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    expect(internalRun.processingTimers.has(pendingMessageId)).toBe(true);
+
+    await runtime.runExperiment(started.runId, "produce-keyed-record");
+
+    expect(internalRun.processingTimers.has(pendingMessageId)).toBe(true);
+    expect(
+      runtime
+        .snapshot(started.runId)
+        .recentEvents.filter(
+          (event) =>
+            event.type === "message.processing_completed" &&
+            event.messageId === pendingMessageId,
+        ),
+    ).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    let completedEvents = runtime
+      .snapshot(started.runId)
+      .recentEvents.filter(
+        (event) =>
+          event.type === "message.processing_completed" &&
+          event.messageId === pendingMessageId,
+      );
+    expect(completedEvents).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    completedEvents = runtime
+      .snapshot(started.runId)
+      .recentEvents.filter(
+        (event) =>
+          event.type === "message.processing_completed" &&
+          event.messageId === pendingMessageId,
+      );
+    expect(completedEvents).toHaveLength(1);
+
+    await runtime.reset(started.runId);
+  });
+
+  it("restores a pending processing timer exactly once after experiment rollback", async () => {
+    vi.useFakeTimers();
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    let started = await runtime.createRun("partitioning");
+    started = await runtime.updateSettings(started.runId, {
+      processingLatencyMs: 1000,
+    });
+    started = await runtime.addConsumer(started.runId);
+    const pending = await runtime.produceOne(started.runId);
+    const pendingMessageId = pending.recentMessages.at(-1)?.messageId;
+    if (!pendingMessageId) throw new Error("Missing pending message");
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    const produce = internalRun.adapter.produce.bind(internalRun.adapter);
+    let guidedProduceCalls = 0;
+    const produceSpy = vi
+      .spyOn(internalRun.adapter, "produce")
+      .mockImplementation(async (input) => {
+        guidedProduceCalls += 1;
+        if (guidedProduceCalls === 2) {
+          throw new Error("guided observation failed");
+        }
+        return produce(input);
+      });
+
+    await expect(
+      runtime.runExperiment(started.runId, "produce-keyed-record"),
+    ).rejects.toThrow("guided observation failed");
+
+    expect(internalRun.processingTimers.has(pendingMessageId)).toBe(true);
+    expect(
+      runtime
+        .snapshot(started.runId)
+        .recentEvents.filter(
+          (event) =>
+            event.type === "message.processing_completed" &&
+            event.messageId === pendingMessageId,
+        ),
+    ).toHaveLength(0);
+    produceSpy.mockRestore();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    let completedEvents = runtime
+      .snapshot(started.runId)
+      .recentEvents.filter(
+        (event) =>
+          event.type === "message.processing_completed" &&
+          event.messageId === pendingMessageId,
+      );
+    expect(completedEvents).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    completedEvents = runtime
+      .snapshot(started.runId)
+      .recentEvents.filter(
+        (event) =>
+          event.type === "message.processing_completed" &&
+          event.messageId === pendingMessageId,
+      );
+    expect(completedEvents).toHaveLength(1);
 
     await runtime.reset(started.runId);
   });
@@ -804,25 +923,6 @@ describe("PlaygroundRuntime teaching experiments", () => {
     await runtime.reset(started.runId);
   });
 });
-
-function getInternalRun(runtime: object) {
-  const registry = (
-    runtime as {
-      runs: {
-        getSessionRun(sessionId: string): {
-          adapter: KafkaRuntimeAdapter;
-          scenarioState: unknown;
-          virtualTimeMs: number;
-          inFlightExperimentId: string | null;
-          completedExperimentIds: Set<string>;
-          processingTimers: Map<string, NodeJS.Timeout>;
-          consumerHandles: Map<string, { disconnect: () => Promise<void> }>;
-        } | null;
-      };
-    }
-  ).runs;
-  return registry.getSessionRun("default");
-}
 
 function createDeferred() {
   let resolve: (() => void) | undefined;

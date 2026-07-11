@@ -1,4 +1,5 @@
 import {
+  cleanupStatusSchema,
   connectionStatusSchema,
   runSnapshotSchema,
   scenarioDefinitionSchema,
@@ -6,6 +7,7 @@ import {
   type KeyStrategy,
   type RemoteKafkaConfig,
   type RunSnapshot,
+  type ScenarioExperimentId,
   type ScenarioDefinition,
   type UserSelectableKafkaMode,
 } from "@kplay/contracts";
@@ -31,7 +33,6 @@ const notFoundResponse = Symbol("not-found-response");
 type RequestJsonOptions = {
   init?: RequestInit;
   notFound?: "throw" | "return-not-found";
-  responseBody?: "required-json" | "ignore";
 };
 
 const scenarioDefinitionsResponseSchema = z.object({
@@ -40,6 +41,10 @@ const scenarioDefinitionsResponseSchema = z.object({
 
 const activeRunResponseSchema = z.object({
   run: runSnapshotSchema.nullable(),
+});
+
+const retireRunResponseSchema = z.object({
+  cleanupStatus: cleanupStatusSchema,
 });
 
 async function requestJson(
@@ -52,11 +57,7 @@ async function requestJson(
 ): Promise<unknown | typeof notFoundResponse>;
 async function requestJson(
   path: string,
-  {
-    init,
-    notFound = "throw",
-    responseBody = "required-json",
-  }: RequestJsonOptions = {},
+  { init, notFound = "throw" }: RequestJsonOptions = {},
 ): Promise<unknown | typeof notFoundResponse> {
   const response = await fetch(path, {
     ...init,
@@ -76,7 +77,6 @@ async function requestJson(
       error.code,
     );
   }
-  if (responseBody === "ignore") return undefined;
   return response.json() as Promise<unknown>;
 }
 
@@ -187,7 +187,7 @@ export async function mutateRun(
 
 export async function runScenarioExperiment(
   runId: string,
-  experimentId: string,
+  experimentId: ScenarioExperimentId,
 ) {
   const payload = await requestJson(
     runApiUrl(runId, `/experiments/${encodeURIComponent(experimentId)}`),
@@ -197,13 +197,15 @@ export async function runScenarioExperiment(
 }
 
 export async function retireRun(runId: string) {
-  await requestJson(runApiUrl(runId, "/reset"), {
+  const payload = await requestJson(runApiUrl(runId, "/reset"), {
     init: {
       method: "POST",
     },
     notFound: "return-not-found",
-    responseBody: "ignore",
   });
+  return payload === notFoundResponse
+    ? ({ cleanupStatus: "completed" } as const)
+    : retireRunResponseSchema.parse(payload);
 }
 
 export async function fetchRunSnapshot(

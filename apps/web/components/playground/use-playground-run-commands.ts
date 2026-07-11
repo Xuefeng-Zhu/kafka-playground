@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef } from "react";
-import type {
-  KeyStrategy,
-  RemoteKafkaConfig,
-  RunSnapshot,
-  UserSelectableKafkaMode,
+import {
+  isIncompleteCleanupStatus,
+  type KeyStrategy,
+  type RemoteKafkaConfig,
+  type RunSnapshot,
+  type UserSelectableKafkaMode,
 } from "@kplay/contracts";
 import {
   mutateRun as requestRunMutation,
@@ -14,8 +15,7 @@ import {
   startScenarioRun,
   testKafkaConnection,
 } from "@/lib/client/playground-api";
-
-type RunAction = (action: () => Promise<void>) => Promise<boolean>;
+import type { RunAction } from "./use-run-action";
 
 type UsePlaygroundRunCommandsOptions = {
   scenarioId: string;
@@ -166,7 +166,12 @@ export function usePlaygroundRunCommands({
       onRetired?: () => void,
     ) => {
       try {
-        await retireRun(activeRunId);
+        const result = await retireRun(activeRunId);
+        if (isIncompleteCleanupStatus(result.cleanupStatus)) {
+          throw new Error(
+            `Run cleanup ${result.cleanupStatus.replace("_", " ")}. Retry reset to finish releasing Kafka resources.`,
+          );
+        }
       } catch (error) {
         if (isCurrentOperation(operation)) throw error;
         return false;

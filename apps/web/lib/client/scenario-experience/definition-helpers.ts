@@ -12,7 +12,7 @@ import type {
   ScenarioExperienceId,
   ScenarioExperimentTransitionTrailItem,
 } from "./model";
-import type { RuntimeEvent } from "@kplay/contracts";
+import type { RuntimeEvent, ScenarioExperimentId } from "@kplay/contracts";
 
 export type ScenarioProjector<Id extends ScenarioExperienceId> = (
   definition: ScenarioExperienceDefinition<Id>,
@@ -64,7 +64,7 @@ export function experimentEvidence<Id extends ScenarioExperienceId>(
 export function experimentTransitionTrail(
   events: readonly RuntimeEvent[],
   scenarioId: string,
-  experimentId: string | null,
+  experimentId: ScenarioExperimentId | null,
 ): ScenarioExperimentTransitionTrailItem[] {
   const transitions = events.filter(
     (

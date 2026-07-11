@@ -98,6 +98,23 @@ export type PlaygroundConsumerHandle = {
   disconnect(): Promise<void>;
 };
 
+export class KafkaConsumerStartupRollbackError extends Error {
+  readonly name = "KafkaConsumerStartupRollbackError";
+
+  constructor(
+    readonly startupError: unknown,
+    readonly rollbackError: unknown,
+    readonly consumerHandle: PlaygroundConsumerHandle,
+  ) {
+    super(
+      startupError instanceof Error
+        ? startupError.message
+        : "Kafka consumer failed to start.",
+      { cause: startupError },
+    );
+  }
+}
+
 export type KafkaRuntimeAdapter = {
   readonly mode: KafkaMode;
   testConnection(): Promise<ConnectionStatus>;
@@ -493,15 +510,7 @@ async function createKafkaConsumerHandle(
     operations.diagnostics,
     sanitizeRuntimeError,
   );
-  await consumer.connect();
-  await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
-  startConsumerRun(
-    consumer as ConsumerRunSource,
-    callbacks,
-    operations.diagnostics,
-    sanitizeRuntimeError,
-  );
-  return {
+  const handle: PlaygroundConsumerHandle = {
     consumerId,
     async commit(input) {
       await consumer.commitOffsets([
@@ -516,6 +525,27 @@ async function createKafkaConsumerHandle(
       await consumer.disconnect();
     },
   };
+  try {
+    await consumer.connect();
+    await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
+    await startConsumerRun(
+      consumer as ConsumerRunSource,
+      callbacks,
+      operations.diagnostics,
+      sanitizeRuntimeError,
+    );
+  } catch (error) {
+    const rollbackError = await disconnectKafkaHandle(
+      operations,
+      "consumer.start.rollback.disconnect",
+      consumer,
+    );
+    if (rollbackError !== null) {
+      throw new KafkaConsumerStartupRollbackError(error, rollbackError, handle);
+    }
+    throw error;
+  }
+  return handle;
 }
 
 async function deleteKafkaRunResources(
@@ -544,14 +574,16 @@ async function disconnectKafkaHandle(
   operation: string,
   handle: { disconnect(): Promise<void> } | null,
 ) {
-  if (!handle) return;
+  if (!handle) return null;
   try {
     await handle.disconnect();
+    return null;
   } catch (error) {
     operations.diagnostics.onDisconnectError?.({
       operation,
       error: sanitizeKafkaError(error, operations.secrets()),
     });
+    return error;
   }
 }
 

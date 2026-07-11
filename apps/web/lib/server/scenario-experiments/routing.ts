@@ -41,6 +41,10 @@ export const buildPartitioningExperiment: ScenarioExperimentHandler<
         ),
       ];
   const observed = observations?.partitioning;
+  const authoritativePartitions = state.partitionPositions.map(
+    ({ partition }) => partition,
+  );
+  const fallbackAssignmentEpoch = growGroup ? state.assignmentEpoch + 1 : 1;
   const fallback: NonNullable<ScenarioExperimentObservations["partitioning"]> =
     {
       routingTraces: [
@@ -53,20 +57,36 @@ export const buildPartitioningExperiment: ScenarioExperimentHandler<
       // group would resume at that same offset after a restart.
       partitionPositions: [position(0, "1", "1"), position(1, "0", "1")],
       consumers: growGroup
-        ? [
-            consumer("consumer-1", [0], "running", 1),
-            consumer("consumer-2", [1], "running", 1),
-            consumer("consumer-3", [], "idle", 1),
-          ]
-        : [consumer("consumer-1", [0, 1], "running", 1)],
-      assignmentEpoch: 1,
+        ? Array.from({ length: 3 }, (_, index) => {
+            const partitions = authoritativePartitions.filter(
+              (partition) => partition % 3 === index,
+            );
+            return consumer(
+              `consumer-${index + 1}`,
+              partitions,
+              partitions.length > 0 ? "running" : "idle",
+              fallbackAssignmentEpoch,
+            );
+          })
+        : [
+            consumer(
+              "consumer-1",
+              authoritativePartitions,
+              "running",
+              fallbackAssignmentEpoch,
+            ),
+          ],
+      assignmentEpoch: fallbackAssignmentEpoch,
     };
   const partitioning = observed ?? {
     ...fallback,
     routingTraces: growGroup ? state.routingTraces : fallback.routingTraces,
     partitionPositions: growGroup
       ? state.partitionPositions
-      : fallback.partitionPositions,
+      : fallback.partitionPositions.reduce(
+          upsertReducer,
+          state.partitionPositions,
+        ),
     assignmentEpoch: growGroup
       ? state.assignmentEpoch + 1
       : fallback.assignmentEpoch,

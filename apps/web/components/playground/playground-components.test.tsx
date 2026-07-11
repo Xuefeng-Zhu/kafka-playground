@@ -286,12 +286,13 @@ describe("playground shell components", () => {
     const onClose = vi.fn();
     render(
       <InspectorDrawer
-        message={messageFixture}
-        event={null}
-        snapshot={snapshotFixture}
-        selectedNode={null}
-        onPreviousMessage={vi.fn()}
-        onNextMessage={vi.fn()}
+        content={{
+          kind: "message",
+          message: messageFixture,
+          snapshot: snapshotFixture,
+          onPreviousMessage: vi.fn(),
+          onNextMessage: vi.fn(),
+        }}
         onClose={onClose}
       />,
     );
@@ -309,12 +310,12 @@ describe("playground shell components", () => {
   it("uses event inspector labels when a timeline event is selected", () => {
     render(
       <InspectorDrawer
-        message={null}
-        event={eventFixture}
-        snapshot={snapshotFixture}
-        selectedNode={null}
-        onPreviousMessage={vi.fn()}
-        onNextMessage={vi.fn()}
+        content={{
+          kind: "event",
+          event: eventFixture,
+          relatedMessage: null,
+          snapshot: snapshotFixture,
+        }}
         onClose={vi.fn()}
       />,
     );
@@ -338,12 +339,13 @@ describe("playground shell components", () => {
 
     const { unmount } = render(
       <InspectorDrawer
-        message={messageFixture}
-        event={null}
-        snapshot={snapshotFixture}
-        selectedNode={null}
-        onPreviousMessage={vi.fn()}
-        onNextMessage={vi.fn()}
+        content={{
+          kind: "message",
+          message: messageFixture,
+          snapshot: snapshotFixture,
+          onPreviousMessage: vi.fn(),
+          onNextMessage: vi.fn(),
+        }}
         onClose={vi.fn()}
       />,
     );
@@ -356,30 +358,27 @@ describe("playground shell components", () => {
   it("renders authoritative entity evidence in the unified inspector", () => {
     render(
       <InspectorDrawer
-        entityDetail={{
-          entityId: "commit-gate",
-          title: "Commit boundary",
-          summary: "The offset is still behind the processed record.",
-          provenance: "observed",
-          focus: { kind: "entity", id: "commit-gate" },
-          facts: [
-            {
-              id: "commit-offset",
-              label: "Committed offset",
-              value: {
-                value: "1",
-                provenance: "observed",
-                scope: "current",
+        content={{
+          kind: "entity",
+          detail: {
+            entityId: "commit-gate",
+            title: "Commit boundary",
+            summary: "The offset is still behind the processed record.",
+            provenance: "observed",
+            focus: { kind: "entity", id: "commit-gate" },
+            facts: [
+              {
+                id: "commit-offset",
+                label: "Committed offset",
+                value: {
+                  value: "1",
+                  provenance: "observed",
+                  scope: "current",
+                },
               },
-            },
-          ],
+            ],
+          },
         }}
-        message={null}
-        event={null}
-        snapshot={snapshotFixture}
-        selectedNode={null}
-        onPreviousMessage={vi.fn()}
-        onNextMessage={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -392,23 +391,20 @@ describe("playground shell components", () => {
     expect(screen.queryAllByText("Observed").length).toBeGreaterThan(0);
   });
 
-  it("does not activate topology and evidence detail models together", () => {
+  it("renders one explicitly selected inspector mode at a time", () => {
     render(
       <InspectorDrawer
-        entityDetail={{
-          entityId: "key-router",
-          title: "Key router",
-          summary: "Chooses one partition for an equal key.",
-          provenance: "derived",
-          focus: { kind: "entity", id: "key-router" },
-          facts: [],
+        content={{
+          kind: "entity",
+          detail: {
+            entityId: "key-router",
+            title: "Key router",
+            summary: "Chooses one partition for an equal key.",
+            provenance: "derived",
+            focus: { kind: "entity", id: "key-router" },
+            facts: [],
+          },
         }}
-        message={null}
-        event={null}
-        snapshot={snapshotFixture}
-        selectedNode={{ type: "topic" }}
-        onPreviousMessage={vi.fn()}
-        onNextMessage={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -418,6 +414,25 @@ describe("playground shell components", () => {
     ).not.toBeNull();
     expect(screen.queryByText("Key router")).not.toBeNull();
     expect(screen.queryByText("Topic Metrics")).toBeNull();
+  });
+
+  it("renders topology details only for explicit topology content", () => {
+    render(
+      <InspectorDrawer
+        content={{
+          kind: "topology",
+          snapshot: snapshotFixture,
+          selectedNode: { type: "topic" },
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Topology inspector" }),
+    ).not.toBeNull();
+    expect(screen.queryByText("Topic Metrics")).not.toBeNull();
+    expect(screen.queryByText("Key router")).toBeNull();
   });
 
   it("intercepts normal scenario links for active-run navigation", () => {

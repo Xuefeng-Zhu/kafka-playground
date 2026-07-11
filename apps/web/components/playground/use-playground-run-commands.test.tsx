@@ -16,6 +16,7 @@ vi.mock("@/lib/client/playground-api", () => apiMocks);
 describe("usePlaygroundRunCommands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.retireRun.mockResolvedValue({ cleanupStatus: "completed" });
   });
 
   it("keeps live updates and selection intact when reset fails", async () => {
@@ -33,7 +34,6 @@ describe("usePlaygroundRunCommands", () => {
   });
 
   it("closes live updates only after a successful reset", async () => {
-    apiMocks.retireRun.mockResolvedValue(undefined);
     const harness = renderCommands();
 
     await act(async () => {
@@ -43,6 +43,26 @@ describe("usePlaygroundRunCommands", () => {
     expect(harness.closeLiveUpdates).toHaveBeenCalledTimes(1);
     expect(harness.clearRunSelection).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["failed", "partially_completed"] as const)(
+    "keeps the run selected when cleanup is %s so reset can be retried",
+    async (cleanupStatus) => {
+      apiMocks.retireRun.mockResolvedValue({ cleanupStatus });
+      const harness = renderCommands();
+
+      await act(async () => {
+        await harness.result.current.resetRun();
+      });
+
+      expect(harness.closeLiveUpdates).not.toHaveBeenCalled();
+      expect(harness.clearRunSelection).not.toHaveBeenCalled();
+      expect(harness.reportActionError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining("Retry reset"),
+        }),
+      );
+    },
+  );
 
   it("does not navigate away when retiring the active run fails", async () => {
     apiMocks.retireRun.mockRejectedValue(new Error("cleanup failed"));
@@ -70,7 +90,6 @@ describe("usePlaygroundRunCommands", () => {
   });
 
   it("navigates after successfully retiring the active run", async () => {
-    apiMocks.retireRun.mockResolvedValue(undefined);
     const harness = renderCommands();
 
     await act(async () => {
@@ -168,7 +187,7 @@ describe("usePlaygroundRunCommands", () => {
   });
 
   it("ignores a deferred reset after another reset clears the run", async () => {
-    const pending = deferred<void>();
+    const pending = deferred<{ cleanupStatus: "completed" }>();
     apiMocks.retireRun.mockReturnValue(pending.promise);
     const harness = renderCommands();
     let command!: Promise<void>;
@@ -179,7 +198,7 @@ describe("usePlaygroundRunCommands", () => {
     harness.rerender({ runId: null, scenarioId: "partitioning" });
 
     await act(async () => {
-      pending.resolve(undefined);
+      pending.resolve({ cleanupStatus: "completed" });
       await command;
     });
 
@@ -189,7 +208,7 @@ describe("usePlaygroundRunCommands", () => {
   });
 
   it("does not complete stale navigation after the route changes", async () => {
-    const pending = deferred<void>();
+    const pending = deferred<{ cleanupStatus: "completed" }>();
     apiMocks.retireRun.mockReturnValue(pending.promise);
     const harness = renderCommands();
     let command!: Promise<void>;
@@ -205,7 +224,7 @@ describe("usePlaygroundRunCommands", () => {
     });
 
     await act(async () => {
-      pending.resolve(undefined);
+      pending.resolve({ cleanupStatus: "completed" });
       await command;
     });
 

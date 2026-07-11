@@ -1,7 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
-import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
+import type {
+  RunSnapshot,
+  RuntimeEvent,
+  ScenarioExperimentId,
+} from "@kplay/contracts";
 import {
   isScenarioExperienceSupported,
   resolveScenarioExperience,
@@ -13,7 +17,7 @@ type UseScenarioExperienceOptions = {
   run: RunSnapshot | null;
   scenarioId: string;
   events: readonly RuntimeEvent[];
-  pendingExperimentId: string | null;
+  pendingExperimentId: ScenarioExperimentId | null;
 };
 
 export function useScenarioExperience({

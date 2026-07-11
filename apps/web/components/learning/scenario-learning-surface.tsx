@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpenCheck, Lightbulb } from "lucide-react";
-import type { KafkaMode } from "@kplay/contracts";
+import type { KafkaMode, ScenarioExperimentId } from "@kplay/contracts";
 import type {
   FocusRef,
   ScenarioExperienceFrame,
@@ -20,10 +20,10 @@ export type ScenarioLearningSurfaceProps = {
   graphFocus?: FocusRef | null;
   evidenceFocus?: FocusRef | null;
   onFocus: (focus: FocusRef) => void;
-  onRunExperiment: (experimentId: string) => void;
+  onRunExperiment: (experimentId: ScenarioExperimentId) => void;
   onAnswerCheckpoint: (optionId: string) => void;
   runtimeMode?: KafkaMode;
-  pendingExperimentId?: string | null;
+  pendingExperimentId?: ScenarioExperimentId | null;
   experimentError?: string | null;
   experimentTransitions?: readonly ScenarioExperimentTransitionTrailItem[];
   announcement?: string;

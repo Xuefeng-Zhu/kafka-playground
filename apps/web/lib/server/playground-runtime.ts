@@ -1,17 +1,18 @@
 import "server-only";
-import type {
-  KeyStrategy,
-  PlaygroundMessage,
-  RemoteKafkaConfig,
-  UserSelectableKafkaMode,
-  RuntimeEvent,
-  ScenarioExperimentId,
+import {
+  isIncompleteCleanupStatus,
+  type KeyStrategy,
+  type PlaygroundMessage,
+  type RemoteKafkaConfig,
+  type UserSelectableKafkaMode,
+  type RuntimeEvent,
+  type ScenarioExperimentId,
 } from "@kplay/contracts";
 import {
   DemoKafkaRuntimeAdapter,
+  KafkaConsumerStartupRollbackError,
   createKafkaRuntimeAdapter,
   createUserConfiguredKafkaRuntimeAdapter,
-  sanitizeKafkaError,
   type ConsumedMessage,
   type KafkaRuntimeAdapter,
   type KafkaRuntimeDiagnostics,
@@ -28,6 +29,7 @@ import {
 import { ApiError } from "./api-errors";
 import { getServerEnv } from "./env";
 import { logger } from "./logger";
+import { cleanupPlaygroundRun } from "./playground-cleanup";
 import {
   boundMessages,
   requeueMessagesForConsumer,
@@ -48,6 +50,11 @@ import {
   DEFAULT_SESSION_ID,
   PlaygroundRunRegistry,
 } from "./playground-run-registry";
+import { PlaygroundRunLifecycle } from "./playground-run-lifecycle";
+import {
+  RunScopedWorkTracker,
+  waitForAbortableDelay,
+} from "./playground-run-scoped-work";
 import {
   scenarioExperimentPrerequisite,
   supportsScenarioExperiment,
@@ -96,7 +103,7 @@ export class PlaygroundRuntime {
   );
   private readonly runs = new PlaygroundRunRegistry();
   private readonly inFlightExperiments = new Map<string, Promise<void>>();
-  private readonly runMutationTails = new Map<string, Promise<void>>();
+  private readonly runLifecycle = new PlaygroundRunLifecycle();
   private readonly reservedExperimentIds = new Map<
     string,
     ScenarioExperimentId
@@ -105,8 +112,7 @@ export class PlaygroundRuntime {
     string,
     BufferedRuntimeEvent[]
   >();
-  private readonly cleanupRequestedRunIds = new Set<string>();
-  private readonly cleanupOperations = new Map<string, Promise<void>>();
+  private readonly runScopedWork = new RunScopedWorkTracker();
   private shutdownStarted = false;
 
   scenarios() {
@@ -139,10 +145,17 @@ export class PlaygroundRuntime {
     sessionId = DEFAULT_SESSION_ID,
   ) {
     const activeRun = this.runs.getSessionRun(sessionId);
-    if (activeRun && activeRun.status !== "stopped") {
+    const previousCleanupIncomplete =
+      activeRun && isIncompleteCleanupStatus(activeRun.cleanupStatus);
+    if (
+      activeRun &&
+      (activeRun.status !== "stopped" || previousCleanupIncomplete)
+    ) {
       throw new ApiError(
         "RUN_ALREADY_ACTIVE",
-        "Only one scenario run can be active.",
+        previousCleanupIncomplete
+          ? "The previous run still has resources that require cleanup."
+          : "Only one scenario run can be active.",
         409,
       );
     }
@@ -198,7 +211,9 @@ export class PlaygroundRuntime {
       run.status = "error";
       this.emit(run, "run.error", { message: "Failed to start run." });
       await this.cleanup(run);
-      this.runs.deleteSessionRun(sessionId);
+      if (!isIncompleteCleanupStatus(run.cleanupStatus)) {
+        this.runs.deleteSessionRun(sessionId);
+      }
       throw error;
     }
   }
@@ -214,7 +229,13 @@ export class PlaygroundRuntime {
 
   activeSnapshot(sessionId = DEFAULT_SESSION_ID) {
     const run = this.runs.getSessionRun(sessionId);
-    if (!run || run.status === "stopped") return null;
+    if (
+      !run ||
+      (run.status === "stopped" &&
+        !isIncompleteCleanupStatus(run.cleanupStatus))
+    ) {
+      return null;
+    }
     return this.snapshot(run.runId, sessionId);
   }
 
@@ -436,9 +457,11 @@ export class PlaygroundRuntime {
           onMessage: (message) =>
             this.handleConsumedMessage(run.runId, consumerId, message),
           onError: (error) => {
+            const currentRun = this.findRun(run.runId);
             if (
-              this.cleanupRequestedRunIds.has(run.runId) ||
-              !this.findRun(run.runId)
+              this.runLifecycle.isCleanupRequested(run.runId) ||
+              !currentRun ||
+              isRunMutationUnavailable(currentRun)
             ) {
               return;
             }
@@ -454,12 +477,20 @@ export class PlaygroundRuntime {
         });
         run.consumerHandles.set(consumerId, handle);
       } catch (error) {
+        const cleanupRecoveryRequired =
+          error instanceof KafkaConsumerStartupRollbackError;
+        if (cleanupRecoveryRequired) {
+          run.consumerHandles.set(consumerId, error.consumerHandle);
+          run.cleanupStatus = "failed";
+        }
         run.consumers = run.consumers.filter(
           (consumer) => consumer.consumerId !== consumerId,
         );
         this.emit(run, "run.error", {
           actor: consumerId,
-          message: "Consumer failed to start.",
+          message: cleanupRecoveryRequired
+            ? "Consumer startup cleanup failed. Reset the run to retry cleanup."
+            : "Consumer failed to start.",
         });
         throw error;
       }
@@ -591,7 +622,7 @@ export class PlaygroundRuntime {
     const run = this.requireRun(runId, sessionId);
     const reservedExperimentId = this.reservedExperimentIds.get(runId);
     if (
-      this.cleanupRequestedRunIds.has(runId) ||
+      this.runLifecycle.isCleanupRequested(runId) ||
       run.mode !== "demo" ||
       !run.scenarioState ||
       !supportsScenarioExperiment(run.scenarioState, experimentId) ||
@@ -634,7 +665,7 @@ export class PlaygroundRuntime {
         async () => {
           const currentRun = this.requireRun(runId, sessionId);
           if (
-            this.cleanupRequestedRunIds.has(runId) ||
+            this.runLifecycle.isCleanupRequested(runId) ||
             currentRun.mode !== "demo" ||
             !currentRun.scenarioState ||
             !supportsScenarioExperiment(
@@ -727,7 +758,9 @@ export class PlaygroundRuntime {
   async reset(runId: string, sessionId = DEFAULT_SESSION_ID) {
     const run = this.requireRun(runId, sessionId);
     await this.cleanup(run);
-    this.runs.deleteSessionRun(sessionId);
+    if (!isIncompleteCleanupStatus(run.cleanupStatus)) {
+      this.runs.deleteSessionRun(sessionId);
+    }
     return { cleanupStatus: run.cleanupStatus };
   }
 
@@ -793,38 +826,11 @@ export class PlaygroundRuntime {
       cleanupBehavior?: "allow" | "reject" | "skip";
     } = {},
   ): Promise<T> {
-    const cleanupBehavior = options.cleanupBehavior ?? "reject";
-    if (cleanupBehavior !== "allow" && this.cleanupRequestedRunIds.has(runId)) {
-      return cleanupBehavior === "skip"
-        ? Promise.resolve(undefined as T)
-        : Promise.reject(this.cleanupInProgressError());
-    }
-    const previous = this.runMutationTails.get(runId);
-    let release: () => void = () => undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
+    return this.runLifecycle.mutate(runId, operation, {
+      cleanupBehavior: options.cleanupBehavior,
+      cleanupInProgressError: () => this.cleanupInProgressError(),
+      mutationUnavailableError: () => this.mutationUnavailableError(runId),
     });
-    this.runMutationTails.set(runId, current);
-
-    const execute = async () => {
-      if (previous) await previous;
-      try {
-        if (
-          cleanupBehavior !== "allow" &&
-          this.cleanupRequestedRunIds.has(runId)
-        ) {
-          if (cleanupBehavior === "skip") return undefined as T;
-          throw this.cleanupInProgressError();
-        }
-        return await operation();
-      } finally {
-        release();
-        if (this.runMutationTails.get(runId) === current) {
-          this.runMutationTails.delete(runId);
-        }
-      }
-    };
-    return execute();
   }
 
   private cleanupInProgressError() {
@@ -835,12 +841,24 @@ export class PlaygroundRuntime {
     );
   }
 
+  private mutationUnavailableError(runId: string) {
+    const run = this.findRun(runId);
+    if (!run || !isRunMutationUnavailable(run)) {
+      return null;
+    }
+    return new ApiError(
+      "RUN_NOT_ACTIVE",
+      "The scenario run cannot accept mutations until cleanup succeeds. Retry cleanup before starting a new run.",
+      409,
+    );
+  }
+
   private resumeScenarioExperimentTimers(
     run: InternalRun,
     checkpoint: ScenarioExperimentCheckpoint,
     sessionId: string,
   ) {
-    if (this.cleanupRequestedRunIds.has(run.runId)) {
+    if (this.runLifecycle.isCleanupRequested(run.runId)) {
       clearProducerTimer(run);
       run.producerStatus = "stopped";
       for (const timer of run.processingTimers.values()) clearTimeout(timer);
@@ -898,7 +916,10 @@ export class PlaygroundRuntime {
   }
 
   private nextConsumerId(run: InternalRun) {
-    const used = new Set(run.consumers.map((consumer) => consumer.consumerId));
+    const used = new Set([
+      ...run.consumerHandles.keys(),
+      ...run.consumers.map((consumer) => consumer.consumerId),
+    ]);
     for (let index = 1; ; index += 1) {
       const candidate = `consumer-${index}`;
       if (!used.has(candidate)) return candidate;
@@ -983,10 +1004,13 @@ export class PlaygroundRuntime {
   ) {
     const handle = run.consumerHandles.get(consumerId);
     if (!handle) return;
-    await handle.disconnect().catch((error) => {
+    try {
+      await handle.disconnect();
+      run.consumerHandles.delete(consumerId);
+    } catch (error) {
       logger.warn({ err: error, runId: run.runId, consumerId }, failureMessage);
-    });
-    run.consumerHandles.delete(consumerId);
+      throw error;
+    }
   }
 
   private emitConsumerRevocation(
@@ -1044,14 +1068,25 @@ export class PlaygroundRuntime {
     );
   }
 
-  private async handleConsumedMessage(
+  private handleConsumedMessage(
     runId: string,
     consumerId: string,
     consumed: ConsumedMessage,
   ) {
-    if (this.cleanupRequestedRunIds.has(runId)) return;
+    return this.runScopedWork.run(runId, (signal) =>
+      this.processConsumedMessage(runId, consumerId, consumed, signal),
+    );
+  }
+
+  private async processConsumedMessage(
+    runId: string,
+    consumerId: string,
+    consumed: ConsumedMessage,
+    signal: AbortSignal,
+  ) {
+    if (this.runLifecycle.isCleanupRequested(runId)) return;
     const run = this.findRun(runId);
-    if (!run) return;
+    if (!run || isRunMutationUnavailable(run)) return;
     const messageId =
       consumed.headers["x-playground-event-id"] ?? crypto.randomUUID();
     let message = run.messages.find((item) => item.messageId === messageId);
@@ -1093,10 +1128,11 @@ export class PlaygroundRuntime {
       offset: consumed.offset,
       actor: consumerId,
     });
-    await new Promise((resolve) =>
-      setTimeout(resolve, run.processingLatencyMs),
+    const delayCompleted = await waitForAbortableDelay(
+      run.processingLatencyMs,
+      signal,
     );
-    if (this.cleanupRequestedRunIds.has(runId)) return;
+    if (!delayCompleted || this.runLifecycle.isCleanupRequested(runId)) return;
     await this.processMessage(runId, message.messageId, consumerId);
   }
 
@@ -1228,79 +1264,16 @@ export class PlaygroundRuntime {
   }
 
   private cleanup(run: InternalRun) {
-    const existingCleanup = this.cleanupOperations.get(run.runId);
-    if (existingCleanup) return existingCleanup;
-
-    this.cleanupRequestedRunIds.add(run.runId);
-    clearProducerTimer(run);
-    run.producerStatus = "stopped";
-    for (const timer of run.processingTimers.values()) clearTimeout(timer);
-    run.processingTimers.clear();
-    const pendingMutations = this.runMutationTails.get(run.runId);
-    const cleanup = this.performCleanup(run, pendingMutations);
-    const trackedCleanup = cleanup.finally(() => {
-      this.cleanupRequestedRunIds.delete(run.runId);
-      this.cleanupOperations.delete(run.runId);
-    });
-    this.cleanupOperations.set(run.runId, trackedCleanup);
-    return trackedCleanup;
-  }
-
-  private async performCleanup(
-    run: InternalRun,
-    pendingMutations: Promise<void> | undefined,
-  ) {
-    const inFlightExperiment = this.inFlightExperiments.get(run.runId);
-    if (inFlightExperiment) await inFlightExperiment;
-    if (pendingMutations) await pendingMutations;
-
-    clearProducerTimer(run);
-    run.producerStatus = "stopped";
-    for (const timer of run.processingTimers.values()) clearTimeout(timer);
-    run.processingTimers.clear();
-    for (const [consumerId, handle] of run.consumerHandles) {
-      await handle.disconnect().catch((error) => {
-        logger.warn(
-          { err: error, runId: run.runId, consumerId },
-          "Consumer cleanup failed",
-        );
+    return this.runLifecycle.cleanup(run.runId, (pendingMutations) => {
+      const pendingRunScopedWork = this.runScopedWork.cancel(run.runId);
+      return cleanupPlaygroundRun({
+        run,
+        inFlightExperiment: this.inFlightExperiments.get(run.runId),
+        pendingMutations,
+        pendingRunScopedWork,
+        emit: (type, payload) => this.emit(run, type, payload),
       });
-    }
-    run.consumerHandles.clear();
-    run.scenarioState = null;
-    run.virtualTimeMs = 0;
-    run.inFlightExperimentId = null;
-    run.completedExperimentIds.clear();
-    run.status = "cleaning";
-    run.cleanupStatus = "requested";
-    this.emit(run, "resource.cleanup_started", {
-      message: "Runtime cleanup started.",
     });
-    const result = await run.adapter.deleteRunResources(run).catch((error) => {
-      const sanitized = sanitizeKafkaError(error);
-      return {
-        status: "failed" as const,
-        steps: [
-          {
-            name: "adapter.cleanup",
-            status: "failed" as const,
-            message: sanitized.message,
-          },
-        ],
-      };
-    });
-    run.cleanupStatus = result.status;
-    run.consumers = [];
-    run.status = "stopped";
-    this.emit(
-      run,
-      result.status === "failed"
-        ? "resource.cleanup_failed"
-        : "resource.cleanup_completed",
-      { message: `Cleanup ${result.status}.` },
-    );
-    this.emit(run, "run.stopped", { message: "Run stopped." });
-    run.subscribers.clear();
   }
 
   private applyConsumerAssignment(
@@ -1308,9 +1281,9 @@ export class PlaygroundRuntime {
     consumerId: string,
     assignments: Array<{ topic: string; partition: number }>,
   ) {
-    if (this.cleanupRequestedRunIds.has(runId)) return;
+    if (this.runLifecycle.isCleanupRequested(runId)) return;
     const run = this.findRun(runId);
-    if (!run) return;
+    if (!run || isRunMutationUnavailable(run)) return;
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,
     );
@@ -1337,9 +1310,9 @@ export class PlaygroundRuntime {
     consumerId: string,
     assignments: Array<{ topic: string; partition: number }>,
   ) {
-    if (this.cleanupRequestedRunIds.has(runId)) return;
+    if (this.runLifecycle.isCleanupRequested(runId)) return;
     const run = this.findRun(runId);
-    if (!run) return;
+    if (!run || isRunMutationUnavailable(run)) return;
     const consumer = run.consumers.find(
       (item) => item.consumerId === consumerId,
     );
@@ -1362,5 +1335,11 @@ function isConfigurationError(error: unknown) {
       "AIVEN_CONFIGURATION_MISSING",
       "REMOTE_KAFKA_CONFIGURATION_MISSING",
     ].includes(String(error.code))
+  );
+}
+
+function isRunMutationUnavailable(run: InternalRun) {
+  return (
+    run.status === "stopped" || isIncompleteCleanupStatus(run.cleanupStatus)
   );
 }

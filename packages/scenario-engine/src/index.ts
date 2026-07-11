@@ -1,4 +1,9 @@
-import type { KeyStrategy, ScenarioDefinition } from "@kplay/contracts";
+import {
+  scenarioStateIds,
+  type KeyStrategy,
+  type ScenarioDefinition,
+  type ScenarioStateId,
+} from "@kplay/contracts";
 import { randomBytes, randomUUID } from "node:crypto";
 
 const standardLimits = {
@@ -13,24 +18,12 @@ const fanOutLoadBalancingLimits = {
   maxConsumers: 4,
 };
 
-export const SCENARIO_IDS = [
-  "partitioning",
-  "fan-out-load-balancing",
-  "at-least-once-duplicates",
-  "retry-dead-letter-queues",
-  "schema-evolution-karapace",
-  "transactional-producers",
-  "event-replay-sourcing",
-  "consumer-lag-backpressure",
-  "hot-partitions-key-skew",
-  "log-compaction-tombstones",
-  "retention-data-loss",
-  "cooperative-rebalancing",
-  "streams-joins-windows",
-  "outbox-cdc",
-  "acl-least-privilege",
-] as const;
-export type ScenarioId = (typeof SCENARIO_IDS)[number];
+export const SCENARIO_IDS = scenarioStateIds;
+export type ScenarioId = ScenarioStateId;
+
+type CatalogScenarioDefinition = Omit<ScenarioDefinition, "id"> & {
+  id: ScenarioId;
+};
 
 export const SCENARIOS = [
   {
@@ -244,7 +237,7 @@ export const SCENARIOS = [
     topic: { partitions: 2 },
     limits: standardLimits,
   },
-] satisfies ScenarioDefinition[];
+] satisfies CatalogScenarioDefinition[];
 
 export const PRIMARY_SCENARIO = SCENARIOS[0];
 
@@ -252,7 +245,9 @@ export function findScenario(scenarioId: string) {
   return SCENARIOS.find((scenario) => scenario.id === scenarioId);
 }
 
-export function defaultKeyStrategyForScenario(scenarioId: string): KeyStrategy {
+export function defaultKeyStrategyForScenario(
+  scenarioId: ScenarioId,
+): KeyStrategy {
   if (scenarioId === "hot-partitions-key-skew")
     return { type: "fixed", value: "celebrity-user" };
   if (
@@ -268,7 +263,7 @@ export function defaultKeyStrategyForScenario(scenarioId: string): KeyStrategy {
   return { type: "round_robin_users" };
 }
 
-export function defaultProcessingLatencyForScenario(scenarioId: string) {
+export function defaultProcessingLatencyForScenario(scenarioId: ScenarioId) {
   if (scenarioId === "consumer-lag-backpressure") return 1200;
   if (scenarioId === "retry-dead-letter-queues") return 800;
   if (scenarioId === "streams-joins-windows") return 900;
@@ -281,7 +276,7 @@ export type ScenarioProcessingOutcome = {
 };
 
 export function evaluateScenarioProcessing(input: {
-  scenarioId: string;
+  scenarioId: ScenarioId;
   sequence: number;
   value: Record<string, unknown>;
 }): ScenarioProcessingOutcome | null {
@@ -390,7 +385,7 @@ export class KeyStrategyState {
 export function createPlaygroundValue(input: {
   eventId: string;
   runId: string;
-  scenarioId: string;
+  scenarioId: ScenarioId;
   sequence: number;
   userId: string | null;
 }) {
@@ -409,7 +404,7 @@ export function createPlaygroundValue(input: {
 export function createHeaders(input: {
   runId: string;
   eventId: string;
-  scenarioId: string;
+  scenarioId: ScenarioId;
   sequence: number;
   keyStrategy: KeyStrategy;
 }) {
@@ -422,8 +417,8 @@ export function createHeaders(input: {
   };
 }
 
-function scenarioEventType(scenarioId: string) {
-  const types: Record<string, string> = {
+function scenarioEventType(scenarioId: ScenarioId) {
+  const types: Partial<Record<ScenarioId, string>> = {
     "fan-out-load-balancing": "fanout.activity",
     "at-least-once-duplicates": "payment.command",
     "retry-dead-letter-queues": "fulfillment.request",
@@ -445,7 +440,7 @@ function scenarioEventType(scenarioId: string) {
 function scenarioPayload(input: {
   eventId: string;
   runId: string;
-  scenarioId: string;
+  scenarioId: ScenarioId;
   sequence: number;
   userId: string | null;
 }) {

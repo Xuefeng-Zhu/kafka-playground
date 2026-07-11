@@ -177,7 +177,14 @@ describe("Explore topology focus", () => {
   });
 });
 
-function experimentEvent(overrides: Partial<RuntimeEvent> = {}): RuntimeEvent {
+type ExperimentTransitionEvent = Extract<
+  RuntimeEvent,
+  { type: "scenario.experiment.transition" }
+>;
+
+function experimentEvent(
+  overrides: Partial<ExperimentTransitionEvent> = {},
+): ExperimentTransitionEvent {
   return {
     eventId: "event-1",
     runId: "run-1",
@@ -185,7 +192,7 @@ function experimentEvent(overrides: Partial<RuntimeEvent> = {}): RuntimeEvent {
     occurredAt: "2026-07-09T00:00:00.000Z",
     type: "scenario.experiment.transition",
     scenarioId: "partitioning",
-    experimentId: "route-a-b-a",
+    experimentId: "produce-keyed-record",
     entityIds: ["partition-1"],
     provenance: "simulated",
     virtualTimeMs: 100,
@@ -197,5 +204,5 @@ function experimentEvent(overrides: Partial<RuntimeEvent> = {}): RuntimeEvent {
       label: "Route message",
     },
     ...overrides,
-  } as RuntimeEvent;
+  } satisfies ExperimentTransitionEvent;
 }

@@ -1,42 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type {
-  PlaygroundMessage,
-  RunSnapshot,
-  RuntimeEvent,
-} from "@kplay/contracts";
-import { InspectorPanel } from "@/components/inspector/inspector-panel";
-import type { EntityDetailModel } from "@/lib/client/scenario-experience";
-import type { TopologySelection } from "@/lib/client/topology-selection";
+import {
+  InspectorPanel,
+  inspectorLabels,
+  type InspectorContent,
+} from "@/components/inspector/inspector-panel";
 
 export function InspectorDrawer({
-  message,
-  event,
-  snapshot,
-  selectedNode,
-  entityDetail = null,
-  onPreviousMessage,
-  onNextMessage,
+  content,
   onClose,
 }: {
-  message: PlaygroundMessage | null;
-  event: RuntimeEvent | null;
-  snapshot: RunSnapshot | null;
-  selectedNode: TopologySelection | null;
-  entityDetail?: EntityDetailModel | null;
-  onPreviousMessage: () => void;
-  onNextMessage: () => void;
-  onClose: () => void;
+  content: InspectorContent;
+  onClose(): void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
-  const inspectorLabel = entityDetail
-    ? "Evidence inspector"
-    : selectedNode
-      ? "Topology inspector"
-      : event
-        ? "Event inspector"
-        : "Message inspector";
 
   useEffect(() => {
     const previouslyFocused =
@@ -94,20 +72,11 @@ export function InspectorDrawer({
         id="message-inspector-drawer"
         role="dialog"
         aria-modal="true"
-        aria-label={inspectorLabel}
+        aria-label={inspectorLabels[content.kind].dialog}
         tabIndex={-1}
         className="fixed bottom-0 right-0 top-0 z-50 w-[min(100vw,390px)] overflow-y-auto border-l-[3px] border-teal-700 bg-[#fff7ed] shadow-[-14px_0_0_rgba(15,118,110,0.16)]"
       >
-        <InspectorPanel
-          message={message}
-          event={event}
-          snapshot={snapshot}
-          selectedNode={selectedNode}
-          entityDetail={entityDetail}
-          onPreviousMessage={onPreviousMessage}
-          onNextMessage={onNextMessage}
-          onClose={onClose}
-        />
+        <InspectorPanel content={content} onClose={onClose} />
       </aside>
     </>
   );

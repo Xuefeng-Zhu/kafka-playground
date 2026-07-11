@@ -190,9 +190,6 @@ export const scenarioExperimentCatalog = defineScenarioExperimentCatalog({
 export type ScenarioExperimentDescriptorFor<Id extends ScenarioStateId> =
   (typeof scenarioExperimentCatalog)[Id][number];
 
-export type ScenarioExperimentDescriptor =
-  ScenarioExperimentDescriptorFor<ScenarioStateId>;
-
 export type ScenarioExperimentIdFor<Id extends ScenarioStateId> =
   ScenarioExperimentDescriptorFor<Id>["id"];
 

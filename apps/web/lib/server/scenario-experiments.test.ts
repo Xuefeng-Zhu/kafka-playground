@@ -32,10 +32,7 @@ const pivotalExperiments = {
 
 describe("scenario experiment models", () => {
   it("keeps scenario state and experiment IDs correlated through completion and dispatch", () => {
-    const initial = createInitialScenarioState("partitioning");
-    if (!initial || initial.scenarioId !== "partitioning") {
-      throw new Error("Missing partitioning state");
-    }
+    const initial = createInitialScenarioState("partitioning", 2);
     const transitions = [
       step("route", "Route a record", "key.hashed", ["key-router"], 100),
     ];
@@ -51,10 +48,9 @@ describe("scenario experiment models", () => {
     });
     expectTypeOf(dispatched.state).toEqualTypeOf(initial);
 
-    if (false) {
-      // @ts-expect-error Outbox IDs cannot complete partitioning state.
-      complete(initial, "cdc-batch", 0, transitions);
-    }
+    expectTypeOf<
+      Extract<"cdc-batch", ScenarioExperimentIdFor<"partitioning">>
+    >().toEqualTypeOf<never>();
     expect(() =>
       buildScenarioExperimentResult({
         state: initial,
@@ -69,8 +65,10 @@ describe("scenario experiment models", () => {
     expect(SCENARIOS).toHaveLength(15);
     for (const scenario of SCENARIOS) {
       const scenarioId = scenario.id as keyof typeof SCENARIO_EXPERIMENT_IDS;
-      const state = createInitialScenarioState(scenario.id);
-      expect(state, scenario.id).not.toBeNull();
+      const state = createInitialScenarioState(
+        scenario.id,
+        scenario.topic.partitions,
+      );
       expect(state).toMatchObject({
         scenarioId: scenario.id,
         version: 1,
@@ -90,8 +88,10 @@ describe("scenario experiment models", () => {
   it("moves every scenario to a schema-valid pivotal state with monotonic cursors", () => {
     for (const scenario of SCENARIOS) {
       const scenarioId = scenario.id as keyof typeof pivotalExperiments;
-      const initial = createInitialScenarioState(scenario.id);
-      if (!initial) throw new Error(`Missing ${scenario.id} initial state`);
+      const initial = createInitialScenarioState(
+        scenario.id,
+        scenario.topic.partitions,
+      );
       const result = buildScenarioExperimentResult({
         state: initial,
         experimentId: pivotalExperiments[scenarioId],
@@ -124,6 +124,83 @@ describe("scenario experiment models", () => {
       expect(unlinkedRows, scenario.id).toEqual([]);
       expect(() => scenarioStateSchema.parse(result.state)).not.toThrow();
     }
+  });
+
+  it("preserves custom partition rows through pivotal and contrast experiments", () => {
+    const expectedPartitions = [0, 1, 2, 3];
+    const partitioningInitial = createInitialScenarioState("partitioning", 4);
+    const partitioningPivotal = buildScenarioExperimentResult({
+      state: partitioningInitial,
+      experimentId: "produce-keyed-record",
+      startedAtVirtualMs: 0,
+    }).state;
+    const partitioningContrast = buildScenarioExperimentResult({
+      state: partitioningPivotal,
+      experimentId: "grow-consumer-group",
+      startedAtVirtualMs: partitioningPivotal.virtualTimeMs,
+    }).state;
+
+    for (const state of [partitioningPivotal, partitioningContrast]) {
+      expect(
+        state.partitionPositions.map(({ partition }) => partition),
+      ).toEqual(expectedPartitions);
+      expect(() => scenarioStateSchema.parse(state)).not.toThrow();
+    }
+    expect(partitioningPivotal.partitionPositions.slice(2)).toEqual(
+      partitioningInitial.partitionPositions.slice(2),
+    );
+    expect(
+      partitioningContrast.consumers
+        .flatMap(({ partitions }) => partitions)
+        .sort((left, right) => left - right),
+    ).toEqual(expectedPartitions);
+
+    const lagInitialState = createInitialScenarioState(
+      "consumer-lag-backpressure",
+      4,
+    );
+    const lagInitial = {
+      ...lagInitialState,
+      partitions: lagInitialState.partitions.map((partition) =>
+        partition.partition === 3
+          ? {
+              ...partition,
+              endOffset: "5",
+              committedOffset: "1",
+              lag: 4,
+            }
+          : partition,
+      ),
+    };
+    const lagPivotalResult = buildScenarioExperimentResult({
+      state: lagInitial,
+      experimentId: "build-lag",
+      startedAtVirtualMs: 0,
+    });
+    const lagPivotal = lagPivotalResult.state;
+    const lagContrastResult = buildScenarioExperimentResult({
+      state: lagPivotalResult.state,
+      experimentId: "recover-lag",
+      startedAtVirtualMs: lagPivotalResult.state.virtualTimeMs,
+    });
+    const lagContrast = lagContrastResult.state;
+
+    for (const state of [lagPivotal, lagContrast]) {
+      expect(state.partitions.map(({ partition }) => partition)).toEqual(
+        expectedPartitions,
+      );
+      expect(() => scenarioStateSchema.parse(state)).not.toThrow();
+    }
+    expect(lagPivotal.partitions[3]).toEqual(lagInitial.partitions[3]);
+    expect(lagContrast.partitions[3]).toMatchObject({
+      partition: 3,
+      endOffset: "5",
+      committedOffset: "5",
+      lag: 0,
+    });
+    expect(lagContrastResult.transitions.at(-1)?.entityIds).toContain(
+      "lag-partition-3",
+    );
   });
 
   it("separates pivotal evidence from contrast and recovery evidence", () => {
@@ -338,13 +415,16 @@ describe("scenario experiment models", () => {
       ],
     } as const;
 
-    for (const [scenarioId, [contrast, primary]] of Object.entries(expected)) {
-      const state = createInitialScenarioState(scenarioId);
-      if (!state) throw new Error(`Missing ${scenarioId}`);
-      expect(scenarioExperimentPrerequisite(state, contrast), scenarioId).toBe(
+    for (const scenario of SCENARIOS) {
+      const [contrast, primary] = expected[scenario.id];
+      const state = createInitialScenarioState(
+        scenario.id,
+        scenario.topic.partitions,
+      );
+      expect(scenarioExperimentPrerequisite(state, contrast), scenario.id).toBe(
         primary,
       );
-      expect(scenarioExperimentPrerequisite(state, primary), scenarioId).toBe(
+      expect(scenarioExperimentPrerequisite(state, primary), scenario.id).toBe(
         null,
       );
     }
@@ -353,8 +433,8 @@ describe("scenario experiment models", () => {
   it("models virtual time, retry attempts, and prerequisite steps exactly", () => {
     const transientInitial = createInitialScenarioState(
       "retry-dead-letter-queues",
+      2,
     );
-    if (!transientInitial) throw new Error("Missing retry state");
     const transient = buildScenarioExperimentResult({
       state: transientInitial,
       experimentId: "transient-recovery",
@@ -367,9 +447,6 @@ describe("scenario experiment models", () => {
       "transient-attempt-2",
       "transient-success",
     ]);
-    if (transient.state.scenarioId !== "retry-dead-letter-queues") {
-      throw new Error("Unexpected retry state");
-    }
     expect(transient.state.records[0]).toMatchObject({
       attempt: 2,
       status: "succeeded",
@@ -384,8 +461,8 @@ describe("scenario experiment models", () => {
 
     const poisonInitial = createInitialScenarioState(
       "retry-dead-letter-queues",
+      2,
     );
-    if (!poisonInitial) throw new Error("Missing poison retry state");
     const poison = buildScenarioExperimentResult({
       state: poisonInitial,
       experimentId: "poison-to-dlq",
@@ -401,9 +478,6 @@ describe("scenario experiment models", () => {
       "poison-attempt-3",
       "poison-dlq",
     ]);
-    if (poison.state.scenarioId !== "retry-dead-letter-queues") {
-      throw new Error("Unexpected poison retry state");
-    }
     expect(poison.state.records[0]).toMatchObject({
       attempt: 3,
       status: "dlq",
@@ -421,7 +495,7 @@ describe("scenario experiment models", () => {
     const duplicate = run("at-least-once-duplicates", "crash-and-redeliver");
     expect(duplicate.deliveries).toHaveLength(2);
     const duplicateResult = buildScenarioExperimentResult({
-      state: createInitialScenarioState("at-least-once-duplicates")!,
+      state: createInitialScenarioState("at-least-once-duplicates", 2),
       experimentId: "crash-and-redeliver",
       startedAtVirtualMs: 0,
     });
@@ -436,8 +510,8 @@ describe("scenario experiment models", () => {
 
     const compactionInitial = createInitialScenarioState(
       "log-compaction-tombstones",
+      2,
     );
-    if (!compactionInitial) throw new Error("Missing compaction state");
     const compacted = buildScenarioExperimentResult({
       state: compactionInitial,
       experimentId: "run-compaction",
@@ -450,16 +524,12 @@ describe("scenario experiment models", () => {
   });
 
   it("derives retention expiry from completed virtual time", () => {
-    const initial = createInitialScenarioState("retention-data-loss");
-    if (!initial) throw new Error("Missing retention state");
+    const initial = createInitialScenarioState("retention-data-loss", 2);
     const result = buildScenarioExperimentResult({
       state: initial,
       experimentId: "advance-retention",
       startedAtVirtualMs: 0,
     });
-    if (result.state.scenarioId !== "retention-data-loss") {
-      throw new Error("Unexpected retention state");
-    }
     expect(result.state.virtualTimeMs).toBe(60_250);
     expect(result.state.cutoffVirtualMs).toBe(
       result.state.virtualTimeMs - result.state.retentionMs,
@@ -481,8 +551,7 @@ describe("scenario experiment models", () => {
   });
 
   it("bases lag samples on the current virtual clock across reruns", () => {
-    const initial = createInitialScenarioState("consumer-lag-backpressure");
-    if (!initial) throw new Error("Missing lag state");
+    const initial = createInitialScenarioState("consumer-lag-backpressure", 3);
     const lagged = buildScenarioExperimentResult({
       state: initial,
       experimentId: "build-lag",
@@ -504,9 +573,6 @@ describe("scenario experiment models", () => {
       startedAtVirtualMs: recoveredAgain.state.virtualTimeMs,
     });
 
-    if (recoveredAgain.state.scenarioId !== "consumer-lag-backpressure") {
-      throw new Error("Unexpected lag state");
-    }
     expect(
       recoveredAgain.state.samples.map((sample) => sample.atVirtualMs),
     ).toEqual([5_000, 10_200, 15_200]);
@@ -519,9 +585,6 @@ describe("scenario experiment models", () => {
           index === 0 || sample.atVirtualMs > samples[index - 1]!.atVirtualMs,
       ),
     ).toBe(true);
-    if (laggedAgain.state.scenarioId !== "consumer-lag-backpressure") {
-      throw new Error("Unexpected rerun lag state");
-    }
     expect(
       laggedAgain.state.samples.map((sample) => sample.atVirtualMs),
     ).toEqual([10_200, 15_200, 20_200]);
@@ -531,8 +594,7 @@ describe("scenario experiment models", () => {
   });
 
   it("suppresses a repeated CDC delivery without acknowledging a new message", () => {
-    const initial = createInitialScenarioState("outbox-cdc");
-    if (!initial) throw new Error("Missing CDC state");
+    const initial = createInitialScenarioState("outbox-cdc", 2);
     const published = buildScenarioExperimentResult({
       state: initial,
       experimentId: "cdc-batch",
@@ -543,9 +605,6 @@ describe("scenario experiment models", () => {
       experimentId: "retry-cdc",
       startedAtVirtualMs: published.state.virtualTimeMs,
     });
-    if (retried.state.scenarioId !== "outbox-cdc") {
-      throw new Error("Unexpected CDC state");
-    }
     expect(retried.state.publishes).toEqual(
       published.state.scenarioId === "outbox-cdc"
         ? published.state.publishes
@@ -570,15 +629,23 @@ function run<Id extends keyof typeof pivotalExperiments>(
   scenarioId: Id,
   experimentId: ScenarioExperimentIdFor<NoInfer<Id>>,
 ) {
-  const state = createInitialScenarioState(scenarioId);
-  if (!state || state.scenarioId !== scenarioId) {
-    throw new Error(`Missing ${scenarioId}`);
-  }
+  const state = createInitialScenarioState(
+    scenarioId,
+    partitionCountForScenario(scenarioId),
+  );
   return buildScenarioExperimentResult({
     state,
     experimentId,
     startedAtVirtualMs: 0,
   }).state as Extract<typeof state, { scenarioId: Id }>;
+}
+
+function partitionCountForScenario(
+  scenarioId: keyof typeof pivotalExperiments,
+) {
+  const scenario = SCENARIOS.find((candidate) => candidate.id === scenarioId);
+  if (!scenario) throw new Error(`Missing ${scenarioId}`);
+  return scenario.topic.partitions;
 }
 
 function rerun<State extends ReturnType<typeof run>>(

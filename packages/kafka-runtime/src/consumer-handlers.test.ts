@@ -14,7 +14,7 @@ describe("consumer handlers", () => {
       "not-json",
     ]);
 
-    startConsumerRun(
+    await startConsumerRun(
       consumer,
       {
         onAssigned: () => undefined,

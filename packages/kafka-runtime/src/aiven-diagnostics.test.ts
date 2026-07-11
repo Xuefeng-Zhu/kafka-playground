@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AivenKafkaRuntimeAdapter, loadServerEnv } from "./index";
+import {
+  AivenKafkaRuntimeAdapter,
+  KafkaConsumerStartupRollbackError,
+  loadServerEnv,
+} from "./index";
 
 const fsMocks = vi.hoisted(() => ({
   readFile: vi.fn(),
@@ -74,8 +78,135 @@ describe("AivenKafkaRuntimeAdapter diagnostics", () => {
     kafkaMocks.adminListTopics.mockResolvedValue(["topic"]);
     kafkaMocks.adminDisconnect.mockResolvedValue(undefined);
     kafkaMocks.consumerConnect.mockResolvedValue(undefined);
+    kafkaMocks.consumerDisconnect.mockResolvedValue(undefined);
     kafkaMocks.consumerSubscribe.mockResolvedValue(undefined);
     kafkaMocks.consumerRun.mockResolvedValue(undefined);
+  });
+
+  it("disconnects a consumer when subscription fails during startup", async () => {
+    kafkaMocks.consumerSubscribe.mockRejectedValueOnce(
+      new Error("subscription unavailable"),
+    );
+    const adapter = new AivenKafkaRuntimeAdapter(
+      loadServerEnv({
+        KAFKA_MODE: "aiven",
+        AIVEN_KAFKA_BROKERS: "broker.example.com:9092",
+        AIVEN_KAFKA_USERNAME: "service-user",
+        AIVEN_KAFKA_PASSWORD: "service-password",
+        AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
+      }),
+    );
+
+    await expect(
+      adapter.createConsumer(
+        {
+          runId: "run-1",
+          scenarioId: "partitioning",
+          topicName: "topic",
+          consumerGroupId: "group",
+          partitionCount: 2,
+        },
+        "consumer-1",
+        {
+          onAssigned: () => undefined,
+          onRevoked: () => undefined,
+          onMessage: async () => undefined,
+          onError: () => undefined,
+        },
+      ),
+    ).rejects.toThrow("subscription unavailable");
+
+    expect(kafkaMocks.consumerDisconnect).toHaveBeenCalledTimes(1);
+    expect(kafkaMocks.consumerRun).not.toHaveBeenCalled();
+  });
+
+  it("disconnects a consumer when run startup fails", async () => {
+    kafkaMocks.consumerRun.mockRejectedValueOnce(
+      new Error("consumer run unavailable"),
+    );
+    const onError = vi.fn();
+    const adapter = new AivenKafkaRuntimeAdapter(
+      loadServerEnv({
+        KAFKA_MODE: "aiven",
+        AIVEN_KAFKA_BROKERS: "broker.example.com:9092",
+        AIVEN_KAFKA_USERNAME: "service-user",
+        AIVEN_KAFKA_PASSWORD: "service-password",
+        AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
+      }),
+    );
+
+    await expect(
+      adapter.createConsumer(
+        {
+          runId: "run-1",
+          scenarioId: "partitioning",
+          topicName: "topic",
+          consumerGroupId: "group",
+          partitionCount: 2,
+        },
+        "consumer-1",
+        {
+          onAssigned: () => undefined,
+          onRevoked: () => undefined,
+          onMessage: async () => undefined,
+          onError,
+        },
+      ),
+    ).rejects.toThrow("consumer run unavailable");
+
+    expect(kafkaMocks.consumerDisconnect).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(onError).toHaveBeenCalledWith({
+        code: "Error",
+        message: "consumer run unavailable",
+      }),
+    );
+  });
+
+  it("returns a retryable consumer handle when startup rollback also fails", async () => {
+    const startupError = new Error("consumer run unavailable");
+    const rollbackError = new Error("consumer disconnect unavailable");
+    kafkaMocks.consumerRun.mockRejectedValueOnce(startupError);
+    kafkaMocks.consumerDisconnect.mockRejectedValueOnce(rollbackError);
+    const adapter = new AivenKafkaRuntimeAdapter(
+      loadServerEnv({
+        KAFKA_MODE: "aiven",
+        AIVEN_KAFKA_BROKERS: "broker.example.com:9092",
+        AIVEN_KAFKA_USERNAME: "service-user",
+        AIVEN_KAFKA_PASSWORD: "service-password",
+        AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
+      }),
+    );
+
+    const error = await adapter
+      .createConsumer(
+        {
+          runId: "run-1",
+          scenarioId: "partitioning",
+          topicName: "topic",
+          consumerGroupId: "group",
+          partitionCount: 2,
+        },
+        "consumer-1",
+        {
+          onAssigned: () => undefined,
+          onRevoked: () => undefined,
+          onMessage: async () => undefined,
+          onError: () => undefined,
+        },
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(KafkaConsumerStartupRollbackError);
+    if (!(error instanceof KafkaConsumerStartupRollbackError)) {
+      throw new Error("Missing startup rollback error");
+    }
+    expect(error.startupError).toBe(startupError);
+    expect(error.rollbackError).toBe(rollbackError);
+    expect(error.consumerHandle.consumerId).toBe("consumer-1");
+
+    await expect(error.consumerHandle.disconnect()).resolves.toBeUndefined();
+    expect(kafkaMocks.consumerDisconnect).toHaveBeenCalledTimes(2);
   });
 
   it("reports sanitized disconnect failures through diagnostics", async () => {

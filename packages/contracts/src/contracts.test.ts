@@ -4,6 +4,7 @@ import {
   consumerSnapshotSchema,
   createRunRequestSchema,
   getMissingRemoteKafkaConfigFields,
+  isIncompleteCleanupStatus,
   parseRemoteKafkaBrokerList,
   remoteKafkaConfigSchema,
   runSnapshotSchema,
@@ -19,6 +20,14 @@ import {
 } from "./index";
 
 describe("contracts", () => {
+  it("classifies only retryable cleanup failures as incomplete", () => {
+    expect(isIncompleteCleanupStatus("failed")).toBe(true);
+    expect(isIncompleteCleanupStatus("partially_completed")).toBe(true);
+    expect(isIncompleteCleanupStatus("not_requested")).toBe(false);
+    expect(isIncompleteCleanupStatus("requested")).toBe(false);
+    expect(isIncompleteCleanupStatus("completed")).toBe(false);
+  });
+
   it("validates committed offset events", () => {
     expect(() =>
       runtimeEventSchema.parse({

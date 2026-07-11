@@ -79,6 +79,10 @@ export const cleanupStatusSchema = z.enum([
 ]);
 export type CleanupStatus = z.infer<typeof cleanupStatusSchema>;
 
+export function isIncompleteCleanupStatus(status: CleanupStatus) {
+  return status === "failed" || status === "partially_completed";
+}
+
 export const keyStrategySchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fixed"), value: z.string().min(1).max(80) }),
   z.object({ type: z.literal("round_robin_users") }),

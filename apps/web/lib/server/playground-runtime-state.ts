@@ -70,9 +70,11 @@ export function createInternalRun({
   scenario: ScenarioDefinition;
   names: Pick<CreateRunInput, "topicName" | "consumerGroupId">;
 }): InternalRun {
+  const scenarioId = scenarioStateIdSchema.parse(scenario.id);
+
   return {
     runId,
-    scenarioId: scenarioStateIdSchema.parse(scenario.id),
+    scenarioId,
     mode,
     adapter,
     partitionCount: scenario.topic.partitions,
@@ -81,8 +83,8 @@ export function createInternalRun({
     status: "starting",
     producerStatus: "stopped",
     productionRate: 1,
-    keyStrategy: defaultKeyStrategyForScenario(scenario.id),
-    processingLatencyMs: defaultProcessingLatencyForScenario(scenario.id),
+    keyStrategy: defaultKeyStrategyForScenario(scenarioId),
+    processingLatencyMs: defaultProcessingLatencyForScenario(scenarioId),
     consumers: [],
     messages: [],
     events: [],
@@ -108,7 +110,9 @@ export function createInternalRun({
     // on the observed broker renderer until a scenario has a matching remote
     // experiment implementation.
     scenarioState:
-      mode === "demo" ? createInitialScenarioState(scenario.id) : null,
+      mode === "demo"
+        ? createInitialScenarioState(scenarioId, scenario.topic.partitions)
+        : null,
     virtualTimeMs: 0,
     inFlightExperimentId: null,
     completedExperimentIds: new Set(),

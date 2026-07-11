@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type { RunSnapshot } from "@kplay/contracts";
+import type { RunSnapshot, ScenarioExperimentId } from "@kplay/contracts";
 import { runScenarioExperiment } from "@/lib/client/playground-api";
-
-type RunAction = (action: () => Promise<void>) => Promise<boolean>;
+import type { RunAction } from "./use-run-action";
 
 type UseTeachingExperimentOptions = {
   runId: string | null;
@@ -26,9 +25,8 @@ export function useTeachingExperiment({
   const inFlightRef = useRef<ExperimentOperation | null>(null);
   const isMountedRef = useRef(true);
   const previousRunIdRef = useRef(runId);
-  const [pendingExperimentId, setPendingExperimentId] = useState<string | null>(
-    null,
-  );
+  const [pendingExperimentId, setPendingExperimentId] =
+    useState<ScenarioExperimentId | null>(null);
   const [experimentError, setExperimentError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
@@ -59,7 +57,7 @@ export function useTeachingExperiment({
   }, [resetTeachingExperiment, runId]);
 
   const runTeachingExperiment = useCallback(
-    async (experimentId: string) => {
+    async (experimentId: ScenarioExperimentId) => {
       if (!runId) return false;
       const activeOperation = inFlightRef.current;
       if (
@@ -83,8 +81,8 @@ export function useTeachingExperiment({
       let failureMessage: string | null = null;
       let invalidated = false;
       try {
-        const completed = await runAction(async () => {
-          try {
+        const completed = await runAction(
+          async () => {
             const snapshot = await runScenarioExperiment(runId, experimentId);
             if (!isCurrentOperation()) {
               invalidated = true;
@@ -98,19 +96,19 @@ export function useTeachingExperiment({
             setAnnouncement(
               `${experimentId} completed with authoritative scenario evidence.`,
             );
-          } catch (error) {
-            if (!isCurrentOperation()) {
-              invalidated = true;
-              return;
-            }
-            const message =
-              error instanceof Error ? error.message : "Experiment failed.";
-            failureMessage = message;
-            setExperimentError(message);
-            setAnnouncement(`${experimentId} failed: ${message}`);
-            throw error;
-          }
-        });
+          },
+          {
+            onError(message) {
+              if (!isCurrentOperation()) {
+                invalidated = true;
+                return;
+              }
+              failureMessage = message;
+              setExperimentError(message);
+              setAnnouncement(`${experimentId} failed: ${message}`);
+            },
+          },
+        );
         if (invalidated || !isCurrentOperation()) return false;
         if (!completed && failureMessage === null) {
           const message = "The experiment could not start.";

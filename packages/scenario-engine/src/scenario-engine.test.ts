@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   KeyStrategyState,
+  SCENARIO_IDS,
   SCENARIOS,
   createPlaygroundValue,
   createResourceNames,
@@ -10,7 +11,11 @@ import {
   sanitizeResourceSegment,
   validateTopicPrefix,
 } from "./index";
-import { keyStrategySchema, scenarioDefinitionSchema } from "@kplay/contracts";
+import {
+  keyStrategySchema,
+  scenarioDefinitionSchema,
+  scenarioStateIds,
+} from "@kplay/contracts";
 
 describe("scenario engine", () => {
   it("generates valid resource names", () => {
@@ -73,6 +78,11 @@ describe("scenario engine", () => {
     expect(
       SCENARIOS.every((scenario) => scenario.learningObjectives.length > 0),
     ).toBe(true);
+  });
+
+  it("uses the shared contract IDs as the complete catalog order", () => {
+    expect(SCENARIO_IDS).toBe(scenarioStateIds);
+    expect(SCENARIOS.map(({ id }) => id)).toEqual(SCENARIO_IDS);
   });
 
   it("keeps scenario defaults inside each catalog scenario limit", () => {

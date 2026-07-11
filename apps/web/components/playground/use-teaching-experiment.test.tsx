@@ -59,6 +59,7 @@ describe("useTeachingExperiment", () => {
     expect(result.current.announcement).toContain(
       "produce-keyed-record failed: Kafka unavailable",
     );
+    expect(result.current.actionError).toBeNull();
     expect(result.current.isActionPending).toBe(false);
   });
 
@@ -70,20 +71,21 @@ describe("useTeachingExperiment", () => {
     let firstRun!: Promise<boolean>;
 
     act(() => {
-      firstRun = result.current.runTeachingExperiment("first-experiment");
+      firstRun = result.current.runTeachingExperiment("produce-keyed-record");
     });
 
-    expect(result.current.pendingExperimentId).toBe("first-experiment");
+    expect(result.current.pendingExperimentId).toBe("produce-keyed-record");
 
     let secondCompleted = true;
     await act(async () => {
-      secondCompleted =
-        await result.current.runTeachingExperiment("second-experiment");
+      secondCompleted = await result.current.runTeachingExperiment(
+        "grow-consumer-group",
+      );
     });
 
     expect(secondCompleted).toBe(false);
     expect(runScenarioExperiment).toHaveBeenCalledTimes(1);
-    expect(result.current.pendingExperimentId).toBe("first-experiment");
+    expect(result.current.pendingExperimentId).toBe("produce-keyed-record");
 
     await act(async () => {
       pending.resolve(runSnapshot({ sequence: 4 }));
@@ -102,7 +104,7 @@ describe("useTeachingExperiment", () => {
     let completed!: Promise<boolean>;
 
     act(() => {
-      completed = result.current.runTeachingExperiment("stale-experiment");
+      completed = result.current.runTeachingExperiment("produce-keyed-record");
     });
     act(() => result.current.resetTeachingExperiment());
 
@@ -129,7 +131,7 @@ describe("useTeachingExperiment", () => {
     let completed!: Promise<boolean>;
 
     act(() => {
-      completed = result.current.runTeachingExperiment("old-run-experiment");
+      completed = result.current.runTeachingExperiment("produce-keyed-record");
     });
     rerender({ runId: "run-2" });
 
@@ -155,7 +157,7 @@ describe("useTeachingExperiment", () => {
     let completed!: Promise<boolean>;
 
     act(() => {
-      completed = result.current.runTeachingExperiment("unmounted-experiment");
+      completed = result.current.runTeachingExperiment("produce-keyed-record");
     });
     unmount();
 
@@ -181,8 +183,9 @@ describe("useTeachingExperiment", () => {
 
     let completed = true;
     await act(async () => {
-      completed =
-        await result.current.runTeachingExperiment("blocked-experiment");
+      completed = await result.current.runTeachingExperiment(
+        "produce-keyed-record",
+      );
     });
 
     expect(completed).toBe(false);
@@ -191,7 +194,7 @@ describe("useTeachingExperiment", () => {
       "The experiment could not start.",
     );
     expect(result.current.announcement).toBe(
-      "blocked-experiment could not start.",
+      "produce-keyed-record could not start.",
     );
     expect(result.current.pendingExperimentId).toBeNull();
   });

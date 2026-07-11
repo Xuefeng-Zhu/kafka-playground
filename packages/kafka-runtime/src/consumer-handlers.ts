@@ -84,14 +84,14 @@ export function bindConsumerLifecycleHandlers(
   });
 }
 
-export function startConsumerRun(
+export async function startConsumerRun(
   consumer: ConsumerRunSource,
   callbacks: PlaygroundConsumerCallbacks,
   diagnostics: KafkaRuntimeDiagnostics,
   sanitizeError: ErrorSanitizer,
 ) {
-  void consumer
-    .run({
+  try {
+    await consumer.run({
       autoCommit: false,
       eachMessage: async ({ topic, partition, message }) => {
         await callbacks.onMessage({
@@ -104,15 +104,16 @@ export function startConsumerRun(
           timestamp: message.timestamp ? String(message.timestamp) : null,
         });
       },
-    })
-    .catch((error: unknown) => {
-      notifyConsumerCallback(
-        "consumer.run",
-        diagnostics,
-        () => callbacks.onError(sanitizeError(error)),
-        sanitizeError,
-      );
     });
+  } catch (error) {
+    notifyConsumerCallback(
+      "consumer.run",
+      diagnostics,
+      () => callbacks.onError(sanitizeError(error)),
+      sanitizeError,
+    );
+    throw error;
+  }
 }
 
 function assignmentsFromEvent(

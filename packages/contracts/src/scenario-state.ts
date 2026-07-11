@@ -55,7 +55,9 @@ const evidenceBase = {
   provenance: evidenceProvenanceSchema,
 };
 
-function scenarioBase<const ScenarioId extends string>(scenarioId: ScenarioId) {
+function scenarioBase<const ScenarioId extends ScenarioStateId>(
+  scenarioId: ScenarioId,
+) {
   return {
     version: z.literal(1),
     scenarioId: z.literal(scenarioId),

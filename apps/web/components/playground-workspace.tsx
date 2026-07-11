@@ -10,6 +10,7 @@ import {
   type CSSProperties,
 } from "react";
 import {
+  isIncompleteCleanupStatus,
   type ConnectionStatus,
   type RunSnapshot,
   type ScenarioDefinition,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ScenarioLearningSurface } from "@/components/learning";
 import { ExploreTopology } from "@/components/topology/explore-topology";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
+import { resolveInspectorContent } from "@/components/playground/inspector-content";
 import { StartRunPanel } from "@/components/playground/start-run-panel";
 import { useRunAction } from "@/components/playground/use-run-action";
 import { useLowerPanelTabs } from "@/components/playground/use-lower-panel-tabs";
@@ -102,6 +104,10 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
   );
   const showGuidedView = canUseGuidedView && workspaceView === "guided";
   const showExploreDock = Boolean(run) && !showGuidedView;
+  const runActionsDisabled =
+    isActionPending ||
+    run?.status === "stopped" ||
+    (run !== null && isIncompleteCleanupStatus(run.cleanupStatus));
   const {
     entityDetail,
     entityDetails,
@@ -251,6 +257,17 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
       ? `${timelineHeight + 20}px`
       : "1.25rem",
   } as CSSProperties;
+  const inspectorContent = resolveInspectorContent({
+    run,
+    focus,
+    showGuidedView,
+    selectedTopologyNode,
+    entityDetail,
+    selectedEvent,
+    selectedMessage,
+    onPreviousMessage: () => selectAdjacentMessage(-1),
+    onNextMessage: () => selectAdjacentMessage(1),
+  });
 
   return (
     <main className="min-h-screen overflow-auto bg-[var(--kplay-bg)] text-[var(--kplay-text)] lg:h-screen lg:overflow-hidden">
@@ -386,7 +403,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
         {run && showExploreDock && (
           <WorkspaceLowerPanel
             run={run}
-            disabled={isActionPending}
+            disabled={runActionsDisabled}
             activeTab={activeLowerPanelTab}
             tabRefs={lowerPanelTabRefs}
             timelineHeight={timelineHeight}
@@ -410,22 +427,7 @@ export function PlaygroundWorkspace({ scenarioId }: { scenarioId: string }) {
 
       {isInspectorOpen && (
         <InspectorDrawer
-          message={selectedMessage}
-          event={selectedEvent}
-          entityDetail={
-            focus?.kind === "entity" &&
-            (showGuidedView || selectedTopologyNode === null)
-              ? entityDetail
-              : null
-          }
-          snapshot={run}
-          selectedNode={
-            focus?.kind === "entity" && !showGuidedView
-              ? selectedTopologyNode
-              : null
-          }
-          onPreviousMessage={() => selectAdjacentMessage(-1)}
-          onNextMessage={() => selectAdjacentMessage(1)}
+          content={inspectorContent}
           onClose={() => setInspectorOpen(false)}
         />
       )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { ScenarioDefinition } from "@kplay/contracts";
+import { scenarioStateSchema, type ScenarioDefinition } from "@kplay/contracts";
 import { DemoKafkaRuntimeAdapter } from "@kplay/kafka-runtime";
+import { SCENARIOS } from "@kplay/scenario-engine";
 import {
   createInternalRun,
   createRunSnapshot,
@@ -33,6 +34,84 @@ describe("playground runtime state", () => {
       committed: 0,
       failed: 0,
     });
+    expect(run.scenarioState).toMatchObject({
+      scenarioId: "consumer-lag-backpressure",
+      partitions: [
+        { partition: 0 },
+        { partition: 1 },
+        { partition: 2 },
+        { partition: 3 },
+      ],
+    });
+  });
+
+  it("creates schema-valid initial state for every canonical scenario", () => {
+    for (const definition of SCENARIOS) {
+      const run = createInternalRun({
+        runId: `run-${definition.id}`,
+        adapter: new DemoKafkaRuntimeAdapter(),
+        mode: "demo",
+        scenario: definition,
+        names: {
+          topicName: `kplay.${definition.id}`,
+          consumerGroupId: `kplay.${definition.id}.workers`,
+        },
+      });
+
+      expect(run.scenarioId).toBe(definition.id);
+      expect(run.scenarioState?.scenarioId).toBe(definition.id);
+      expect(
+        scenarioStateSchema.safeParse(run.scenarioState).success,
+        definition.id,
+      ).toBe(true);
+    }
+  });
+
+  it("derives partition-backed initial state from a custom partition count", () => {
+    const customPartitionCount = 4;
+    const expectedPartitions = [0, 1, 2, 3];
+
+    const partitioningRun = createInternalRun({
+      runId: "run-partitioning-4",
+      adapter: new DemoKafkaRuntimeAdapter(),
+      mode: "demo",
+      scenario: scenario({
+        id: "partitioning",
+        topic: { partitions: customPartitionCount },
+      }),
+      names: {
+        topicName: "kplay.partitioning-4",
+        consumerGroupId: "kplay.partitioning-4.workers",
+      },
+    });
+    const lagRun = createInternalRun({
+      runId: "run-lag-4",
+      adapter: new DemoKafkaRuntimeAdapter(),
+      mode: "demo",
+      scenario: scenario({
+        id: "consumer-lag-backpressure",
+        topic: { partitions: customPartitionCount },
+      }),
+      names: {
+        topicName: "kplay.lag-4",
+        consumerGroupId: "kplay.lag-4.workers",
+      },
+    });
+
+    if (partitioningRun.scenarioState?.scenarioId !== "partitioning") {
+      throw new Error("Missing partitioning state");
+    }
+    if (lagRun.scenarioState?.scenarioId !== "consumer-lag-backpressure") {
+      throw new Error("Missing consumer lag state");
+    }
+    expect(
+      partitioningRun.scenarioState.partitionPositions.map(
+        ({ partition }) => partition,
+      ),
+    ).toEqual(expectedPartitions);
+    expect(
+      lagRun.scenarioState.partitions.map(({ partition }) => partition),
+    ).toEqual(expectedPartitions);
   });
 
   it("projects bounded snapshots without exposing internal timers or handles", () => {

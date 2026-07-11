@@ -1,7 +1,7 @@
 "use client";
 
 import { FlaskConical, LoaderCircle, Play, RotateCcw } from "lucide-react";
-import type { KafkaMode } from "@kplay/contracts";
+import type { KafkaMode, ScenarioExperimentId } from "@kplay/contracts";
 import type {
   FocusRef,
   ScenarioExperimentEvidence,
@@ -28,11 +28,11 @@ export function GuidedExperimentBar({
   experiments: ScenarioExperiments;
   evidence: ScenarioExperimentEvidence;
   runtimeMode?: KafkaMode;
-  onRunExperiment: (experimentId: string) => void;
+  onRunExperiment: (experimentId: ScenarioExperimentId) => void;
   onFocus?: (focus: FocusRef) => void;
   focus?: FocusRef | null;
   transitions?: readonly ScenarioExperimentTransitionTrailItem[];
-  pendingExperimentId?: string | null;
+  pendingExperimentId?: ScenarioExperimentId | null;
   error?: string | null;
 }) {
   const options = [experiments.primary, experiments.contrast];
@@ -142,7 +142,7 @@ function ExperimentAction({
   disabled: boolean;
   prerequisiteMissing: boolean;
   prerequisiteLabel: string;
-  onRunExperiment: (experimentId: string) => void;
+  onRunExperiment: (experimentId: ScenarioExperimentId) => void;
 }) {
   const unavailable =
     runtimeMode !== "demo" && experiment.remoteSupport === "demo-only";

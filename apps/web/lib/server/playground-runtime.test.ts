@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getInternalRun } from "./playground-runtime-test-helpers";
 
 vi.mock("./env", () => ({
   getServerEnv: () => ({
@@ -321,6 +322,73 @@ describe("PlaygroundRuntime demo integration", () => {
     await runtime.reset(snapshot.runId);
   });
 
+  it("tracks a consumer handle when startup rollback fails and retries it during cleanup", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const {
+      KafkaConsumerStartupRollbackError,
+      UserConfiguredKafkaRuntimeAdapter,
+    } = await import("@kplay/kafka-runtime");
+    vi.spyOn(
+      UserConfiguredKafkaRuntimeAdapter.prototype,
+      "createRun",
+    ).mockResolvedValue(undefined);
+    const disconnect = vi.fn().mockResolvedValue(undefined);
+    const consumerHandle = {
+      consumerId: "consumer-1",
+      commit: vi.fn().mockResolvedValue(undefined),
+      disconnect,
+    };
+    const startupRollbackError = new KafkaConsumerStartupRollbackError(
+      new Error("consumer unavailable"),
+      new Error("startup rollback disconnect unavailable"),
+      consumerHandle,
+    );
+    const createConsumer = vi
+      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "createConsumer")
+      .mockRejectedValue(startupRollbackError);
+    const deleteRunResources = vi
+      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "deleteRunResources")
+      .mockResolvedValue({ status: "completed", steps: [] });
+    const runtime = new PlaygroundRuntime();
+    const snapshot = await runtime.createRun("partitioning", {
+      mode: "remote",
+      remoteKafkaConfig: remoteKafkaConfig(),
+    });
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+
+    await expect(runtime.addConsumer(snapshot.runId)).rejects.toBe(
+      startupRollbackError,
+    );
+
+    const recoverySnapshot = runtime.snapshot(snapshot.runId);
+    expect(recoverySnapshot).toMatchObject({
+      consumers: [],
+      cleanupStatus: "failed",
+    });
+    expect(
+      recoverySnapshot.recentEvents.some(
+        (event) =>
+          event.type === "run.error" &&
+          event.message ===
+            "Consumer startup cleanup failed. Reset the run to retry cleanup.",
+      ),
+    ).toBe(true);
+    expect(internalRun.consumerHandles.get("consumer-1")).toBe(consumerHandle);
+    await expect(runtime.addConsumer(snapshot.runId)).rejects.toMatchObject({
+      code: "RUN_NOT_ACTIVE",
+      status: 409,
+    });
+    expect(createConsumer).toHaveBeenCalledTimes(1);
+
+    await expect(runtime.reset(snapshot.runId)).resolves.toEqual({
+      cleanupStatus: "completed",
+    });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(deleteRunResources).toHaveBeenCalledTimes(1);
+    expect(internalRun.consumerHandles.size).toBe(0);
+  });
+
   it("emits scenario-specific processing failures", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
@@ -347,135 +415,6 @@ describe("PlaygroundRuntime demo integration", () => {
     ).toBe(true);
 
     await runtime.reset(snapshot.runId);
-  });
-
-  it("returns the real cleanup status when deleting an active run", async () => {
-    const { PlaygroundRuntime } = await import("./playground-runtime");
-    const runtime = new PlaygroundRuntime();
-    const snapshot = await runtime.createRun("partitioning");
-    (
-      runtime as unknown as {
-        adapter: {
-          deleteRunResources: () => Promise<{
-            cleanupStatus?: string;
-            status: "requested";
-            steps: [];
-          }>;
-        };
-      }
-    ).adapter.deleteRunResources = async () => ({
-      status: "requested",
-      steps: [],
-    });
-
-    await expect(runtime.deleteRun(snapshot.runId)).resolves.toEqual({
-      cleanupStatus: "requested",
-    });
-  });
-
-  it("clears incomplete runs when startup is blocked by configuration", async () => {
-    const { PlaygroundRuntime } = await import("./playground-runtime");
-    const { logger } = await import("./logger");
-    const runtime = new PlaygroundRuntime();
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-    const createRun = vi.fn(async () => {
-      const error = new Error(
-        "Aiven Kafka configuration is missing: AIVEN_KAFKA_BROKERS",
-      ) as Error & { code: string; status: number };
-      error.code = "AIVEN_CONFIGURATION_MISSING";
-      error.status = 503;
-      throw error;
-    });
-    const deleteRunResources = vi.fn();
-    (
-      runtime as unknown as {
-        adapter: {
-          createRun: typeof createRun;
-          deleteRunResources: typeof deleteRunResources;
-        };
-      }
-    ).adapter.createRun = createRun;
-    (
-      runtime as unknown as {
-        adapter: {
-          createRun: typeof createRun;
-          deleteRunResources: typeof deleteRunResources;
-        };
-      }
-    ).adapter.deleteRunResources = deleteRunResources;
-
-    await expect(runtime.createRun("partitioning")).rejects.toMatchObject({
-      code: "AIVEN_CONFIGURATION_MISSING",
-      status: 503,
-    });
-    expect(runtime.activeSnapshot()).toBeNull();
-    expect(deleteRunResources).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ runId: expect.any(String) }),
-      "Scenario run blocked by incomplete Kafka configuration",
-    );
-  });
-
-  it("removes failed startup runs from the registry after cleanup", async () => {
-    const { PlaygroundRuntime } = await import("./playground-runtime");
-    const { logger } = await import("./logger");
-    const runtime = new PlaygroundRuntime();
-    vi.spyOn(logger, "error").mockImplementation(() => undefined);
-    let failedRunId = "";
-    const createRun = vi.fn(async (run: { runId: string }) => {
-      failedRunId = run.runId;
-      throw new Error("topic creation failed");
-    });
-    const deleteRunResources = vi.fn().mockResolvedValue({
-      status: "completed" as const,
-      steps: [],
-    });
-    (
-      runtime as unknown as {
-        adapter: {
-          createRun: typeof createRun;
-          deleteRunResources: typeof deleteRunResources;
-        };
-      }
-    ).adapter.createRun = createRun;
-    (
-      runtime as unknown as {
-        adapter: {
-          createRun: typeof createRun;
-          deleteRunResources: typeof deleteRunResources;
-        };
-      }
-    ).adapter.deleteRunResources = deleteRunResources;
-
-    await expect(runtime.createRun("partitioning")).rejects.toThrow(
-      "topic creation failed",
-    );
-
-    expect(runtime.activeSnapshot()).toBeNull();
-    expect(deleteRunResources).toHaveBeenCalledTimes(1);
-    expect(failedRunId).toBeTruthy();
-    expect(() => runtime.snapshot(failedRunId)).toThrow(
-      "The scenario run does not exist.",
-    );
-  });
-
-  it("reports cleanup adapter rejections as failed cleanup", async () => {
-    const { PlaygroundRuntime } = await import("./playground-runtime");
-    const runtime = new PlaygroundRuntime();
-    const snapshot = await runtime.createRun("partitioning");
-    (
-      runtime as unknown as {
-        adapter: {
-          deleteRunResources: () => Promise<never>;
-        };
-      }
-    ).adapter.deleteRunResources = async () => {
-      throw new Error("cleanup unavailable");
-    };
-
-    await expect(runtime.reset(snapshot.runId)).resolves.toEqual({
-      cleanupStatus: "failed",
-    });
   });
 
   it("marks failed produce attempts and leaves an inspectable failed message", async () => {
@@ -627,87 +566,6 @@ describe("PlaygroundRuntime demo integration", () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(vi.getTimerCount()).toBe(0);
-    expect(internalRun.events).toHaveLength(eventCountAfterReset);
-    expect(runtime.activeSnapshot()).toBeNull();
-  });
-
-  it("waits for consumer creation and disconnects its handle before reset completes", async () => {
-    const { PlaygroundRuntime } = await import("./playground-runtime");
-    const { UserConfiguredKafkaRuntimeAdapter } =
-      await import("@kplay/kafka-runtime");
-    vi.spyOn(
-      UserConfiguredKafkaRuntimeAdapter.prototype,
-      "createRun",
-    ).mockResolvedValue(undefined);
-    const deleteRunResources = vi
-      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "deleteRunResources")
-      .mockResolvedValue({ status: "completed", steps: [] });
-    const disconnect = vi.fn().mockResolvedValue(undefined);
-    let resolveCreateConsumer:
-      | ((handle: {
-          consumerId: string;
-          commit: () => Promise<void>;
-          disconnect: () => Promise<void>;
-        }) => void)
-      | undefined;
-    const createConsumer = vi
-      .spyOn(UserConfiguredKafkaRuntimeAdapter.prototype, "createConsumer")
-      .mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            resolveCreateConsumer = resolve;
-          }),
-      );
-    const runtime = new PlaygroundRuntime();
-    const snapshot = await runtime.createRun("partitioning", {
-      mode: "remote",
-      remoteKafkaConfig: {
-        brokers: "broker.example.com:9092",
-        username: "service-user",
-        password: "service-password",
-        saslMechanism: "SCRAM-SHA-256",
-        useTls: true,
-        caCertificate: "",
-      },
-    });
-    const internalRun = getInternalRun(runtime);
-    if (!internalRun) throw new Error("Missing internal run");
-
-    const addConsumer = runtime.addConsumer(snapshot.runId);
-    await vi.waitFor(() => expect(createConsumer).toHaveBeenCalledTimes(1));
-    let resetSettled = false;
-    const reset = runtime.reset(snapshot.runId).finally(() => {
-      resetSettled = true;
-    });
-    await Promise.resolve();
-
-    expect(resetSettled).toBe(false);
-    expect(deleteRunResources).not.toHaveBeenCalled();
-    await expect(runtime.addConsumer(snapshot.runId)).rejects.toMatchObject({
-      code: "RUN_CLEANUP_IN_PROGRESS",
-      status: 409,
-    });
-
-    resolveCreateConsumer?.({
-      consumerId: "consumer-1",
-      commit: vi.fn().mockResolvedValue(undefined),
-      disconnect,
-    });
-    await expect(addConsumer).resolves.toMatchObject({
-      consumers: [expect.objectContaining({ consumerId: "consumer-1" })],
-    });
-    await expect(reset).resolves.toEqual({ cleanupStatus: "completed" });
-
-    expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(deleteRunResources).toHaveBeenCalledTimes(1);
-    expect(internalRun.consumerHandles.size).toBe(0);
-    expect(internalRun.consumers).toHaveLength(0);
-    expect(internalRun).toMatchObject({
-      status: "stopped",
-      producerStatus: "stopped",
-    });
-    const eventCountAfterReset = internalRun.events.length;
-    await Promise.resolve();
     expect(internalRun.events).toHaveLength(eventCountAfterReset);
     expect(runtime.activeSnapshot()).toBeNull();
   });
@@ -964,21 +822,13 @@ async function actResolvedProduce(resolveProduce: (() => void) | null) {
   await Promise.resolve();
 }
 
-function getInternalRun(runtime: object) {
-  return (
-    runtime as {
-      runs: {
-        getSessionRun(sessionId: string): {
-          status: string;
-          producerStatus: string;
-          producerTimer: NodeJS.Timeout | null;
-          processingTimers: Map<string, NodeJS.Timeout>;
-          consumerHandles: Map<string, { disconnect: () => Promise<void> }>;
-          consumers: unknown[];
-          events: unknown[];
-          messageCounts: Record<string, number>;
-        } | null;
-      };
-    }
-  ).runs.getSessionRun("default");
+function remoteKafkaConfig() {
+  return {
+    brokers: "broker.example.com:9092",
+    username: "service-user",
+    password: "service-password",
+    saslMechanism: "SCRAM-SHA-256" as const,
+    useTls: true,
+    caCertificate: "",
+  };
 }

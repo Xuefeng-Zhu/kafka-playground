@@ -19,6 +19,7 @@ import {
 } from "./scenarios/history";
 import { outboxExperience, streamsExperience } from "./scenarios/pipelines";
 import type {
+  ScenarioExperienceDefinition,
   ScenarioExperienceDefinitionRegistry,
   ScenarioExperienceId,
   ScenarioExperienceFrame,
@@ -85,98 +86,13 @@ export function projectScenarioExperience(
       `Scenario experience mismatch: snapshot=${snapshot.scenarioId}, state=${scenarioState.scenarioId}`,
     );
   }
-  switch (scenarioState.scenarioId) {
-    case "partitioning":
-      return partitioningExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "fan-out-load-balancing":
-      return loadBalancingExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "at-least-once-duplicates":
-      return duplicateExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "retry-dead-letter-queues":
-      return retryExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "schema-evolution-karapace":
-      return schemaExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "transactional-producers":
-      return transactionExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "event-replay-sourcing":
-      return replayExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "consumer-lag-backpressure":
-      return lagExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "hot-partitions-key-skew":
-      return hotPartitionExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "log-compaction-tombstones":
-      return compactionExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "retention-data-loss":
-      return retentionExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "cooperative-rebalancing":
-      return cooperativeExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "streams-joins-windows":
-      return streamsExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "outbox-cdc":
-      return outboxExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-    case "acl-least-privilege":
-      return aclExperience.project({
-        snapshot,
-        scenarioState,
-        events,
-      });
-  }
+  // The equality guard above establishes the snapshot/state correlation at
+  // runtime. TypeScript cannot retain that relationship through a computed
+  // registry lookup, so widen the selected definition only at this boundary.
+  const definition = scenarioExperienceRegistry[
+    scenarioState.scenarioId
+  ] as ScenarioExperienceDefinition;
+  return definition.project({ snapshot, scenarioState, events });
 }
 
 function isScenarioId(scenarioId: string): scenarioId is ScenarioExperienceId {

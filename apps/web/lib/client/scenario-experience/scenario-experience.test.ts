@@ -64,6 +64,28 @@ describe("scenario experience registry", () => {
     );
   });
 
+  it("dispatches every authoritative scenario state through the registry", () => {
+    for (const entry of teachingScenarioTestManifest) {
+      const snapshot = snapshotFor(
+        entry.scenarioId,
+        entry.initial,
+        partitionCount(entry.scenarioId),
+      );
+      const frame = projectScenarioExperience(snapshot, entry.initial);
+      const resolution = resolveScenarioExperience(snapshot);
+
+      expect(frame.scenarioId, entry.scenarioId).toBe(entry.scenarioId);
+      expect(resolution.kind, entry.scenarioId).toBe("experience");
+      if (resolution.kind !== "experience") {
+        throw new Error(`Missing ${entry.scenarioId} experience`);
+      }
+      expect(resolution.definition, entry.scenarioId).toBe(
+        scenarioExperienceRegistry[entry.scenarioId],
+      );
+      expect(resolution.frame, entry.scenarioId).toEqual(frame);
+    }
+  });
+
   it("preserves the established scenario hotspot entity IDs", () => {
     const expectedHotspots = {
       partitioning: ["key-router", "commit-progress"],

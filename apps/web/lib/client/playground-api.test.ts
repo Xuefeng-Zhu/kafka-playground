@@ -128,20 +128,26 @@ describe("playground api client", () => {
       { message: "The scenario run does not exist." },
     );
 
-    await expect(retireRun("missing")).resolves.toBeUndefined();
+    await expect(retireRun("missing")).resolves.toEqual({
+      cleanupStatus: "completed",
+    });
   });
 
-  it("accepts a successful empty response when retiring a run", async () => {
-    const parseBody = vi.fn().mockRejectedValue(new Error("empty body"));
+  it("parses the cleanup status when retiring a run", async () => {
+    const parseBody = vi.fn().mockResolvedValue({
+      cleanupStatus: "partially_completed",
+    });
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      status: 204,
-      statusText: "No Content",
+      status: 200,
+      statusText: "OK",
       json: parseBody,
     } as unknown as Response);
 
-    await expect(retireRun("run-1")).resolves.toBeUndefined();
-    expect(parseBody).not.toHaveBeenCalled();
+    await expect(retireRun("run-1")).resolves.toEqual({
+      cleanupStatus: "partially_completed",
+    });
+    expect(parseBody).toHaveBeenCalledTimes(1);
   });
 
   it("encodes run IDs consistently for reads and retirement", async () => {
@@ -182,11 +188,11 @@ describe("playground api client", () => {
     );
 
     await expect(
-      runScenarioExperiment("run/one", "compare ownership"),
+      runScenarioExperiment("run/one", "grow-consumer-group"),
     ).resolves.toEqual(snapshot);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/runs/run%2Fone/experiments/compare%20ownership",
+      "/api/v1/runs/run%2Fone/experiments/grow-consumer-group",
       expect.objectContaining({ method: "POST" }),
     );
   });
