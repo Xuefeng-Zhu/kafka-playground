@@ -6,11 +6,12 @@ import type {
   EvidenceFact,
   EvidenceTableModel,
   ScenarioExperienceFrame,
+  ScenarioExperienceSnapshot,
   ScenarioLensModel,
   ScenarioStateFor,
 } from "./model";
 import {
-  SCENARIO_EXPERIENCE_ALLOWLIST,
+  isScenarioExperienceSupported,
   projectScenarioExperience,
   resolveScenarioExperience,
   scenarioExperienceRegistry,
@@ -24,21 +25,38 @@ describe("scenario experience registry", () => {
       teachingScenarioTestManifest.map((entry) => entry.scenarioId).sort(),
     ).toEqual(expected);
     expect(Object.keys(scenarioExperienceRegistry).sort()).toEqual(expected);
-    expect([...SCENARIO_EXPERIENCE_ALLOWLIST].sort()).toEqual(expected);
+    expect(isScenarioExperienceSupported("partitioning")).toBe(true);
+    expect(isScenarioExperienceSupported("not-a-scenario")).toBe(false);
   });
 
   it("falls back without authoritative state or when state and route disagree", () => {
     expect(
       resolveScenarioExperience(snapshotFor("partitioning", null)),
     ).toEqual({
-      kind: "legacy",
+      kind: "unavailable",
       reason: "missing-state",
     });
     expect(
       resolveScenarioExperience(
         snapshotFor("partitioning", teachingScenarioTestManifest[1].initial),
       ),
-    ).toEqual({ kind: "legacy", reason: "mismatched-state" });
+    ).toEqual({ kind: "unavailable", reason: "mismatched-state" });
+  });
+
+  it("projects from the narrow scenario experience snapshot contract", () => {
+    const scenarioState = teachingScenarioTestManifest[0].initial;
+    const snapshot = {
+      scenarioId: "partitioning",
+      scenarioState,
+      mode: "demo",
+      partitionCount: 2,
+      topicName: "kplay.test",
+      recentMessages: [],
+    } satisfies ScenarioExperienceSnapshot;
+
+    expect(projectScenarioExperience(snapshot, scenarioState).scenarioId).toBe(
+      "partitioning",
+    );
   });
 
   it("preserves the established scenario hotspot entity IDs", () => {

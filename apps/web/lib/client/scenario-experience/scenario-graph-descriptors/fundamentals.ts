@@ -1,0 +1,308 @@
+import {
+  coreNodes,
+  descriptor,
+  layout,
+  scenarioEdge,
+  scenarioNode,
+} from "./helpers";
+import type { ScenarioGraphDescriptorCatalogSubset } from "./model";
+
+export const fundamentalScenarioGraphDescriptors = {
+  partitioning: descriptor({
+    scenarioId: "partitioning",
+    partitions: true,
+    replacesCoreProducerTopicEdge: true,
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(2),
+        consumerGroup: layout(3),
+      }),
+      scenarioNode(
+        "key-router",
+        "Key router",
+        "Maps a key to one partition.",
+        "derived",
+        "route",
+        layout(1),
+      ),
+      scenarioNode(
+        "commit-progress",
+        "Commit watermark",
+        "Separates processed positions from committed group progress.",
+        "observed",
+        "commit",
+        layout(4),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-router",
+        "producer",
+        "key-router",
+        "record and key",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "router-topic",
+        "key-router",
+        "topic",
+        "chosen partition",
+        "derived",
+        "control",
+      ),
+      scenarioEdge(
+        "group-commit",
+        "consumerGroup",
+        "commit-progress",
+        "processed then committed",
+        "observed",
+        "control",
+      ),
+    ],
+  }),
+  "fan-out-load-balancing": descriptor({
+    scenarioId: "fan-out-load-balancing",
+    partitions: true,
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(3, -1),
+      }),
+      scenarioNode(
+        "group-balancer",
+        "Group coordinator",
+        "Assigns every partition to at most one member in the group.",
+        "observed",
+        "balance",
+        layout(2),
+      ),
+      scenarioNode(
+        "idle-members",
+        "Idle members",
+        "Members wait when the group has more members than partitions.",
+        "derived",
+        "balance",
+        layout(3, 1),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "append",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-balancer",
+        "topic",
+        "group-balancer",
+        "partition set",
+        "observed",
+        "control",
+      ),
+      scenarioEdge(
+        "balancer-group",
+        "group-balancer",
+        "consumerGroup",
+        "ownership epoch",
+        "observed",
+        "ownership",
+      ),
+      scenarioEdge(
+        "balancer-idle",
+        "group-balancer",
+        "idle-members",
+        "unassigned members",
+        "derived",
+        "ownership",
+      ),
+    ],
+  }),
+  "consumer-lag-backpressure": descriptor({
+    scenarioId: "consumer-lag-backpressure",
+    partitions: true,
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(3),
+      }),
+      scenarioNode(
+        "backlog-buffer",
+        "Partition backlog",
+        "Uncommitted distance per partition.",
+        "derived",
+        "lag",
+        layout(2),
+      ),
+      scenarioNode(
+        "pressure-meter",
+        "Capacity meter",
+        "Compares production and processing rates.",
+        "derived",
+        "lag",
+        layout(4),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "production rate",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-backlog",
+        "topic",
+        "backlog-buffer",
+        "end offsets",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "backlog-group",
+        "backlog-buffer",
+        "consumerGroup",
+        "work to drain",
+        "derived",
+        "data",
+      ),
+      scenarioEdge(
+        "group-pressure",
+        "consumerGroup",
+        "pressure-meter",
+        "processing capacity",
+        "derived",
+        "control",
+      ),
+    ],
+  }),
+  "hot-partitions-key-skew": descriptor({
+    scenarioId: "hot-partitions-key-skew",
+    partitions: true,
+    replacesCoreProducerTopicEdge: true,
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(2),
+        consumerGroup: layout(4),
+      }),
+      scenarioNode(
+        "hot-key-router",
+        "Key router",
+        "Routes equal keys to the same partition.",
+        "derived",
+        "route",
+        layout(1),
+      ),
+      scenarioNode(
+        "hottest-partition",
+        "Skew comparison",
+        "Compares independent equal-size phases.",
+        "derived",
+        "hot",
+        layout(3),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-router",
+        "producer",
+        "hot-key-router",
+        "phase input",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "router-topic",
+        "hot-key-router",
+        "topic",
+        "partition route",
+        "derived",
+        "control",
+      ),
+      scenarioEdge(
+        "topic-hotspot",
+        "topic",
+        "hottest-partition",
+        "phase totals",
+        "derived",
+        "data",
+      ),
+      scenarioEdge(
+        "hotspot-group",
+        "hottest-partition",
+        "consumerGroup",
+        "capacity impact",
+        "derived",
+        "control",
+      ),
+    ],
+  }),
+  "cooperative-rebalancing": descriptor({
+    scenarioId: "cooperative-rebalancing",
+    partitions: true,
+    nodes: [
+      ...coreNodes({
+        producer: layout(0, -1),
+        topic: layout(1),
+        consumerGroup: layout(4),
+      }),
+      scenarioNode(
+        "rebalance-coordinator",
+        "Rebalance coordinator",
+        "Compares eager and cooperative-sticky ownership changes.",
+        "simulated",
+        "rebalance",
+        layout(2),
+      ),
+      scenarioNode(
+        "incremental-movement",
+        "Ownership delta",
+        "Separates kept, moved, revoked, and paused partitions.",
+        "derived",
+        "rebalance",
+        layout(3),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "topic-coordinator",
+        "topic",
+        "rebalance-coordinator",
+        "partition set",
+        "observed",
+        "control",
+      ),
+      scenarioEdge(
+        "coordinator-delta",
+        "rebalance-coordinator",
+        "incremental-movement",
+        "strategy result",
+        "simulated",
+        "ownership",
+      ),
+      scenarioEdge(
+        "delta-group",
+        "incremental-movement",
+        "consumerGroup",
+        "new ownership",
+        "simulated",
+        "ownership",
+      ),
+    ],
+  }),
+} satisfies ScenarioGraphDescriptorCatalogSubset<
+  | "partitioning"
+  | "fan-out-load-balancing"
+  | "consumer-lag-backpressure"
+  | "hot-partitions-key-skew"
+  | "cooperative-rebalancing"
+>;

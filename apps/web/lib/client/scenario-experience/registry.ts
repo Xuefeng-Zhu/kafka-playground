@@ -1,8 +1,4 @@
-import type {
-  RunSnapshot,
-  RuntimeEvent,
-  ScenarioState,
-} from "@kplay/contracts";
+import type { RuntimeEvent, ScenarioState } from "@kplay/contracts";
 import {
   duplicateExperience,
   retryExperience,
@@ -48,45 +44,24 @@ export const scenarioExperienceRegistry = {
   "acl-least-privilege": aclExperience,
 } satisfies ScenarioExperienceDefinitionRegistry;
 
-export const SCENARIO_EXPERIENCE_ALLOWLIST: ReadonlySet<ScenarioExperienceId> =
-  new Set([
-    "partitioning",
-    "fan-out-load-balancing",
-    "at-least-once-duplicates",
-    "retry-dead-letter-queues",
-    "schema-evolution-karapace",
-    "transactional-producers",
-    "event-replay-sourcing",
-    "consumer-lag-backpressure",
-    "hot-partitions-key-skew",
-    "log-compaction-tombstones",
-    "retention-data-loss",
-    "cooperative-rebalancing",
-    "streams-joins-windows",
-    "outbox-cdc",
-    "acl-least-privilege",
-  ]);
-
-export function isScenarioExperienceEnabled(
+export function isScenarioExperienceSupported(
   scenarioId: string,
 ): scenarioId is ScenarioExperienceId {
-  return (
-    isScenarioId(scenarioId) && SCENARIO_EXPERIENCE_ALLOWLIST.has(scenarioId)
-  );
+  return isScenarioId(scenarioId);
 }
 
 export function resolveScenarioExperience(
   snapshot: ScenarioExperienceSnapshot,
   events: readonly RuntimeEvent[] = [],
 ): ScenarioExperienceResolution {
-  if (!isScenarioExperienceEnabled(snapshot.scenarioId)) {
-    return { kind: "legacy", reason: "disabled" };
+  if (!isScenarioExperienceSupported(snapshot.scenarioId)) {
+    return { kind: "unavailable", reason: "unsupported-scenario" };
   }
   if (snapshot.scenarioState == null) {
-    return { kind: "legacy", reason: "missing-state" };
+    return { kind: "unavailable", reason: "missing-state" };
   }
   if (snapshot.scenarioState.scenarioId !== snapshot.scenarioId) {
-    return { kind: "legacy", reason: "mismatched-state" };
+    return { kind: "unavailable", reason: "mismatched-state" };
   }
   const frame = projectScenarioExperience(
     snapshot,
@@ -110,98 +85,94 @@ export function projectScenarioExperience(
       `Scenario experience mismatch: snapshot=${snapshot.scenarioId}, state=${scenarioState.scenarioId}`,
     );
   }
-  // Scenario projectors currently read only the stable fields declared by
-  // ScenarioExperienceSnapshot. Keep their broader RunSnapshot input during
-  // migration while the workspace omits sequence-only SSE churn.
-  const projectorSnapshot = snapshot as RunSnapshot;
   switch (scenarioState.scenarioId) {
     case "partitioning":
       return partitioningExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "fan-out-load-balancing":
       return loadBalancingExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "at-least-once-duplicates":
       return duplicateExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "retry-dead-letter-queues":
       return retryExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "schema-evolution-karapace":
       return schemaExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "transactional-producers":
       return transactionExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "event-replay-sourcing":
       return replayExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "consumer-lag-backpressure":
       return lagExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "hot-partitions-key-skew":
       return hotPartitionExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "log-compaction-tombstones":
       return compactionExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "retention-data-loss":
       return retentionExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "cooperative-rebalancing":
       return cooperativeExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "streams-joins-windows":
       return streamsExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "outbox-cdc":
       return outboxExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });
     case "acl-least-privilege":
       return aclExperience.project({
-        snapshot: projectorSnapshot,
+        snapshot,
         scenarioState,
         events,
       });

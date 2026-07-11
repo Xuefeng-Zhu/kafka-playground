@@ -83,6 +83,9 @@ export class PlaygroundRuntime {
     this.diagnostics,
   );
   private readonly runs = new PlaygroundRunRegistry();
+  private readonly inFlightExperiments = new Map<string, Promise<void>>();
+  private readonly cleanupRequestedRunIds = new Set<string>();
+  private readonly cleanupOperations = new Map<string, Promise<void>>();
   private shutdownStarted = false;
 
   scenarios() {
@@ -518,6 +521,7 @@ export class PlaygroundRuntime {
   ) {
     const run = this.requireRun(runId, sessionId);
     if (
+      this.cleanupRequestedRunIds.has(runId) ||
       run.mode !== "demo" ||
       !run.scenarioState ||
       !supportsScenarioExperiment(run.scenarioState, experimentId) ||
@@ -547,37 +551,44 @@ export class PlaygroundRuntime {
     }
 
     run.inFlightExperimentId = experimentId;
+    let resolveExperiment: (() => void) | undefined;
+    const experimentCompleted = new Promise<void>((resolve) => {
+      resolveExperiment = resolve;
+    });
+    this.inFlightExperiments.set(runId, experimentCompleted);
     const startedAtVirtualMs = run.virtualTimeMs;
-    const preview = buildScenarioExperimentResult({
-      state: run.scenarioState,
-      experimentId,
-      startedAtVirtualMs,
-    });
-    const totalSteps = preview.transitions.length;
-    run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
-      status: "running",
-      experimentId,
-      stepIndex: 0,
-      totalSteps,
-      startedAtVirtualMs,
-      completedAtVirtualMs: null,
-      error: null,
-    });
-    this.emit(run, "scenario.experiment.started", {
-      scenarioId: run.scenarioId,
-      experimentId,
-      entityIds: [`scenario-${run.scenarioId}`],
-      provenance: "simulated",
-      virtualTimeMs: run.virtualTimeMs,
-      step: {
-        id: "experiment-started",
-        index: 0,
-        total: totalSteps,
-        label: "Experiment started",
-      },
-    });
+    let totalSteps = 0;
 
     try {
+      const preview = buildScenarioExperimentResult({
+        state: run.scenarioState,
+        experimentId,
+        startedAtVirtualMs,
+      });
+      totalSteps = preview.transitions.length;
+      run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
+        status: "running",
+        experimentId,
+        stepIndex: 0,
+        totalSteps,
+        startedAtVirtualMs,
+        completedAtVirtualMs: null,
+        error: null,
+      });
+      this.emit(run, "scenario.experiment.started", {
+        scenarioId: run.scenarioId,
+        experimentId,
+        entityIds: [`scenario-${run.scenarioId}`],
+        provenance: "simulated",
+        virtualTimeMs: run.virtualTimeMs,
+        step: {
+          id: "experiment-started",
+          index: 0,
+          total: totalSteps,
+          label: "Experiment started",
+        },
+      });
+
       // Yield once without using wall-clock time. This keeps the per-run guard
       // observable to a concurrent request while all domain time stays virtual.
       await Promise.resolve();
@@ -655,6 +666,7 @@ export class PlaygroundRuntime {
         error instanceof ApiError ? error.code : "SCENARIO_EXPERIMENT_FAILED";
       const message =
         error instanceof Error ? error.message : "Experiment execution failed.";
+      const failedEventTotalSteps = Math.max(totalSteps, 1);
       if (run.scenarioState) {
         run.scenarioState = this.updateExperimentProgress(run.scenarioState, {
           status: "failed",
@@ -677,13 +689,17 @@ export class PlaygroundRuntime {
         step: {
           id: "experiment-failed",
           index: run.scenarioState?.experiment.stepIndex ?? 0,
-          total: totalSteps,
+          total: failedEventTotalSteps,
           label: "Experiment failed",
         },
       });
       throw error;
     } finally {
       run.inFlightExperimentId = null;
+      resolveExperiment?.();
+      if (this.inFlightExperiments.get(runId) === experimentCompleted) {
+        this.inFlightExperiments.delete(runId);
+      }
     }
   }
 
@@ -1239,7 +1255,24 @@ export class PlaygroundRuntime {
     }
   }
 
-  private async cleanup(run: InternalRun) {
+  private cleanup(run: InternalRun) {
+    const existingCleanup = this.cleanupOperations.get(run.runId);
+    if (existingCleanup) return existingCleanup;
+
+    this.cleanupRequestedRunIds.add(run.runId);
+    const cleanup = this.performCleanup(run);
+    const trackedCleanup = cleanup.finally(() => {
+      this.cleanupRequestedRunIds.delete(run.runId);
+      this.cleanupOperations.delete(run.runId);
+    });
+    this.cleanupOperations.set(run.runId, trackedCleanup);
+    return trackedCleanup;
+  }
+
+  private async performCleanup(run: InternalRun) {
+    const inFlightExperiment = this.inFlightExperiments.get(run.runId);
+    if (inFlightExperiment) await inFlightExperiment;
+
     clearProducerTimer(run);
     run.producerStatus = "stopped";
     for (const timer of run.processingTimers.values()) clearTimeout(timer);

@@ -58,6 +58,64 @@ describe("useRunLiveUpdates", () => {
     );
   });
 
+  it("delivers validated snapshot events without an extra refresh", async () => {
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+      />,
+    );
+
+    act(() => {
+      FakeEventSource.latest().emit("snapshot", {
+        snapshot: snapshotFixture,
+      });
+    });
+
+    await waitFor(() =>
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "snapshot",
+        snapshot: snapshotFixture,
+      }),
+    );
+    expect(fetchRunSnapshot).not.toHaveBeenCalled();
+    expect(setActionError).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed snapshot and runtime event payloads", async () => {
+    const dispatch = vi.fn();
+    const setActionError = vi.fn();
+
+    render(
+      <LiveUpdatesHarness
+        dispatch={dispatch}
+        runId="run-1"
+        setActionError={setActionError}
+      />,
+    );
+    const source = FakeEventSource.latest();
+
+    act(() => {
+      source.emit("snapshot", { snapshot: { runId: "incomplete" } });
+      source.emit("run.started", { runId: "incomplete" });
+    });
+
+    await waitFor(() => {
+      expect(setActionError).toHaveBeenCalledWith(
+        "Live snapshot payload could not be parsed.",
+      );
+      expect(setActionError).toHaveBeenCalledWith(
+        "Live event payload could not be parsed.",
+      );
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(fetchRunSnapshot).not.toHaveBeenCalled();
+  });
+
   it("ignores refreshed snapshots that resolve after cleanup", async () => {
     const pendingRefresh = deferred<{
       ok: true;

@@ -38,8 +38,6 @@ export type ExploreTopologyProps = {
   selectedEvent: RuntimeEvent | null;
   entityDetails?: Readonly<Record<string, EntityDetailModel>>;
   scenarioFrame?: ScenarioExperienceFrame;
-  /** Temporary desktop-only overlay for an unconverted legacy scenario. */
-  showLegacyScenarioVisual?: boolean;
   onFocus: (focus: FocusRef) => void;
 };
 
@@ -49,7 +47,6 @@ export function ExploreTopology({
   selectedEvent,
   entityDetails = {},
   scenarioFrame,
-  showLegacyScenarioVisual = false,
   onFocus,
 }: ExploreTopologyProps) {
   const isMobile = useMobileTopology();
@@ -85,9 +82,7 @@ export function ExploreTopology({
           type: "scenarioNode" as const,
           nodeId: resolvedFocus.selectedScenarioNodeId,
         }
-      : showLegacyScenarioVisual && focus?.kind === "entity"
-        ? { type: "scenarioNode" as const, nodeId: focus.id }
-        : null);
+      : null);
   const selectMessage = useCallback(
     (messageId: string) => {
       const message = snapshot.recentMessages.find(
@@ -139,7 +134,6 @@ export function ExploreTopology({
         ) : (
           <DesktopKafkaTopology
             snapshot={snapshot}
-            showScenarioVisual={showLegacyScenarioVisual}
             selectedMessageId={resolvedFocus.selectedMessageId}
             selectedNode={desktopSelectedNode}
             scenarioTopology={scenarioTopology}

@@ -58,7 +58,7 @@ workspace to the causal story, experiment, authoritative evidence, explanation,
 transition trail, and checkpoint; raw controls and React Flow are not mounted.
 
 Choose **Explore** in the workspace header to inspect the same active run as a
-runtime topology. Converted demo scenarios combine the shared producer, topic,
+runtime topology. Demo scenarios combine the shared producer, topic,
 partitions, messages, ownership, and consumer-group cards with their
 scenario-specific causal nodes and labeled connections. On desktop and tablet,
 Explore renders that projection in React Flow and exposes raw **Controls** and

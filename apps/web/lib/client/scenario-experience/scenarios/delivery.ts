@@ -15,8 +15,8 @@ import {
   table,
 } from "../helpers";
 import type {
-  EvidenceFact,
   LifecycleRecordModel,
+  ScenarioExperienceSnapshot,
   ScenarioStateFor,
   TransactionBoundaryModel,
 } from "../model";
@@ -698,7 +698,7 @@ function retryInactiveEdges(
 }
 
 function deliveryFocus(
-  snapshot: RunSnapshot,
+  snapshot: ScenarioExperienceSnapshot,
   delivery: ScenarioStateFor<"at-least-once-duplicates">["deliveries"][number],
 ) {
   const hasMessage = snapshot.recentMessages.some(
@@ -729,21 +729,3 @@ function retryGraphEntity(
   if (status === "retry" || status === "backoff") return "retry-topic";
   return "consumerGroup";
 }
-
-export function duplicateSideEffectFacts(
-  state: ScenarioStateFor<"at-least-once-duplicates">,
-): EvidenceFact[] {
-  return state.sideEffects.flatMap((effect) => [
-    fact(
-      `${effect.id}-naive`,
-      "Naïve",
-      evidence(effect.naiveCount, "simulated", "run-total"),
-    ),
-    fact(
-      `${effect.id}-idempotent`,
-      "Idempotent",
-      evidence(effect.idempotentCount, "simulated", "run-total"),
-    ),
-  ]);
-}
-import type { RunSnapshot } from "@kplay/contracts";

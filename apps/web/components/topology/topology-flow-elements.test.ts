@@ -5,7 +5,6 @@ import {
   SCENARIO_EXPLORE_NODE_WIDTH,
   type ScenarioExploreTopologyProjection,
 } from "@/lib/client/scenario-experience/explore-topology";
-import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { runSnapshot } from "@/lib/client/run-snapshot-test-fixtures";
 import { partitionAssignments } from "./topology-cards";
 import {
@@ -15,52 +14,7 @@ import {
 import { topologyMetrics } from "./topology-flow-helpers";
 
 describe("topology flow elements", () => {
-  it("builds core nodes plus the custom scenario visual node", () => {
-    const snapshot = runSnapshot({
-      consumers: [
-        {
-          consumerId: "consumer-1",
-          status: "running",
-          assignments: [{ topic: "topic", partition: 0 }],
-          processedCount: 0,
-          committedCount: 0,
-        },
-      ],
-    });
-    const scenarioVisualization = deriveScenarioVisualization(snapshot);
-
-    const nodes = buildTopologyNodes({
-      activeConsumerId: "consumer-1",
-      activePartition: 0,
-      assignmentByPartition: partitionAssignments(snapshot.consumers),
-      consumers: snapshot.consumers,
-      isCompact: false,
-      metrics: topologyMetrics("auto", false),
-      onSelectMessage: vi.fn(),
-      onSelectNode: vi.fn(),
-      partitions: [0, 1],
-      scenarioVisualization,
-      selectedMessageId: null,
-      selectedNode: null,
-      snapshot,
-      taskNowMs: Date.parse("2026-07-02T12:00:00.000Z"),
-    });
-
-    expect(nodes.map((node) => node.id)).toEqual(
-      expect.arrayContaining([
-        "producer",
-        "topic",
-        "consumerGroup",
-        "scenarioVisual",
-      ]),
-    );
-    expect(nodes.find((node) => node.id === "scenarioVisual")).toMatchObject({
-      draggable: false,
-      type: "scenarioVisual",
-    });
-  });
-
-  it("builds ownership and custom visual edges with stable test ids", () => {
+  it("builds ownership edges with stable test ids", () => {
     const snapshot = runSnapshot({
       consumers: [
         {
@@ -83,19 +37,11 @@ describe("topology flow elements", () => {
     });
 
     expect(edges.map((edge) => edge.id)).toEqual(
-      expect.arrayContaining([
-        "edge-producer-topic",
-        "edge-partition-0-owner",
-        "edge-topic-scenario-visual",
-      ]),
+      expect.arrayContaining(["edge-producer-topic", "edge-partition-0-owner"]),
     );
     expect(
       edges.find((edge) => edge.id === "edge-partition-0-owner")?.domAttributes,
     ).toMatchObject({ "data-testid": "topology-edge-partition-0" });
-    expect(
-      edges.find((edge) => edge.id === "edge-topic-scenario-visual")
-        ?.domAttributes,
-    ).toMatchObject({ "data-testid": "topology-edge-topic-scenario-visual" });
   });
 
   it("omits scenario-derived nodes and edges for observed-only remote views", () => {
@@ -105,23 +51,21 @@ describe("topology flow elements", () => {
       activePartition: null,
       assignmentByPartition: partitionAssignments(snapshot.consumers),
       consumers: snapshot.consumers,
-      isCompact: false,
       metrics: topologyMetrics("auto", false),
       onSelectMessage: vi.fn(),
       onSelectNode: vi.fn(),
       partitions: [0, 1],
-      scenarioVisualization: deriveScenarioVisualization(snapshot),
       selectedMessageId: null,
       selectedNode: null,
       snapshot,
       taskNowMs: Date.parse("2026-07-02T12:00:00.000Z"),
     };
 
-    expect(
-      buildTopologyNodes({ ...common, showScenarioVisual: false }).map(
-        (node) => node.id,
-      ),
-    ).toEqual(["producer", "topic", "consumerGroup"]);
+    expect(buildTopologyNodes(common).map((node) => node.id)).toEqual([
+      "producer",
+      "topic",
+      "consumerGroup",
+    ]);
     expect(
       buildTopologyEdges({
         activeConsumerId: null,
@@ -130,9 +74,8 @@ describe("topology flow elements", () => {
         consumersLength: 0,
         latestMessage: null,
         partitions: common.partitions,
-        showScenarioVisual: false,
-      }).some((edge) => edge.id === "edge-topic-scenario-visual"),
-    ).toBe(false);
+      }).map((edge) => edge.id),
+    ).toEqual(["edge-producer-topic", "edge-empty-ownership"]);
   });
 
   it("projects ranked scenario nodes beside the preserved core node components", () => {
@@ -144,14 +87,11 @@ describe("topology flow elements", () => {
       activePartition: null,
       assignmentByPartition: partitionAssignments(snapshot.consumers),
       consumers: snapshot.consumers,
-      isCompact: false,
       metrics: topologyMetrics("auto", false),
       onSelectMessage: vi.fn(),
       onSelectNode: vi.fn(),
       partitions: [0, 1],
       scenarioTopology,
-      scenarioVisualization: deriveScenarioVisualization(snapshot),
-      showScenarioVisual: false,
       selectedMessageId: null,
       selectedNode: { type: "scenarioNode", nodeId: "key-router" },
       snapshot,
@@ -187,7 +127,6 @@ describe("topology flow elements", () => {
       },
       type: "scenarioExplore",
     });
-    expect(nodes.some((node) => node.id === "scenarioVisual")).toBe(false);
   });
 
   it("replaces the baseline route with labeled causal edges and keeps ownership secondary", () => {
@@ -211,7 +150,6 @@ describe("topology flow elements", () => {
       latestMessage: null,
       partitions: [0, 1],
       scenarioTopology: scenarioProjection(),
-      showScenarioVisual: false,
     });
 
     expect(edges.some((edge) => edge.id === "edge-producer-topic")).toBe(false);
@@ -281,7 +219,6 @@ describe("topology flow elements", () => {
       latestMessage: null,
       partitions: [0, 1],
       scenarioTopology: directProjection,
-      showScenarioVisual: false,
     });
 
     expect(edges.some((edge) => edge.id === "edge-producer-topic")).toBe(false);
@@ -317,7 +254,6 @@ describe("topology flow elements", () => {
       latestMessage: null,
       partitions: [0, 1],
       scenarioTopology: cooperativeProjection,
-      showScenarioVisual: false,
     });
 
     expect(edges).toContainEqual(
@@ -347,14 +283,11 @@ describe("topology flow elements", () => {
       activePartition: null,
       assignmentByPartition: new Map(),
       consumers: [],
-      isCompact: false,
       metrics: topologyMetrics("auto", false),
       onSelectMessage: vi.fn(),
       onSelectNode: vi.fn(),
       partitions: [0, 1],
       scenarioTopology: pipelineProjection,
-      scenarioVisualization: deriveScenarioVisualization(snapshot),
-      showScenarioVisual: false,
       selectedMessageId: null,
       selectedNode: null,
       snapshot,
@@ -403,7 +336,6 @@ describe("topology flow elements", () => {
       latestMessage: null,
       partitions: [0, 1],
       scenarioTopology: verticalProjection,
-      showScenarioVisual: false,
     });
 
     expect(

@@ -11,7 +11,6 @@ import {
 } from "@xyflow/react";
 import { Maximize2, Minus, Network, Plus } from "lucide-react";
 import type { ScenarioExploreTopologyProjection } from "@/lib/client/scenario-experience/explore-topology";
-import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { hasActiveConsumerTaskDuration } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { useLiveTaskClock } from "@/lib/client/use-live-task-clock";
@@ -34,7 +33,6 @@ const ZOOM_STEP = 0.15;
 export function KafkaTopology({
   snapshot,
   scenarioTopology = null,
-  showScenarioVisual = true,
   selectedMessageId,
   selectedNode,
   onSelectMessage,
@@ -42,7 +40,6 @@ export function KafkaTopology({
 }: {
   snapshot: RunSnapshot;
   scenarioTopology?: ScenarioExploreTopologyProjection | null;
-  showScenarioVisual?: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   onSelectMessage: (messageId: string) => void;
@@ -53,7 +50,6 @@ export function KafkaTopology({
       <KafkaTopologyFlow
         snapshot={snapshot}
         scenarioTopology={scenarioTopology}
-        showScenarioVisual={showScenarioVisual}
         selectedMessageId={selectedMessageId}
         selectedNode={selectedNode}
         onSelectMessage={onSelectMessage}
@@ -66,7 +62,6 @@ export function KafkaTopology({
 function KafkaTopologyFlow({
   snapshot,
   scenarioTopology,
-  showScenarioVisual,
   selectedMessageId,
   selectedNode,
   onSelectMessage,
@@ -74,7 +69,6 @@ function KafkaTopologyFlow({
 }: {
   snapshot: RunSnapshot;
   scenarioTopology: ScenarioExploreTopologyProjection | null;
-  showScenarioVisual: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   onSelectMessage: (messageId: string) => void;
@@ -114,19 +108,14 @@ function KafkaTopologyFlow({
     () => topologyMetrics(layout, isCompact),
     [isCompact, layout],
   );
-  const scenarioVisualization = useMemo(
-    () => deriveScenarioVisualization(snapshot),
-    [snapshot],
-  );
   const taskNowMs = useLiveTaskClock(hasActiveConsumerTaskDuration(snapshot));
-  const fitNodeIdsKey = [
-    ...(scenarioTopology
+  const fitNodeIdsKey = (
+    scenarioTopology
       ? scenarioTopology.nodes.map((node) =>
           node.nodeKind === "scenario" ? `scenario-${node.id}` : node.id,
         )
-      : ["producer", "topic", "consumerGroup"]),
-    ...(showScenarioVisual ? ["scenarioVisual"] : []),
-  ].join("|");
+      : ["producer", "topic", "consumerGroup"]
+  ).join("|");
   const fitNodeIds = useMemo(
     () => fitNodeIdsKey.split("|").filter(Boolean),
     [fitNodeIdsKey],
@@ -143,16 +132,13 @@ function KafkaTopologyFlow({
         consumers.map((consumer) => consumer.consumerId).join(","),
         layout,
         isCompact ? "compact" : "wide",
-        showScenarioVisual ? scenarioVisualization.kind : "observed-only",
         scenarioTopology?.scenarioId ?? "core",
       ].join(":"),
     [
       consumers,
       isCompact,
       layout,
-      scenarioVisualization.kind,
       scenarioTopology?.scenarioId,
-      showScenarioVisual,
       snapshot.partitionCount,
       snapshot.runId,
     ],
@@ -282,14 +268,11 @@ function KafkaTopologyFlow({
         activePartition,
         assignmentByPartition,
         consumers,
-        isCompact,
         metrics,
         onSelectMessage,
         onSelectNode,
         partitions,
-        scenarioVisualization,
         scenarioTopology,
-        showScenarioVisual,
         selectedMessageId,
         selectedNode,
         snapshot,
@@ -300,14 +283,11 @@ function KafkaTopologyFlow({
       activePartition,
       assignmentByPartition,
       consumers,
-      isCompact,
       metrics,
       onSelectMessage,
       onSelectNode,
       partitions,
-      scenarioVisualization,
       scenarioTopology,
-      showScenarioVisual,
       selectedMessageId,
       selectedNode,
       snapshot,
@@ -325,7 +305,6 @@ function KafkaTopologyFlow({
         latestMessage,
         partitions,
         scenarioTopology,
-        showScenarioVisual,
       }),
     [
       activeConsumerId,
@@ -335,7 +314,6 @@ function KafkaTopologyFlow({
       latestMessage,
       partitions,
       scenarioTopology,
-      showScenarioVisual,
     ],
   );
 

@@ -14,11 +14,9 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import type { ScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { currentTasksForConsumer } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import type { RuntimeTopologyProvenance } from "@/lib/client/topology-provenance";
-import { ScenarioVisualStage } from "./scenario-visual-stage";
 import {
   ConsumerCard,
   PartitionLane,
@@ -62,11 +60,6 @@ export type ConsumerGroupNodeData = TopologyCallbacks & {
   taskNowMs: number;
 };
 
-export type ScenarioVisualNodeData = TopologyCallbacks & {
-  selectedNode: TopologySelection | null;
-  visualization: ScenarioVisualization;
-};
-
 const handleClass =
   "!h-3 !w-3 !border-2 !border-teal-700 !bg-[#fffdf5] !opacity-0";
 
@@ -75,7 +68,6 @@ export const topologyNodeTypes = {
   topic: TopicFlowNode,
   consumerGroup: ConsumerGroupFlowNode,
   scenarioExplore: ScenarioTopologyFlowNode,
-  scenarioVisual: ScenarioVisualFlowNode,
 } satisfies NodeTypes;
 
 function ProducerFlowNode({ data }: NodeProps<Node<ProducerNodeData>>) {
@@ -301,34 +293,5 @@ function ConsumerGroupFlowNode({
         ))}
       </div>
     </section>
-  );
-}
-
-function ScenarioVisualFlowNode({
-  data,
-}: NodeProps<Node<ScenarioVisualNodeData>>) {
-  return (
-    <div
-      className="nodrag pointer-events-auto relative"
-      data-testid="topology-node-scenario-visual"
-    >
-      <ScenarioVisualStage
-        visualization={data.visualization}
-        selectedNode={data.selectedNode}
-        onSelectNode={data.onSelectNode}
-      />
-      <Handle
-        id="visual-in"
-        type="target"
-        position={Position.Left}
-        className={handleClass}
-      />
-      <Handle
-        id="visual-out"
-        type="source"
-        position={Position.Right}
-        className={handleClass}
-      />
-    </div>
   );
 }

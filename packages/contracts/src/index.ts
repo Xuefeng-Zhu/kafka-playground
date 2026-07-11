@@ -202,6 +202,69 @@ export const runtimeEventTypes = [
   "scenario.experiment.failed",
 ] as const;
 
+const scenarioExperimentTransitionIds = [
+  "acl.allowed",
+  "acl.denied",
+  "acl.evaluated",
+  "acl.granted",
+  "capacity.increased",
+  "cdc.retry_deduplicated",
+  "consumer.crashed",
+  "cursor.reset",
+  "database.transaction_committed",
+  "event.produced",
+  "event.replayed",
+  "group.assignment_changed",
+  "idempotency.checked",
+  "kafka.publish_acknowledged",
+  "key.hashed",
+  "lag.decreased",
+  "lag.increased",
+  "log.appended",
+  "log.compacted",
+  "offset.commit_held",
+  "offset.out_of_range",
+  "offset.recovered",
+  "partition.order.extended",
+  "phase.completed",
+  "producer.deduplicated",
+  "producer.settings_changed",
+  "projection.cleared",
+  "rebalance.compared",
+  "rebalance.cooperative",
+  "rebalance.eager",
+  "record.attempt_started",
+  "record.backoff_elapsed",
+  "record.dead_lettered",
+  "record.delivered",
+  "record.partitioned",
+  "record.redelivered",
+  "record.retry_scheduled",
+  "record.succeeded",
+  "retention.expired",
+  "schema.accepted",
+  "schema.diffed",
+  "schema.rejected",
+  "side_effect.applied",
+  "skew.compared",
+  "tombstone.expired",
+  "transaction.aborted",
+  "transaction.committed",
+  "transaction.staged",
+  "virtual_time.advanced",
+  "wal.recorded",
+  "window.join_emitted",
+  "window.record_buffered",
+  "window.record_late",
+  "window.record_unmatched",
+] as const;
+export const scenarioExperimentTransitionSchema = z.enum(
+  scenarioExperimentTransitionIds,
+);
+export type ScenarioExperimentTransitionId = z.infer<
+  typeof scenarioExperimentTransitionSchema
+>;
+
 const scenarioExperimentEventBaseSchema = eventBaseSchema.extend({
   scenarioId: z.string(),
   experimentId: z.string(),
@@ -296,7 +359,7 @@ export const runtimeEventSchema = z.discriminatedUnion("type", [
   }),
   scenarioExperimentEventBaseSchema.extend({
     type: z.literal("scenario.experiment.transition"),
-    transition: z.string(),
+    transition: scenarioExperimentTransitionSchema,
   }),
   scenarioExperimentEventBaseSchema.extend({
     type: z.literal("scenario.experiment.completed"),

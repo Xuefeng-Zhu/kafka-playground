@@ -1,0 +1,201 @@
+import {
+  coreNodes,
+  descriptor,
+  layout,
+  scenarioEdge,
+  scenarioNode,
+} from "./helpers";
+import type { ScenarioGraphDescriptorCatalogSubset } from "./model";
+
+export const historyScenarioGraphDescriptors = {
+  "event-replay-sourcing": descriptor({
+    scenarioId: "event-replay-sourcing",
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(4),
+      }),
+      scenarioNode(
+        "projection-store",
+        "Projection store",
+        "Derived state rebuilt from the immutable log.",
+        "simulated",
+        "projection",
+        layout(3),
+      ),
+      scenarioNode(
+        "replay-cursor",
+        "Replay cursor",
+        "Moves through existing offsets without producing new records.",
+        "simulated",
+        "retry",
+        layout(2),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "original facts",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-cursor",
+        "topic",
+        "replay-cursor",
+        "reset and read",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "cursor-projection",
+        "replay-cursor",
+        "projection-store",
+        "apply historical event",
+        "simulated",
+        "data",
+      ),
+      scenarioEdge(
+        "projection-group",
+        "projection-store",
+        "consumerGroup",
+        "rebuilt view",
+        "derived",
+        "data",
+      ),
+    ],
+  }),
+  "log-compaction-tombstones": descriptor({
+    scenarioId: "log-compaction-tombstones",
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(3),
+      }),
+      scenarioNode(
+        "compacted-state-store",
+        "Materialized key state",
+        "Latest surviving value for each key.",
+        "simulated",
+        "compact",
+        layout(2, -1),
+      ),
+      scenarioNode(
+        "tombstone-marker",
+        "Tombstone lifecycle",
+        "Marks deletion before later cleanup.",
+        "simulated",
+        "compact",
+        layout(2, 1),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "append history",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-state",
+        "topic",
+        "compacted-state-store",
+        "cleaner pass",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "topic-tombstone",
+        "topic",
+        "tombstone-marker",
+        "null value",
+        "simulated",
+        "data",
+      ),
+      scenarioEdge(
+        "tombstone-state",
+        "tombstone-marker",
+        "compacted-state-store",
+        "delete key",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "state-group",
+        "compacted-state-store",
+        "consumerGroup",
+        "latest state",
+        "derived",
+        "data",
+      ),
+    ],
+  }),
+  "retention-data-loss": descriptor({
+    scenarioId: "retention-data-loss",
+    nodes: [
+      ...coreNodes({
+        producer: layout(0),
+        topic: layout(1),
+        consumerGroup: layout(4),
+      }),
+      scenarioNode(
+        "retention-window",
+        "Retention window",
+        "Advances with deterministic virtual time.",
+        "simulated",
+        "retention",
+        layout(2),
+      ),
+      scenarioNode(
+        "expired-boundary",
+        "Log-start boundary",
+        "Old offsets become unavailable for replay.",
+        "simulated",
+        "retention",
+        layout(3),
+      ),
+    ],
+    edges: [
+      scenarioEdge(
+        "producer-topic",
+        "producer",
+        "topic",
+        "append",
+        "observed",
+        "data",
+      ),
+      scenarioEdge(
+        "topic-window",
+        "topic",
+        "retention-window",
+        "age records",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "window-boundary",
+        "retention-window",
+        "expired-boundary",
+        "expire old records",
+        "simulated",
+        "control",
+      ),
+      scenarioEdge(
+        "boundary-group",
+        "expired-boundary",
+        "consumerGroup",
+        "resume or recover",
+        "simulated",
+        "control",
+      ),
+    ],
+  }),
+} satisfies ScenarioGraphDescriptorCatalogSubset<
+  "event-replay-sourcing" | "log-compaction-tombstones" | "retention-data-loss"
+>;

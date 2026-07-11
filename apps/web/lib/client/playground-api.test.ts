@@ -1,14 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiRequestError,
-  api,
   fetchRunSnapshot,
   loadActiveRunSnapshot,
   loadConnectionStatus,
   loadScenarioDefinitions,
+  mutateRun,
   retireRun,
   runScenarioExperiment,
 } from "./playground-api";
+import { runSnapshot } from "./run-snapshot-test-fixtures";
 
 describe("playground api client", () => {
   afterEach(() => {
@@ -24,7 +25,9 @@ describe("playground api client", () => {
       },
     );
 
-    const error = await api("/api/v1/runs").catch((caught) => caught);
+    const error = await mutateRun("run-1", "/settings", {
+      method: "PATCH",
+    }).catch((caught) => caught);
 
     expect(error).toBeInstanceOf(ApiRequestError);
     expect(error).toMatchObject({
@@ -58,12 +61,32 @@ describe("playground api client", () => {
     });
   });
 
+  it("requires the scenarios response envelope on successful requests", async () => {
+    mockFetch({ ok: true, status: 200, statusText: "OK" }, []);
+
+    await expect(loadScenarioDefinitions()).resolves.toEqual({
+      ok: false,
+      message:
+        "Unable to load scenarios. The response payload did not match the expected shape.",
+    });
+  });
+
   it("parses a missing active run as a successful empty state", async () => {
     mockFetch({ ok: true, status: 200, statusText: "OK" }, { run: null });
 
     await expect(loadActiveRunSnapshot()).resolves.toEqual({
       ok: true,
       data: null,
+    });
+  });
+
+  it("requires the active-run response envelope on successful requests", async () => {
+    mockFetch({ ok: true, status: 200, statusText: "OK" }, {});
+
+    await expect(loadActiveRunSnapshot()).resolves.toEqual({
+      ok: false,
+      message:
+        "Unable to load the active run. The response payload did not match the expected shape.",
     });
   });
 
@@ -89,6 +112,16 @@ describe("playground api client", () => {
     });
   });
 
+  it("does not treat a malformed 200 run response as a missing run", async () => {
+    mockFetch({ ok: true, status: 200, statusText: "OK" }, null);
+
+    await expect(fetchRunSnapshot("run-1")).resolves.toEqual({
+      ok: false,
+      message:
+        "Unable to refresh run snapshot. The response payload did not match the expected shape.",
+    });
+  });
+
   it("treats missing runs as already retired during reset", async () => {
     mockFetch(
       { ok: false, status: 404, statusText: "Not Found" },
@@ -98,18 +131,80 @@ describe("playground api client", () => {
     await expect(retireRun("missing")).resolves.toBeUndefined();
   });
 
-  it("posts stable experiment IDs through encoded run routes", async () => {
+  it("accepts a successful empty response when retiring a run", async () => {
+    const parseBody = vi.fn().mockRejectedValue(new Error("empty body"));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 204,
+      statusText: "No Content",
+      json: parseBody,
+    } as unknown as Response);
+
+    await expect(retireRun("run-1")).resolves.toBeUndefined();
+    expect(parseBody).not.toHaveBeenCalled();
+  });
+
+  it("encodes run IDs consistently for reads and retirement", async () => {
+    const snapshot = runSnapshot({ runId: "run/one" });
     const fetchMock = mockFetch(
       { ok: true, status: 200, statusText: "OK" },
-      { runId: "run/one" },
+      snapshot,
     );
 
-    await runScenarioExperiment("run/one", "compare ownership");
+    await expect(fetchRunSnapshot("run/one")).resolves.toEqual({
+      ok: true,
+      data: snapshot,
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/runs/run%2Fone",
+      expect.any(Object),
+    );
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({ cleanupStatus: "completed" }),
+    } as Response);
+    await retireRun("run/one");
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/runs/run%2Fone/reset",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("posts stable experiment IDs through encoded run routes", async () => {
+    const snapshot = runSnapshot({ runId: "run/one" });
+    const fetchMock = mockFetch(
+      { ok: true, status: 200, statusText: "OK" },
+      snapshot,
+    );
+
+    await expect(
+      runScenarioExperiment("run/one", "compare ownership"),
+    ).resolves.toEqual(snapshot);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/runs/run%2Fone/experiments/compare%20ownership",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("rejects malformed successful experiment responses", async () => {
+    mockFetch({ ok: true, status: 200, statusText: "OK" }, { runId: "run-1" });
+
+    await expect(
+      runScenarioExperiment("run-1", "produce-keyed-record"),
+    ).rejects.toMatchObject({ name: "ZodError" });
+  });
+
+  it("rejects malformed successful run mutation responses", async () => {
+    mockFetch({ ok: true, status: 200, statusText: "OK" }, { runId: "run-1" });
+
+    await expect(
+      mutateRun("run-1", "/settings", { method: "PATCH" }),
+    ).rejects.toMatchObject({ name: "ZodError" });
   });
 });
 

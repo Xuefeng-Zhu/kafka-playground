@@ -21,13 +21,13 @@ Every scenario visualization is a lesson backed by server-authoritative state. A
 
 ## Workspace-view contract
 
-- First-use converted demo runs open in **Guided**. Guided is a full-height lesson and does not mount the lower dock, raw Controls, full Timeline, or React Flow.
-- **Explore** presents the same active run as one projected topology with raw Controls, full Timeline, and inspector. Converted demo scenarios render each route-relevant Kafka core entity exactly once plus every scenario-specific causal node and labeled edge; they do not fabricate an irrelevant core node and must not restore the superseded scenario-overlay board.
-- The `kplay.workspace.view` preference is global to the browser, accepts only `guided` or `explore`, and survives reloads and later demo runs. Forced Explore for remote, Aiven, or legacy runs must not overwrite it.
-- Converted scenario start pages keep the saved/default switch visible in a disabled state with the accessible instruction **Start a run to use Guided or Explore**. Starting a demo run enables the same switch without shifting the header.
+- First-use demo runs open in **Guided**. Guided is a full-height lesson and does not mount the lower dock, raw Controls, full Timeline, or React Flow.
+- **Explore** presents the same active run as one projected topology with raw Controls, full Timeline, and inspector. Demo scenarios render each route-relevant Kafka core entity exactly once plus every scenario-specific causal node and labeled edge; they do not fabricate an irrelevant core node and must not restore the superseded scenario-overlay board.
+- The `kplay.workspace.view` preference is global to the browser, accepts only `guided` or `explore`, and survives reloads and later demo runs. Forced Explore for remote or Aiven runs must not overwrite it.
+- Scenario start pages keep the saved/default switch visible in a disabled state with the accessible instruction **Start a run to use Guided or Explore**. Starting a demo run enables the same switch without shifting the header.
 - Switching views preserves authoritative run state, experiment progress, checkpoint answers, `FocusRef`, inspector state, and the active Explore dock tab. Switching is disabled while an experiment or raw mutation is pending.
 - Explore uses **Simulated runtime topology** or **Observed broker topology** as its accessible region name instead of a full-width explanatory banner. The global runtime mode and provenance on every node and edge remain visible; remote and Aiven Explore remains core-only and never calls demo state observed.
-- An allowlisted scenario with no authoritative experience frame falls back to core-only Explore. Legacy overlays remain limited to truly unconverted IDs during the soak and never substitute for a missing converted projection.
+- A scenario with no authoritative experience frame falls back to core-only Explore; the superseded overlay never substitutes for a missing projection.
 - React Flow is lazy-loaded only after desktop or tablet Explore opens. Re-entering Explore frames the projection at a readable 100% home zoom; learners can zoom out to a 50% overview, and larger graphs remain reachable by dragging the grab-cursor canvas. Pan and zoom are not persisted.
 
 ## Responsive and accessibility contract
@@ -93,7 +93,7 @@ Each scenario is reported as a separate test and must:
 - Lint, typecheck, unit tests, production build, and E2E.
 - All 15 scenarios in Chromium at 1440 by 900.
 - All 15 scenarios prove the first-use Guided state with no dock or React Flow.
-- All 15 converted scenarios expose a distinctive extension node and causal edge in both desktop and semantic mobile Explore.
+- All 15 scenarios expose a distinctive extension node and causal edge in both desktop and semantic mobile Explore.
 - Partitioning proves the complete Guided-to-Explore round trip, raw action, synchronized focus, reload persistence, and global preference restoration.
 - Partitioning, duplicates, hot partitions, streams joins, and ACL at 390 by 844.
 - Those five mobile scenarios prove semantic Explore topology with no React Flow, overflow, or scroll trapping.
@@ -107,8 +107,8 @@ Each scenario is reported as a separate test and must:
 - Desktop Explore plus representative mobile semantic Explore coverage.
 - Chromium, Firefox, and WebKit.
 
-## Rollout
+## Ongoing acceptance
 
-Use the internal migration allowlist and enable complete batches: shared foundation, newcomer fundamentals, delivery and lifecycle, history and state, gates, then multi-system pipelines. Unlisted scenarios stay entirely on the legacy renderer. Remove the legacy path only after every scenario is enabled and the full cutover has soaked for seven days.
+Every catalog scenario is present in the typed experience registry and Explore-topology registry. Registry completeness tests must fail whenever a scenario is added without its teaching and topology definitions.
 
-Before enabling a batch, ask a first-time reviewer to explain the change and its cause within 30 seconds. At least four of five reviews must succeed on the first attempt; revise failed scenarios before enablement.
+Before shipping a scenario or visualization revision, ask a first-time reviewer to explain the change and its cause within 30 seconds. At least four of five reviews must succeed on the first attempt; revise failed scenarios before release.

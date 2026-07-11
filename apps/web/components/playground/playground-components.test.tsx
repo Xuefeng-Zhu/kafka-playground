@@ -6,7 +6,6 @@ import type {
   RuntimeEvent,
   ScenarioDefinition,
 } from "@kplay/contracts";
-import { EducationPanel } from "@/components/education/education-panel";
 import { ScenarioSidebar } from "@/components/scenario/scenario-sidebar";
 import { InspectorDrawer } from "./inspector-drawer";
 import { StartRunPanel } from "./start-run-panel";
@@ -419,18 +418,6 @@ describe("playground shell components", () => {
     ).not.toBeNull();
     expect(screen.queryByText("Key router")).not.toBeNull();
     expect(screen.queryByText("Topic Metrics")).toBeNull();
-  });
-
-  it("exposes the How it works anchor target", () => {
-    render(
-      <EducationPanel
-        scenarioId="partitioning"
-        snapshot={snapshotFixture}
-        selectedMessage={null}
-      />,
-    );
-
-    expect(document.querySelector("#how-it-works")).not.toBeNull();
   });
 
   it("intercepts normal scenario links for active-run navigation", () => {

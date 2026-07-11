@@ -174,6 +174,127 @@ describe("PlaygroundRuntime teaching experiments", () => {
     await runtime.reset(started.runId);
   });
 
+  it("lets an in-flight experiment finish before resetting the run", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("partitioning");
+    const observationStarted = createDeferred();
+    const releaseObservation = createDeferred();
+    const produceOne = runtime.produceOne.bind(runtime);
+    vi.spyOn(runtime, "produceOne").mockImplementationOnce(async (...args) => {
+      observationStarted.resolve();
+      await releaseObservation.promise;
+      return produceOne(...args);
+    });
+
+    const experiment = runtime.runExperiment(
+      started.runId,
+      "produce-keyed-record",
+    );
+    await observationStarted.promise;
+
+    let resetSettled = false;
+    const reset = runtime.reset(started.runId);
+    void reset.then(
+      () => {
+        resetSettled = true;
+      },
+      () => {
+        resetSettled = true;
+      },
+    );
+    await Promise.resolve();
+
+    expect(resetSettled).toBe(false);
+    expect(getInternalRun(runtime)).toMatchObject({
+      inFlightExperimentId: "produce-keyed-record",
+      scenarioState: expect.objectContaining({ scenarioId: "partitioning" }),
+    });
+
+    releaseObservation.resolve();
+    const [completed, cleanup] = await Promise.all([experiment, reset]);
+
+    expect(completed.scenarioState).toMatchObject({
+      scenarioId: "partitioning",
+      experiment: {
+        status: "completed",
+        experimentId: "produce-keyed-record",
+      },
+    });
+    expect(cleanup).toEqual({ cleanupStatus: "completed" });
+    expect(runtime.activeSnapshot()).toBeNull();
+  });
+
+  it("rejects an experiment once reset cleanup has started", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("acl-least-privilege");
+    const disconnectStarted = createDeferred();
+    const releaseDisconnect = createDeferred();
+    const internalRun = getInternalRun(runtime);
+    if (!internalRun) throw new Error("Missing internal run");
+    internalRun.consumerHandles.set("test-consumer", {
+      disconnect: async () => {
+        disconnectStarted.resolve();
+        await releaseDisconnect.promise;
+      },
+    });
+
+    const reset = runtime.reset(started.runId);
+    await disconnectStarted.promise;
+
+    await expect(
+      runtime.runExperiment(started.runId, "trigger-acl-denial"),
+    ).rejects.toMatchObject({
+      code: "SCENARIO_EXPERIMENT_UNAVAILABLE",
+      status: 409,
+    });
+    expect(getInternalRun(runtime)).toMatchObject({
+      inFlightExperimentId: null,
+      scenarioState: expect.objectContaining({
+        scenarioId: "acl-least-privilege",
+      }),
+    });
+
+    releaseDisconnect.resolve();
+    await expect(reset).resolves.toEqual({ cleanupStatus: "completed" });
+    expect(runtime.activeSnapshot()).toBeNull();
+  });
+
+  it("clears the in-flight guard when the experiment start event throws", async () => {
+    const { PlaygroundRuntime } = await import("./playground-runtime");
+    const runtime = new PlaygroundRuntime();
+    const started = await runtime.createRun("acl-least-privilege");
+    const emit = vi.spyOn(
+      runtime as unknown as { emit: (...args: unknown[]) => void },
+      "emit",
+    );
+    emit.mockImplementationOnce(() => {
+      throw new Error("experiment start emission failed");
+    });
+
+    await expect(
+      runtime.runExperiment(started.runId, "trigger-acl-denial"),
+    ).rejects.toThrow("experiment start emission failed");
+    expect(getInternalRun(runtime)).toMatchObject({
+      inFlightExperimentId: null,
+      scenarioState: expect.objectContaining({
+        experiment: expect.objectContaining({ status: "failed" }),
+      }),
+    });
+
+    emit.mockRestore();
+    await expect(
+      runtime.runExperiment(started.runId, "trigger-acl-denial"),
+    ).resolves.toMatchObject({
+      scenarioState: expect.objectContaining({
+        experiment: expect.objectContaining({ status: "completed" }),
+      }),
+    });
+
+    await runtime.reset(started.runId);
+  });
+
   it("rejects every contrast until its primary experiment completes", async () => {
     const { PlaygroundRuntime } = await import("./playground-runtime");
     const runtime = new PlaygroundRuntime();
@@ -322,9 +443,21 @@ function getInternalRun(runtime: object) {
           virtualTimeMs: number;
           inFlightExperimentId: string | null;
           completedExperimentIds: Set<string>;
+          consumerHandles: Map<string, { disconnect: () => Promise<void> }>;
         } | null;
       };
     }
   ).runs;
   return registry.getSessionRun("default");
+}
+
+function createDeferred() {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return {
+    promise,
+    resolve: () => resolve?.(),
+  };
 }

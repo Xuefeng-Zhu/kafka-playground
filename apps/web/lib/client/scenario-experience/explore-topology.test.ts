@@ -1,19 +1,16 @@
-import type { ScenarioState } from "@kplay/contracts";
+import { scenarioStateIds, type ScenarioState } from "@kplay/contracts";
 import { describe, expect, it } from "vitest";
 import { runSnapshot } from "../run-snapshot-test-fixtures";
 import {
   getScenarioExploreTopologyDefinition,
-  isScenarioExploreTopologyEnabled,
   projectScenarioExploreTopology,
   SCENARIO_EXPLORE_COLUMN_GAP,
   SCENARIO_EXPLORE_NODE_WIDTH,
   SCENARIO_EXPLORE_ROW_GAP,
-  SCENARIO_EXPLORE_TOPOLOGY_ALLOWLIST,
   SCENARIO_EXPLORE_TOPOLOGY_DEFINITIONS,
   validateScenarioExploreTopologyGraph,
 } from "./explore-topology";
 import type { ScenarioExperienceFrame, ScenarioExperienceId } from "./model";
-import { SCENARIO_EXPERIENCE_IDS } from "./model";
 import {
   projectScenarioExperience,
   scenarioExperienceRegistry,
@@ -42,15 +39,13 @@ const distinctiveExtensions = {
 >;
 
 describe("scenario Explore topology definitions", () => {
-  it("covers and separately enables all 15 teaching scenarios", () => {
-    const expected = [...SCENARIO_EXPERIENCE_IDS].sort();
+  it("covers all 15 teaching scenarios", () => {
+    const expected = [...scenarioStateIds].sort();
 
     expect(Object.keys(SCENARIO_EXPLORE_TOPOLOGY_DEFINITIONS).sort()).toEqual(
       expected,
     );
-    expect([...SCENARIO_EXPLORE_TOPOLOGY_ALLOWLIST].sort()).toEqual(expected);
-    for (const scenarioId of SCENARIO_EXPERIENCE_IDS) {
-      expect(isScenarioExploreTopologyEnabled(scenarioId)).toBe(true);
+    for (const scenarioId of scenarioStateIds) {
       expect(scenarioExperienceRegistry[scenarioId].exploreTopology).toBe(
         getScenarioExploreTopologyDefinition(scenarioId),
       );
@@ -279,17 +274,9 @@ describe("scenario Explore topology projection", () => {
     ).toBe("stream");
   });
 
-  it("returns no extension when state is missing or rollout is disabled", () => {
-    const frame = initialFrame("partitioning");
-
+  it("returns no extension when state is missing", () => {
     expect(projectScenarioExploreTopology(null)).toBeNull();
     expect(projectScenarioExploreTopology(undefined)).toBeNull();
-    expect(
-      projectScenarioExploreTopology(frame, {
-        enabledScenarioIds: new Set(),
-      }),
-    ).toBeNull();
-    expect(isScenarioExploreTopologyEnabled("not-a-scenario")).toBe(false);
   });
 });
 

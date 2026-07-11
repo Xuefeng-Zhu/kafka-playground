@@ -1,4 +1,3 @@
-import type { RunSnapshot } from "@kplay/contracts";
 import type {
   CausalGraphEdge,
   CausalGraphModel,
@@ -16,12 +15,11 @@ import type {
   Provenance,
   ScenarioExperienceDefinition,
   ScenarioExperienceFrame,
-  ScenarioExperienceProjectionInput,
   ScenarioExperienceId,
+  ScenarioExperienceSnapshot,
   ScenarioExperimentEvidence,
   ScenarioLensModel,
   ScenarioNarrative,
-  ScenarioStateFor,
 } from "./model";
 
 export function evidence(
@@ -67,7 +65,7 @@ export function messageFocus(
 }
 
 export function recordFocus(
-  snapshot: RunSnapshot,
+  snapshot: ScenarioExperienceSnapshot,
   id: string,
   partition?: number,
   offset?: string,
@@ -76,10 +74,6 @@ export function recordFocus(
   return snapshot.recentMessages.some((message) => message.messageId === id)
     ? messageFocus(id, partition, offset)
     : entityFocus(id, graphEntityId);
-}
-
-export function eventFocus(id: string): FocusRef {
-  return { kind: "event", id };
 }
 
 export function table(
@@ -157,7 +151,7 @@ export function narrative(
   };
 }
 
-export function entityDetailsFromGraph(
+function entityDetailsFromGraph(
   graph: CausalGraphModel,
   factsByEntity: Readonly<Record<string, readonly EvidenceFact[]>> = {},
   graphTargets: Readonly<Record<string, string>> = {},
@@ -293,32 +287,6 @@ function lensTables(lens: ScenarioLensModel): EvidenceTableModel[] {
     ...(lens.kind === "capacity" ? [lens.partitions] : []),
     ...(lens.kind === "window-join" ? [lens.outputs] : []),
   ].filter((item): item is EvidenceTableModel => item != null);
-}
-
-export function defineScenarioExperience<Id extends ScenarioExperienceId>(
-  definition: ScenarioExperienceDefinition<Id>,
-): ScenarioExperienceDefinition<Id> {
-  return definition;
-}
-
-export function stateInput<Id extends ScenarioExperienceId>(
-  snapshot: RunSnapshot,
-  scenarioState: ScenarioStateFor<Id>,
-  events: ScenarioExperienceProjectionInput<Id>["events"],
-): ScenarioExperienceProjectionInput<Id> {
-  return { snapshot, scenarioState, events };
-}
-
-export function compareOffsets(left: string | null, right: string | null) {
-  if (left == null && right == null) return 0;
-  if (left == null) return -1;
-  if (right == null) return 1;
-  const leftNumber = Number(left);
-  const rightNumber = Number(right);
-  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
-    return leftNumber - rightNumber;
-  }
-  return left.localeCompare(right, undefined, { numeric: true });
 }
 
 export function latestWindow<T>(items: readonly T[], size = 8) {

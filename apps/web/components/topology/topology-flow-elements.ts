@@ -5,7 +5,6 @@ import {
   SCENARIO_EXPLORE_NODE_WIDTH,
   type ScenarioExploreTopologyProjection,
 } from "@/lib/client/scenario-experience/explore-topology";
-import type { ScenarioVisualization } from "@/lib/client/scenario-visualization";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 import { topologyProvenance } from "@/lib/client/topology-provenance";
 import {
@@ -17,7 +16,6 @@ import type {
   ConsumerGroupNodeData,
   ProducerNodeData,
   ScenarioExploreNodeData,
-  ScenarioVisualNodeData,
   TopicNodeData,
 } from "./topology-flow-nodes";
 import {
@@ -30,8 +28,7 @@ export type TopologyNode =
   | Node<ProducerNodeData, "producer">
   | Node<TopicNodeData, "topic">
   | Node<ConsumerGroupNodeData, "consumerGroup">
-  | Node<ScenarioExploreNodeData, "scenarioExplore">
-  | Node<ScenarioVisualNodeData, "scenarioVisual">;
+  | Node<ScenarioExploreNodeData, "scenarioExplore">;
 
 type CoreTopologyEdge = Edge<Record<string, never>, "smoothstep">;
 export type TopologyEdge = CoreTopologyEdge | ScenarioCausalFlowEdge;
@@ -41,14 +38,11 @@ export function buildTopologyNodes({
   activePartition,
   assignmentByPartition,
   consumers,
-  isCompact,
   metrics,
   onSelectMessage,
   onSelectNode,
   partitions,
   scenarioTopology = null,
-  scenarioVisualization,
-  showScenarioVisual = true,
   selectedMessageId,
   selectedNode,
   snapshot,
@@ -58,14 +52,11 @@ export function buildTopologyNodes({
   activePartition: number | null;
   assignmentByPartition: Map<number, { consumerId: string }>;
   consumers: RunSnapshot["consumers"];
-  isCompact: boolean;
   metrics: TopologyLayoutMetrics;
   onSelectMessage: (messageId: string) => void;
   onSelectNode: (selection: TopologySelection) => void;
   partitions: number[];
   scenarioTopology?: ScenarioExploreTopologyProjection | null;
-  scenarioVisualization: ScenarioVisualization;
-  showScenarioVisual?: boolean;
   selectedMessageId: string | null;
   selectedNode: TopologySelection | null;
   snapshot: RunSnapshot;
@@ -175,26 +166,7 @@ export function buildTopologyNodes({
       },
     }));
 
-  const visualNode: TopologyNode = {
-    id: "scenarioVisual",
-    type: "scenarioVisual",
-    position: scenarioVisualPosition(metrics, isCompact),
-    draggable: false,
-    selectable: false,
-    data: {
-      visualization: scenarioVisualization,
-      selectedNode,
-      onSelectMessage,
-      onSelectNode,
-    },
-    style: { width: isCompact ? 332 : 660 },
-  };
-
-  return [
-    ...coreNodes,
-    ...scenarioNodes,
-    ...(showScenarioVisual ? [visualNode] : []),
-  ];
+  return [...coreNodes, ...scenarioNodes];
 }
 
 export function buildTopologyEdges({
@@ -205,7 +177,6 @@ export function buildTopologyEdges({
   latestMessage,
   partitions,
   scenarioTopology = null,
-  showScenarioVisual = true,
 }: {
   activeConsumerId: string | null;
   activePartition: number | null;
@@ -214,7 +185,6 @@ export function buildTopologyEdges({
   latestMessage: RunSnapshot["recentMessages"][number] | null;
   partitions: number[];
   scenarioTopology?: ScenarioExploreTopologyProjection | null;
-  showScenarioVisual?: boolean;
 }): TopologyEdge[] {
   const nextEdges: TopologyEdge[] = [];
   if (scenarioTopology === null) {
@@ -363,25 +333,6 @@ export function buildTopologyEdges({
     }
   }
 
-  if (showScenarioVisual) {
-    nextEdges.push({
-      id: "edge-topic-scenario-visual",
-      type: "smoothstep",
-      source: "topic",
-      sourceHandle: "topic-empty-out",
-      target: "scenarioVisual",
-      targetHandle: "visual-in",
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#0f766e" },
-      className: latestMessage ? "kplay-flow-line" : undefined,
-      style: {
-        opacity: latestMessage ? 0.95 : 0.68,
-        stroke: "#0f766e",
-        strokeDasharray: "6 7",
-        strokeWidth: latestMessage ? 2.1 : 1.7,
-      },
-      domAttributes: edgeTestId("topology-edge-topic-scenario-visual"),
-    });
-  }
   return nextEdges;
 }
 
@@ -426,17 +377,6 @@ function targetHandleFor(
   if (target === "topic") return "topic-in";
   if (target === "consumerGroup") return "empty-in";
   return undefined;
-}
-
-function scenarioVisualPosition(
-  metrics: TopologyLayoutMetrics,
-  isCompact: boolean,
-) {
-  if (isCompact) return { x: 390, y: 112 };
-  return {
-    x: metrics.consumerGroup.x + metrics.consumerGroupWidth + 56,
-    y: 72,
-  };
 }
 
 function edgeTestId(value: string): TopologyEdge["domAttributes"] {

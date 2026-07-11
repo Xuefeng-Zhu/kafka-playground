@@ -196,7 +196,7 @@ export function StatusLabel({ status }: { status: string }) {
   );
 }
 
-export function EmptyEvidence({ copy }: { copy: string }) {
+function EmptyEvidence({ copy }: { copy: string }) {
   return (
     <div className="rounded-2xl border-2 border-dashed border-teal-700 bg-teal-50 px-4 py-8 text-center">
       <p className="break-words text-sm font-bold leading-6 text-[#31566a] [overflow-wrap:anywhere]">

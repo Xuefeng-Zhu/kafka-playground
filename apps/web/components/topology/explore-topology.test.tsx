@@ -103,36 +103,13 @@ describe("ExploreTopology", () => {
     expect(desktopTopologyProps).toHaveBeenLastCalledWith(
       expect.objectContaining({
         snapshot,
-        showScenarioVisual: false,
         selectedMessageId: null,
         selectedNode: { type: "topic" },
       }),
     );
   });
 
-  it("keeps the old scenario overlay available only when legacy fallback opts in", async () => {
-    installMatchMedia(false);
-
-    render(
-      <ExploreTopology
-        snapshot={runSnapshot()}
-        focus={{ kind: "entity", id: "legacy-hotspot" }}
-        selectedEvent={null}
-        showLegacyScenarioVisual
-        onFocus={vi.fn()}
-      />,
-    );
-
-    expect(await screen.findByTestId("topology-flow")).not.toBeNull();
-    expect(desktopTopologyProps).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        showScenarioVisual: true,
-        selectedNode: { type: "scenarioNode", nodeId: "legacy-hotspot" },
-      }),
-    );
-  });
-
-  it("projects a converted scenario graph and highlights its evidence entity", async () => {
+  it("projects a scenario graph and highlights its evidence entity", async () => {
     installMatchMedia(false);
     const entry = teachingScenarioTestManifest.find(
       (candidate) => candidate.scenarioId === "partitioning",
@@ -158,7 +135,6 @@ describe("ExploreTopology", () => {
     expect(await screen.findByTestId("topology-flow")).not.toBeNull();
     expect(desktopTopologyProps).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        showScenarioVisual: false,
         selectedNode: { type: "scenarioNode", nodeId: "key-router" },
         scenarioTopology: expect.objectContaining({
           scenarioId: "partitioning",

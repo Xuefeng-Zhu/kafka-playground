@@ -189,7 +189,7 @@ function experimentEvent(overrides: Partial<RuntimeEvent> = {}): RuntimeEvent {
     entityIds: ["partition-1"],
     provenance: "simulated",
     virtualTimeMs: 100,
-    transition: "message.routed",
+    transition: "key.hashed",
     step: {
       id: "route-message",
       index: 1,

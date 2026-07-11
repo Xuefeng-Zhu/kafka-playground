@@ -1,12 +1,10 @@
-import { scenarioStateIds } from "@kplay/contracts";
 import type {
   RunSnapshot,
   RuntimeEvent,
+  ScenarioExperimentTransitionId,
   ScenarioState,
 } from "@kplay/contracts";
 import type { ScenarioTopologyIcon } from "../scenario-topology-model";
-
-export const SCENARIO_EXPERIENCE_IDS = scenarioStateIds;
 
 export type ScenarioExperienceId = ScenarioState["scenarioId"];
 
@@ -33,14 +31,14 @@ export type EvidenceFact = {
   emphasis?: EvidenceEmphasis;
 };
 
-export type MessageFocusRef = {
+type MessageFocusRef = {
   kind: "message";
   id: string;
   partition?: number;
   offset?: string;
 };
 
-export type EventFocusRef = {
+type EventFocusRef = {
   kind: "event";
   id: string;
 };
@@ -104,7 +102,7 @@ export type CausalGraphModel = {
   edges: readonly CausalGraphEdge[];
 };
 
-export type EvidenceSection = {
+type EvidenceSection = {
   id: string;
   title: string;
   summary?: string;
@@ -121,7 +119,7 @@ type ScenarioLensBase = {
   sections?: readonly EvidenceSection[];
 };
 
-export type RoutingTraceModel = {
+type RoutingTraceModel = {
   id: string;
   key: string;
   partition: number;
@@ -231,7 +229,7 @@ export type ProjectionLensModel = ScenarioLensBase & {
   cursor: EvidenceValue;
 };
 
-export type CapacityTrend = "empty" | "rising" | "falling" | "steady";
+type CapacityTrend = "empty" | "rising" | "falling" | "steady";
 
 export type CapacityLensModel = ScenarioLensBase & {
   kind: "capacity";
@@ -285,7 +283,7 @@ export type ScenarioLensModel =
   | HeatmapLensModel
   | WindowJoinLensModel;
 
-export type ScenarioNarrativeItem = {
+type ScenarioNarrativeItem = {
   label: "What changed" | "Why" | "What happens next";
   text: string;
   provenance: Provenance;
@@ -330,19 +328,19 @@ export type ScenarioExploreTopologyEdgeKind =
   | "ownership"
   | "feedback";
 
-export type ScenarioExploreTopologyNodeDefinition = {
+type ScenarioExploreTopologyNodeDefinition = {
   id: string;
   visualKind: ScenarioTopologyIcon;
   rank?: number;
   lane?: number;
 };
 
-export type ScenarioExploreTopologyEdgeDefinition = {
+type ScenarioExploreTopologyEdgeDefinition = {
   id: string;
   kind: ScenarioExploreTopologyEdgeKind;
 };
 
-export type ScenarioExploreTopologyLayoutHint = {
+type ScenarioExploreTopologyLayoutHint = {
   rank?: number;
   lane?: number;
 };
@@ -358,7 +356,7 @@ export type ScenarioExploreTopologyDefinition<
   replacesCoreProducerTopicEdge: boolean;
 };
 
-export type ScenarioCheckpointOption = {
+type ScenarioCheckpointOption = {
   id: string;
   label: string;
 };
@@ -400,7 +398,7 @@ export type ScenarioExperimentTransitionTrailItem = {
   totalSteps: number;
   virtualTimeMs: number;
   provenance: Provenance;
-  transition: string;
+  transition: ScenarioExperimentTransitionId;
   focus: EventFocusRef;
 };
 
@@ -437,7 +435,7 @@ export type ScenarioExperienceSnapshot = Pick<
 export type ScenarioExperienceProjectionInput<
   Id extends ScenarioExperienceId = ScenarioExperienceId,
 > = {
-  snapshot: RunSnapshot;
+  snapshot: ScenarioExperienceSnapshot;
   scenarioState: ScenarioStateFor<Id>;
   events: readonly RuntimeEvent[];
 };
@@ -460,7 +458,7 @@ export type ScenarioExperienceDefinitionRegistry = {
   [Id in ScenarioExperienceId]: ScenarioExperienceDefinition<Id>;
 };
 
-export type AnyScenarioExperienceDefinition = {
+type AnyScenarioExperienceDefinition = {
   [Id in ScenarioExperienceId]: ScenarioExperienceDefinition<Id>;
 }[ScenarioExperienceId];
 
@@ -471,8 +469,8 @@ export type ScenarioExperienceResolution =
       frame: ScenarioExperienceFrame;
     }
   | {
-      kind: "legacy";
-      reason: "disabled" | "missing-state" | "mismatched-state";
+      kind: "unavailable";
+      reason: "unsupported-scenario" | "missing-state" | "mismatched-state";
     };
 
 export function focusRefKey(focus: FocusRef): string {

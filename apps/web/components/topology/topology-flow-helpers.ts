@@ -1,28 +1,3 @@
-import {
-  AlertTriangle,
-  Box,
-  CheckCircle2,
-  Clock3,
-  Database,
-  Flame,
-  Gauge,
-  GitBranch,
-  Layers3,
-  Link2,
-  LockKeyhole,
-  Repeat2,
-  Route,
-  Rows3,
-  ShieldCheck,
-  Shuffle,
-  Split,
-  type LucideIcon,
-} from "lucide-react";
-import type {
-  ScenarioTopologyIcon,
-  ScenarioTopologyTone,
-} from "@/lib/client/scenario-topology";
-
 export type TopologyLayout = "auto" | "spread";
 
 export type TopologyLayoutMetrics = {
@@ -32,71 +7,6 @@ export type TopologyLayoutMetrics = {
   topicWidth: number;
   consumerGroup: { x: number; y: number };
   consumerGroupWidth: number;
-};
-
-export const scenarioToneColor: Record<ScenarioTopologyTone, string> = {
-  amber: "#f59e0b",
-  emerald: "#10b981",
-  rose: "#e11d48",
-  sky: "#0ea5e9",
-  teal: "#0f766e",
-  violet: "#8b5cf6",
-};
-
-export const scenarioToneClass: Record<
-  ScenarioTopologyTone,
-  { border: string; chip: string; text: string }
-> = {
-  amber: {
-    border: "border-amber-500",
-    chip: "border-amber-500 bg-amber-100 text-amber-900",
-    text: "text-amber-700",
-  },
-  emerald: {
-    border: "border-emerald-500",
-    chip: "border-emerald-500 bg-emerald-100 text-emerald-900",
-    text: "text-emerald-700",
-  },
-  rose: {
-    border: "border-rose-500",
-    chip: "border-rose-500 bg-rose-100 text-rose-900",
-    text: "text-rose-700",
-  },
-  sky: {
-    border: "border-sky-500",
-    chip: "border-sky-500 bg-sky-100 text-sky-900",
-    text: "text-sky-700",
-  },
-  teal: {
-    border: "border-teal-700",
-    chip: "border-teal-700 bg-teal-100 text-teal-900",
-    text: "text-teal-700",
-  },
-  violet: {
-    border: "border-violet-500",
-    chip: "border-violet-500 bg-violet-100 text-violet-900",
-    text: "text-violet-700",
-  },
-};
-
-export const scenarioIconMap: Record<ScenarioTopologyIcon, LucideIcon> = {
-  acl: LockKeyhole,
-  balance: Shuffle,
-  commit: CheckCircle2,
-  compact: Layers3,
-  database: Database,
-  dlq: AlertTriangle,
-  handler: Box,
-  hot: Flame,
-  lag: Gauge,
-  projection: Rows3,
-  rebalance: GitBranch,
-  retention: Clock3,
-  retry: Repeat2,
-  route: Route,
-  schema: ShieldCheck,
-  stream: Split,
-  transaction: Link2,
 };
 
 export function topologyMetrics(

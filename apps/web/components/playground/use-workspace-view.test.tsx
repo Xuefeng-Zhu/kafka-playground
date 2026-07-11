@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   useWorkspaceView,
   WORKSPACE_VIEW_STORAGE_KEY,
@@ -7,7 +7,14 @@ import {
 
 describe("useWorkspaceView", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     window.localStorage.clear();
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: null,
+        newValue: null,
+      }),
+    );
   });
 
   it("defaults first-time demo users to Guided", () => {
@@ -33,7 +40,7 @@ describe("useWorkspaceView", () => {
     expect(result.current.workspaceView).toBe("guided");
   });
 
-  it("shows the saved preference before a converted scenario run starts", () => {
+  it("shows the saved preference before a supported scenario run starts", () => {
     window.localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, "explore");
 
     const { result } = renderHook(() => useWorkspaceView(false, true));
@@ -58,6 +65,72 @@ describe("useWorkspaceView", () => {
     );
     expect(first.result.current.workspaceView).toBe("explore");
     expect(second.result.current.workspaceView).toBe("explore");
+  });
+
+  it("keeps a rejected storage write across a complete remount", () => {
+    window.localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, "guided");
+    const first = renderHook(() => useWorkspaceView(true));
+    const second = renderHook(() => useWorkspaceView(true));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    act(() => first.result.current.setWorkspaceView("explore"));
+
+    expect(first.result.current.workspaceView).toBe("explore");
+    expect(second.result.current.workspaceView).toBe("explore");
+    expect(window.localStorage.getItem(WORKSPACE_VIEW_STORAGE_KEY)).toBe(
+      "guided",
+    );
+
+    first.unmount();
+    second.unmount();
+
+    const third = renderHook(() => useWorkspaceView(true));
+    expect(third.result.current.workspaceView).toBe("explore");
+
+    third.unmount();
+  });
+
+  it("reconciles the fallback when the stored value actually changes", () => {
+    window.localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, "guided");
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("quota exceeded");
+      });
+    const failedWrite = renderHook(() => useWorkspaceView(true));
+
+    act(() => failedWrite.result.current.setWorkspaceView("explore"));
+    expect(failedWrite.result.current.workspaceView).toBe("explore");
+    failedWrite.unmount();
+
+    setItem.mockRestore();
+    window.localStorage.removeItem(WORKSPACE_VIEW_STORAGE_KEY);
+
+    const remounted = renderHook(() => useWorkspaceView(true));
+    expect(remounted.result.current.workspaceView).toBe("guided");
+  });
+
+  it("resets the fallback when a storage event arrives while unmounted", () => {
+    window.localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, "guided");
+    const failedWrite = renderHook(() => useWorkspaceView(true));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    act(() => failedWrite.result.current.setWorkspaceView("explore"));
+    failedWrite.unmount();
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: WORKSPACE_VIEW_STORAGE_KEY,
+        newValue: "guided",
+      }),
+    );
+
+    const remounted = renderHook(() => useWorkspaceView(true));
+    expect(remounted.result.current.workspaceView).toBe("guided");
   });
 
   it("forces Explore without overwriting the saved demo preference", () => {

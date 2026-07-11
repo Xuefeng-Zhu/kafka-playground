@@ -5,7 +5,6 @@ import {
   formatTaskDuration,
   type ConsumerTask,
 } from "@/lib/client/current-consumer-task";
-import { deriveScenarioVisualization } from "@/lib/client/scenario-visualization";
 import { keyStrategyLabel } from "@/lib/client/key-strategy-label";
 import {
   topologyProvenance,
@@ -165,38 +164,16 @@ export function TopologyDetails({
   }
 
   if (selectedNode.type === "scenarioNode") {
-    const hotspot = deriveScenarioVisualization(snapshot).hotspots.find(
-      (item) => item.id === selectedNode.nodeId,
-    );
-    if (!hotspot) {
-      return (
-        <>
-          <TopologyHeader
-            title="Scenario overlay"
-            detail="This overlay is no longer active in the current snapshot."
-            tone="teal"
-          />
-          <div className="p-5 text-sm text-[#466778]">
-            Select another topology node to inspect current run details.
-          </div>
-        </>
-      );
-    }
-
     return (
       <>
         <TopologyHeader
-          title={hotspot.title}
-          detail={hotspot.description}
-          tone={hotspot.tone}
+          title="Scenario evidence"
+          detail="Scenario nodes are described by the evidence inspector."
+          tone="teal"
         />
-        <DetailSection
-          title={hotspot.eyebrow}
-          rows={[
-            [hotspot.metricLabel, hotspot.metricValue],
-            ...hotspot.details,
-          ]}
-        />
+        <div className="p-5 text-sm text-[#466778]">
+          Select the scenario node again to inspect its current evidence.
+        </div>
       </>
     );
   }

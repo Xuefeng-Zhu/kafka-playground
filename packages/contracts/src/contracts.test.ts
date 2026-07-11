@@ -8,6 +8,7 @@ import {
   remoteKafkaConfigSchema,
   runtimeEventTypes,
   runtimeEventSchema,
+  scenarioExperimentTransitionSchema,
   settingsRequestSchema,
 } from "./index";
 
@@ -170,5 +171,20 @@ describe("contracts", () => {
         },
       }),
     ).not.toThrow();
+  });
+
+  it("rejects unknown or inconsistently named experiment transitions", () => {
+    expect(
+      scenarioExperimentTransitionSchema.safeParse("group.assignment_changed")
+        .success,
+    ).toBe(true);
+    expect(
+      scenarioExperimentTransitionSchema.safeParse("group.assignment.changed")
+        .success,
+    ).toBe(false);
+    expect(
+      scenarioExperimentTransitionSchema.safeParse("group.assignmentChanged")
+        .success,
+    ).toBe(false);
   });
 });
