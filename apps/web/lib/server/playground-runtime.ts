@@ -799,9 +799,12 @@ export class PlaygroundRuntime {
           if (message) produced.push(message);
         }
       }
-      const targetConsumerCount = growGroup ? 3 : 1;
-      while (this.activeConsumers(run).length < targetConsumerCount) {
-        await this.addConsumer(run.runId, sessionId);
+      const simulateConsumerGrowth = growGroup && this.consumerLimit(run) < 3;
+      if (!simulateConsumerGrowth) {
+        const targetConsumerCount = growGroup ? 3 : 1;
+        while (this.activeConsumers(run).length < targetConsumerCount) {
+          await this.addConsumer(run.runId, sessionId);
+        }
       }
       for (const message of produced) {
         const timer = run.processingTimers.get(message.messageId);
@@ -821,6 +824,20 @@ export class PlaygroundRuntime {
         run.scenarioState?.scenarioId === "partitioning"
           ? run.scenarioState.assignmentEpoch + 1
           : 1;
+      const experimentConsumers = simulateConsumerGrowth
+        ? Array.from({ length: 3 }, (_, index) => ({
+            consumerId: `guided-consumer-${index + 1}`,
+            partitions: Array.from(
+              { length: run.partitionCount },
+              (_, partition) => partition,
+            ).filter((partition) => partition % 3 === index),
+          }))
+        : this.activeConsumers(run).map((consumer) => ({
+            consumerId: consumer.consumerId,
+            partitions: consumer.assignments.map(
+              (assignment) => assignment.partition,
+            ),
+          }));
       return {
         partitioning: {
           routingTraces: produced.flatMap((message, index) =>
@@ -861,14 +878,12 @@ export class PlaygroundRuntime {
               };
             },
           ),
-          consumers: run.consumers.map((consumer) => ({
+          consumers: experimentConsumers.map((consumer) => ({
             id: `assignment-${consumer.consumerId}-${assignmentEpoch}`,
             provenance: "simulated" as const,
             consumerId: consumer.consumerId,
-            partitions: consumer.assignments.map(
-              (assignment) => assignment.partition,
-            ),
-            status: consumer.assignments.length > 0 ? "running" : "idle",
+            partitions: consumer.partitions,
+            status: consumer.partitions.length > 0 ? "running" : "idle",
             epoch: assignmentEpoch,
           })),
           assignmentEpoch,

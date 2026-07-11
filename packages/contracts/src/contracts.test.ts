@@ -8,6 +8,7 @@ import {
   remoteKafkaConfigSchema,
   runtimeEventTypes,
   runtimeEventSchema,
+  scenarioStateSchema,
   scenarioExperimentTransitionSchema,
   settingsRequestSchema,
 } from "./index";
@@ -58,6 +59,35 @@ describe("contracts", () => {
 
   it("rejects excessive producer rates", () => {
     expect(() => settingsRequestSchema.parse({ productionRate: 11 })).toThrow();
+  });
+
+  it("defaults retention recovery history for legacy version-1 state", () => {
+    expect(
+      scenarioStateSchema.parse({
+        version: 1,
+        scenarioId: "retention-data-loss",
+        virtualTimeMs: 0,
+        revision: 0,
+        experiment: {
+          status: "idle",
+          experimentId: null,
+          stepIndex: 0,
+          totalSteps: 0,
+          startedAtVirtualMs: null,
+          completedAtVirtualMs: null,
+          error: null,
+        },
+        records: [],
+        retentionMs: 60_000,
+        cutoffVirtualMs: 0,
+        logStartOffset: "0",
+        committedOffset: "0",
+        error: null,
+      }),
+    ).toMatchObject({
+      scenarioId: "retention-data-loss",
+      lastOffsetOutOfRange: null,
+    });
   });
 
   it("defaults run creation to demo mode", () => {
