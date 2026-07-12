@@ -80,7 +80,11 @@ describe("AivenKafkaRuntimeAdapter diagnostics", () => {
     kafkaMocks.consumerConnect.mockResolvedValue(undefined);
     kafkaMocks.consumerDisconnect.mockResolvedValue(undefined);
     kafkaMocks.consumerSubscribe.mockResolvedValue(undefined);
-    kafkaMocks.consumerRun.mockResolvedValue(undefined);
+    kafkaMocks.consumerRun.mockImplementation(async () => {
+      kafkaMocks.consumerHandlers.get("GROUP_JOIN")?.({
+        payload: { memberAssignment: { topic: [0] } },
+      });
+    });
   });
 
   it("disconnects a consumer when subscription fails during startup", async () => {
@@ -161,6 +165,53 @@ describe("AivenKafkaRuntimeAdapter diagnostics", () => {
         message: "consumer run unavailable",
       }),
     );
+  });
+
+  it("disconnects and rejects when run crashes before joining the group", async () => {
+    const startupError = new Error("consumer group join unavailable");
+    kafkaMocks.consumerRun.mockImplementationOnce(async () => {
+      kafkaMocks.consumerHandlers.get("CRASH")?.({
+        payload: { error: startupError },
+      });
+    });
+    const onError = vi.fn();
+    const adapter = new AivenKafkaRuntimeAdapter(
+      loadServerEnv({
+        KAFKA_MODE: "aiven",
+        AIVEN_KAFKA_BROKERS: "broker.example.com:9092",
+        AIVEN_KAFKA_USERNAME: "service-user",
+        AIVEN_KAFKA_PASSWORD: "service-password",
+        AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
+      }),
+    );
+
+    await expect(
+      adapter.createConsumer(
+        {
+          runId: "run-1",
+          scenarioId: "partitioning",
+          topicName: "topic",
+          consumerGroupId: "group",
+          partitionCount: 2,
+        },
+        "consumer-1",
+        {
+          onAssigned: () => undefined,
+          onRevoked: () => undefined,
+          onMessage: async () => undefined,
+          onError,
+        },
+      ),
+    ).rejects.toThrow("consumer group join unavailable");
+
+    expect(kafkaMocks.consumerDisconnect).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(onError).toHaveBeenCalledWith({
+        code: "CONSUMER_CRASH",
+        message: "consumer group join unavailable",
+      }),
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 
   it("returns a retryable consumer handle when startup rollback also fails", async () => {

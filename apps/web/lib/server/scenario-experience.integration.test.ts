@@ -7,22 +7,10 @@ import {
   type RenderedEvidenceExpectation,
 } from "../../../../tests/e2e/scenario-teaching-manifest";
 
-vi.mock("./env", () => ({
-  getServerEnv: () => ({
-    KAFKA_MODE: "demo",
-    AIVEN_KAFKA_BROKERS: "",
-    AIVEN_KAFKA_USERNAME: "",
-    AIVEN_KAFKA_PASSWORD: "",
-    AIVEN_KAFKA_SASL_MECHANISM: "SCRAM-SHA-256",
-    AIVEN_KAFKA_CA_PATH: "./certs/ca.pem",
-    KAFKA_TOPIC_PREFIX: "kplay",
-    MAX_CONSUMERS_PER_RUN: 10,
-    MAX_PRODUCE_RATE: 10,
-    EVENT_HISTORY_LIMIT: 2000,
-    TIMELINE_DISPLAY_LIMIT: 1000,
-    LOG_MESSAGE_PAYLOADS: false,
-  }),
-}));
+vi.mock("./env", async () => {
+  const { createTestServerEnv } = await import("./playground-runtime-test-env");
+  return { getServerEnv: () => createTestServerEnv() };
+});
 
 describe("authoritative runtime to teaching projector integration", () => {
   afterEach(() => {
@@ -43,32 +31,32 @@ describe("authoritative runtime to teaching projector integration", () => {
       expect(initial.frame.experiment.experimentId).toBeNull();
       expect(initial.frame.experiment.completedExperimentIds).toEqual([]);
 
-      const pivotal = await runtime.runExperiment(
+      const primary = await runtime.runExperiment(
         started.runId,
         teachingCase.primaryExperimentId,
       );
       assertProjectedState(
-        pivotal.scenarioState,
+        primary.scenarioState,
         teachingCase.scenarioId,
         teachingCase.primaryExperimentId,
       );
       assertPrimarySemanticInvariants(
         teachingCase.scenarioId,
-        pivotal.scenarioState,
+        primary.scenarioState,
       );
-      const pivotalResolution = resolveScenarioExperience(pivotal);
-      expect(pivotalResolution.kind).toBe("experience");
-      if (pivotalResolution.kind !== "experience") return;
+      const primaryResolution = resolveScenarioExperience(primary);
+      expect(primaryResolution.kind).toBe("experience");
+      if (primaryResolution.kind !== "experience") return;
       assertProjectedEvidence(
-        pivotalResolution.frame.lens.facts,
-        teachingCase.renderedEvidence.pivotal,
+        primaryResolution.frame.lens.facts,
+        teachingCase.renderedEvidence.primary,
       );
       expect(
-        pivotalResolution.frame.experiment.completedExperimentIds,
+        primaryResolution.frame.experiment.completedExperimentIds,
       ).toContain(teachingCase.primaryExperimentId);
       expect(
         experimentTransitionTrail(
-          pivotal.recentEvents,
+          primary.recentEvents,
           teachingCase.scenarioId,
           teachingCase.primaryExperimentId,
         ).length,

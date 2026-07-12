@@ -8,7 +8,7 @@ const streamsInitial = state({
   joins: [],
   lateRecords: [],
 });
-const streamsPivotal = state({
+const streamsPrimary = state({
   ...streamsInitial,
   revision: 1,
   experiment: complete("window-pair", 3),
@@ -21,11 +21,11 @@ const streamsPivotal = state({
   joins: [streamJoin("join-row-42", "join-42", "42", "order-42", "payment-42")],
 });
 const streamsContrast = state({
-  ...streamsPivotal,
+  ...streamsPrimary,
   revision: 2,
   experiment: complete("late-arrival", 2),
   inputs: [
-    ...streamsPivotal.inputs,
+    ...streamsPrimary.inputs,
     streamInput("payment-99", "payments", "99", 2_200, 7_500, "late"),
   ],
   lateRecords: ["payment-99"],
@@ -39,7 +39,7 @@ const outboxInitial = state({
   publishes: [],
   dedupeLedger: [],
 });
-const outboxPivotal = state({
+const outboxPrimary = state({
   ...outboxInitial,
   revision: 1,
   experiment: complete("cdc-batch", 4),
@@ -50,15 +50,15 @@ const outboxPivotal = state({
   dedupeLedger: [],
 });
 const outboxContrast = state({
-  ...outboxPivotal,
+  ...outboxPrimary,
   revision: 2,
   experiment: complete("retry-cdc", 2),
   connectorAttempts: [
-    ...outboxPivotal.connectorAttempts,
+    ...outboxPrimary.connectorAttempts,
     connectorAttempt("connector-row-2", 2, "retried"),
   ],
   publishes: [
-    ...outboxPivotal.publishes,
+    ...outboxPrimary.publishes,
     publish("publish-row-2", "cdc-message-1-retry", true),
   ],
   dedupeLedger: [ledger(1)],
@@ -70,7 +70,7 @@ const aclInitial = state({
   attempts: [],
   lastHighlightedCell: null,
 });
-const aclPivotal = state({
+const aclPrimary = state({
   ...aclInitial,
   revision: 1,
   experiment: complete("trigger-acl-denial", 2),
@@ -82,12 +82,12 @@ const aclPivotal = state({
   },
 });
 const aclContrast = state({
-  ...aclPivotal,
+  ...aclPrimary,
   revision: 2,
   experiment: complete("grant-required-permission", 2),
-  policies: [...aclPivotal.policies, policy("policy-write", "write", "allow")],
+  policies: [...aclPrimary.policies, policy("policy-write", "write", "allow")],
   attempts: [
-    ...aclPivotal.attempts,
+    ...aclPrimary.attempts,
     aclAttempt("acl-allowed", "write", "allowed", false, "policy-write"),
   ],
 });
@@ -97,7 +97,7 @@ export const pipelineAccessTestCases = [
     "streams-joins-windows",
     "Why did this pair join or miss its window?",
     streamsInitial,
-    streamsPivotal,
+    streamsPrimary,
     streamsContrast,
     "window-join",
     ["streams-valid-joins", 0],
@@ -108,7 +108,7 @@ export const pipelineAccessTestCases = [
     "outbox-cdc",
     "Where is the atomic outbox change now?",
     outboxInitial,
-    outboxPivotal,
+    outboxPrimary,
     outboxContrast,
     "pipeline",
     ["outbox-db-commits", 0],
@@ -119,7 +119,7 @@ export const pipelineAccessTestCases = [
     "acl-least-privilege",
     "Which exact ACL cell stopped this operation?",
     aclInitial,
-    aclPivotal,
+    aclPrimary,
     aclContrast,
     "gate",
     ["acl-denied", 0],

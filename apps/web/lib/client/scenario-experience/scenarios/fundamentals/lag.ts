@@ -24,6 +24,17 @@ export const lagExperience = experienceDefinition(
       (total, partition) => total + partition.lag,
       0,
     );
+    const drainEstimateFact = fact(
+      "drain-estimate",
+      "Drain estimate",
+      evidence(
+        scenarioState.drainEstimateMs == null
+          ? "Not draining"
+          : `${scenarioState.drainEstimateMs} ms`,
+        "derived",
+        "current",
+      ),
+    );
     const facts = [
       fact("lag-total", "Total lag", evidence(totalLag, "derived", "current"), {
         emphasis: totalLag > 0 ? "warning" : "positive",
@@ -43,17 +54,7 @@ export const lagExperience = experienceDefinition(
         "Consumers",
         evidence(scenarioState.consumerCount, provenance, "current"),
       ),
-      fact(
-        "drain-estimate",
-        "Drain estimate",
-        evidence(
-          scenarioState.drainEstimateMs == null
-            ? "Not draining"
-            : `${scenarioState.drainEstimateMs} ms`,
-          "derived",
-          "current",
-        ),
-      ),
+      drainEstimateFact,
     ];
     const partitionTable = table(
       "lag-by-partition",
@@ -189,7 +190,7 @@ export const lagExperience = experienceDefinition(
         table: sampleTable,
         trend,
         partitions: partitionTable,
-        drainEstimate: facts[4].value,
+        drainEstimate: drainEstimateFact.value,
       },
       frameNarrative,
       undefined,

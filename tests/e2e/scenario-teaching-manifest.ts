@@ -12,7 +12,7 @@ export type ScenarioTeachingCase<
   extensionNodeId: string;
   causalEdgeId: string;
   initial: { revision: 0; status: "idle" };
-  pivotal: {
+  primary: {
     status: "completed";
     experimentId: ScenarioExperimentIdForRole<Id, "primary">;
   };
@@ -21,7 +21,7 @@ export type ScenarioTeachingCase<
     experimentId: ScenarioExperimentIdForRole<Id, "contrast">;
   };
   renderedEvidence: {
-    pivotal: RenderedEvidenceExpectation;
+    primary: RenderedEvidenceExpectation;
     contrast: RenderedEvidenceExpectation;
   };
   mobileRequired: boolean;
@@ -45,7 +45,7 @@ function teachingCase<const Id extends ScenarioState["scenarioId"]>(
   contrastExperimentId: ScenarioExperimentIdForRole<Id, "contrast">,
   extensionNodeId: string,
   causalEdgeId: string,
-  pivotalEvidence: RenderedEvidenceExpectation,
+  primaryEvidence: RenderedEvidenceExpectation,
   contrastEvidence: RenderedEvidenceExpectation,
   mobileRequired = false,
 ): ScenarioTeachingCase<Id> {
@@ -56,10 +56,10 @@ function teachingCase<const Id extends ScenarioState["scenarioId"]>(
     extensionNodeId,
     causalEdgeId,
     initial: { revision: 0, status: "idle" },
-    pivotal: { status: "completed", experimentId: primaryExperimentId },
+    primary: { status: "completed", experimentId: primaryExperimentId },
     contrast: { status: "completed", experimentId: contrastExperimentId },
     renderedEvidence: {
-      pivotal: pivotalEvidence,
+      primary: primaryEvidence,
       contrast: contrastEvidence,
     },
     mobileRequired,

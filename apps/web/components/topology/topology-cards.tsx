@@ -1,7 +1,8 @@
-import type {
-  ConsumerSnapshot,
-  PlaygroundMessage,
-  RunSnapshot,
+import {
+  kafkaOffsetWindow,
+  type ConsumerSnapshot,
+  type PlaygroundMessage,
+  type RunSnapshot,
 } from "@kplay/contracts";
 import type { ConsumerTask } from "@/lib/client/current-consumer-task";
 import type { RuntimeTopologyProvenance } from "@/lib/client/topology-provenance";
@@ -262,18 +263,6 @@ export function ConsumerCard({
   );
 }
 
-export function partitionAssignments(consumers: ConsumerSnapshot[]) {
-  const assignments = new Map<number, { consumerId: string }>();
-  consumers.forEach((consumer) => {
-    consumer.assignments.forEach((assignment) => {
-      assignments.set(assignment.partition, {
-        consumerId: consumer.consumerId,
-      });
-    });
-  });
-  return assignments;
-}
-
 export function toneForPartition(partition: number) {
   return partitionTones[partition % partitionTones.length];
 }
@@ -288,11 +277,7 @@ export function messagesForPartition(
 }
 
 function offsetsAround(latestOffset?: string) {
-  const latest = Number(latestOffset);
-  if (!Number.isFinite(latest)) return [];
-  return Array.from({ length: 7 }, (_, index) =>
-    String(Math.max(0, latest - 6 + index)),
-  );
+  return latestOffset === undefined ? [] : kafkaOffsetWindow(latestOffset, 7);
 }
 
 function messageChipLabel(message: PlaygroundMessage) {

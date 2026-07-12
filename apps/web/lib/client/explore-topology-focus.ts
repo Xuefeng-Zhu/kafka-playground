@@ -1,5 +1,6 @@
 import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
 import type { EntityDetailModel, FocusRef } from "./scenario-experience/model";
+import { runtimeEventFocusAssociations } from "./runtime-event-focus";
 import type { TopologySelection } from "./topology-selection";
 
 export type ExploreTopologyFocus = {
@@ -56,64 +57,68 @@ export function resolveExploreTopologyFocus({
 
   if (!selectedEvent || selectedEvent.eventId !== focus.id) return emptyFocus;
 
-  const messageId =
-    "messageId" in selectedEvent && selectedEvent.messageId
-      ? selectedEvent.messageId
-      : null;
-  const partition =
-    "partition" in selectedEvent && typeof selectedEvent.partition === "number"
-      ? selectedEvent.partition
-      : null;
+  return focusForRuntimeEvent(
+    snapshot,
+    selectedEvent,
+    entityDetails,
+    scenarioNodeIds,
+  );
+}
+
+function focusForRuntimeEvent(
+  snapshot: RunSnapshot,
+  event: RuntimeEvent,
+  entityDetails: Readonly<Record<string, EntityDetailModel>>,
+  scenarioNodeIds: ReadonlySet<string>,
+): ExploreTopologyFocus {
+  const associations = runtimeEventFocusAssociations(event);
+  const { messageId, partition, consumerId } = associations;
   if (messageId) {
     const messageFocus = focusForMessage(snapshot, messageId, partition);
-    if (messageFocus.selectedMessageId || messageFocus.selectedCoreNode) {
-      return messageFocus;
-    }
+    if (hasResolvedFocus(messageFocus)) return messageFocus;
   }
 
   if (partition != null) {
-    const selectedCoreNode = selectionForEntity(
+    const partitionFocus = focusForCoreEntity(
       snapshot,
       `partition-${partition}`,
     );
-    if (selectedCoreNode) {
-      return {
-        selectedMessageId: null,
-        selectedCoreNode,
-        selectedScenarioNodeId: null,
-      };
-    }
+    if (hasResolvedFocus(partitionFocus)) return partitionFocus;
   }
 
-  const consumerId =
-    "consumerId" in selectedEvent && selectedEvent.consumerId
-      ? selectedEvent.consumerId
-      : null;
   if (consumerId) {
-    const selectedCoreNode = selectionForEntity(
+    const consumerFocus = focusForCoreEntity(
       snapshot,
       `consumer:${consumerId}`,
     );
-    if (selectedCoreNode) {
-      return {
-        selectedMessageId: null,
-        selectedCoreNode,
-        selectedScenarioNodeId: null,
-      };
-    }
+    if (hasResolvedFocus(consumerFocus)) return consumerFocus;
   }
 
-  if ("entityIds" in selectedEvent) {
-    for (const entityId of selectedEvent.entityIds) {
-      const alias = entityDetails[entityId]?.graphEntityId ?? entityId;
-      const entityFocus = focusForEntity(snapshot, alias, scenarioNodeIds);
-      if (entityFocus.selectedCoreNode || entityFocus.selectedScenarioNodeId) {
-        return entityFocus;
-      }
+  for (const entityId of associations.explicitEntityIds) {
+    const alias = entityDetails[entityId]?.graphEntityId ?? entityId;
+    const entityFocus = focusForEntity(snapshot, alias, scenarioNodeIds);
+    if (entityFocus.selectedCoreNode || entityFocus.selectedScenarioNodeId) {
+      return entityFocus;
     }
   }
 
   return emptyFocus;
+}
+
+function focusForCoreEntity(snapshot: RunSnapshot, entityId: string) {
+  return {
+    selectedMessageId: null,
+    selectedCoreNode: selectionForEntity(snapshot, entityId),
+    selectedScenarioNodeId: null,
+  } satisfies ExploreTopologyFocus;
+}
+
+function hasResolvedFocus(focus: ExploreTopologyFocus) {
+  return (
+    focus.selectedMessageId !== null ||
+    focus.selectedCoreNode !== null ||
+    focus.selectedScenarioNodeId !== null
+  );
 }
 
 function focusForMessage(

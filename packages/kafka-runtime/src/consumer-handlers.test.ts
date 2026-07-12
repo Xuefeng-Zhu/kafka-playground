@@ -16,6 +16,7 @@ describe("consumer handlers", () => {
 
     await startConsumerRun(
       consumer,
+      Promise.resolve(),
       {
         onAssigned: () => undefined,
         onRevoked: () => undefined,
@@ -35,6 +36,44 @@ describe("consumer handlers", () => {
       null,
       null,
     ]);
+  });
+
+  it("bounds startup when no lifecycle event reports readiness", async () => {
+    vi.useFakeTimers();
+    const onError = vi.fn<PlaygroundConsumerCallbacks["onError"]>();
+
+    try {
+      const startup = startConsumerRun(
+        consumerSource([]),
+        new Promise<void>(() => undefined),
+        {
+          onAssigned: () => undefined,
+          onRevoked: () => undefined,
+          onMessage: async () => undefined,
+          onError,
+        },
+        {},
+        (error) => ({
+          code: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : "failure",
+        }),
+        1_000,
+      );
+      const rejection = expect(startup).rejects.toThrow(
+        "Kafka consumer did not join its group within 1000ms.",
+      );
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+      await vi.waitFor(() =>
+        expect(onError).toHaveBeenCalledWith({
+          code: "ConsumerStartupTimeoutError",
+          message: "Kafka consumer did not join its group within 1000ms.",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

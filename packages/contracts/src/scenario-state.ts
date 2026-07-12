@@ -3,6 +3,7 @@ import {
   isScenarioExperimentIdFor,
   scenarioExperimentIdSchema,
 } from "./scenario-experiments";
+import { kafkaOffsetSchema } from "./kafka-offset";
 
 export const scenarioStateIds = [
   "partitioning",
@@ -49,7 +50,7 @@ export type ScenarioExperimentStatus = z.infer<
   typeof scenarioExperimentStatusSchema
 >;
 
-const offsetSchema = z.string();
+const offsetSchema = kafkaOffsetSchema;
 const evidenceBase = {
   id: z.string(),
   provenance: evidenceProvenanceSchema,

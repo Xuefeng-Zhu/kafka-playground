@@ -6,7 +6,7 @@ const duplicateInitial = state({
   deliveries: [],
   sideEffects: [],
 });
-const duplicatePivotal = state({
+const duplicatePrimary = state({
   ...duplicateInitial,
   revision: 3,
   experiment: complete("crash-and-redeliver", 3),
@@ -17,7 +17,7 @@ const duplicatePivotal = state({
   sideEffects: [sideEffect("payment-42", 2, 1)],
 });
 const duplicateContrast = state({
-  ...duplicatePivotal,
+  ...duplicatePrimary,
   revision: 4,
   experiment: complete("duplicate-risk-records", 1),
 });
@@ -26,7 +26,7 @@ const retryInitial = state({
   ...base("retry-dead-letter-queues"),
   records: [],
 });
-const retryPivotal = state({
+const retryPrimary = state({
   ...retryInitial,
   revision: 1,
   virtualTimeMs: 1_100,
@@ -34,12 +34,12 @@ const retryPivotal = state({
   records: [retryRecord("retry-transient", "transient", "succeeded", 2)],
 });
 const retryContrast = state({
-  ...retryPivotal,
+  ...retryPrimary,
   revision: 2,
   virtualTimeMs: 4_200,
   experiment: complete("poison-to-dlq", 3),
   records: [
-    ...retryPivotal.records,
+    ...retryPrimary.records,
     retryRecord("retry-poison", "poison", "dlq", 3),
   ],
 });
@@ -50,7 +50,7 @@ const schemaInitial = state({
   topicRecordCount: 0,
   attempts: [],
 });
-const schemaPivotal = state({
+const schemaPrimary = state({
   ...schemaInitial,
   revision: 1,
   experiment: complete("compatible-schema", 2),
@@ -59,11 +59,11 @@ const schemaPivotal = state({
   attempts: [schemaAttempt("schema-attempt-v2", 2, true)],
 });
 const schemaContrast = state({
-  ...schemaPivotal,
+  ...schemaPrimary,
   revision: 2,
   experiment: complete("trigger-schema-rejection", 2),
   attempts: [
-    ...schemaPivotal.attempts,
+    ...schemaPrimary.attempts,
     schemaAttempt("schema-attempt-v3", 3, false),
   ],
 });
@@ -72,7 +72,7 @@ const transactionInitial = state({
   ...base("transactional-producers"),
   transactions: [],
 });
-const transactionPivotal = state({
+const transactionPrimary = state({
   ...transactionInitial,
   revision: 1,
   experiment: complete("transaction-pair", 2),
@@ -81,11 +81,11 @@ const transactionPivotal = state({
   ],
 });
 const transactionContrast = state({
-  ...transactionPivotal,
+  ...transactionPrimary,
   revision: 2,
   experiment: complete("abort-and-dedupe", 2),
   transactions: [
-    ...transactionPivotal.transactions,
+    ...transactionPrimary.transactions,
     transaction("txn-2", "aborted", ["txn-2-r1"], false),
     {
       ...transaction("txn-3", "committed", ["txn-3-r1"], true),
@@ -102,7 +102,7 @@ export const deliveryGateTestCases = [
     "at-least-once-duplicates",
     "Why did the same offset apply a side effect twice?",
     duplicateInitial,
-    duplicatePivotal,
+    duplicatePrimary,
     duplicateContrast,
     "lifecycle",
     ["redelivery-count", 0],
@@ -113,7 +113,7 @@ export const deliveryGateTestCases = [
     "retry-dead-letter-queues",
     "Which single route is this failed record on now?",
     retryInitial,
-    retryPivotal,
+    retryPrimary,
     retryContrast,
     "lifecycle",
     ["retry-records", 0],
@@ -124,7 +124,7 @@ export const deliveryGateTestCases = [
     "schema-evolution-karapace",
     "Why did one schema reach Kafka while another stopped?",
     schemaInitial,
-    schemaPivotal,
+    schemaPrimary,
     schemaContrast,
     "gate",
     ["schema-topic-records", 0],
@@ -135,7 +135,7 @@ export const deliveryGateTestCases = [
     "transactional-producers",
     "Which staged records are actually visible?",
     transactionInitial,
-    transactionPivotal,
+    transactionPrimary,
     transactionContrast,
     "transaction",
     ["transaction-visible", 0],

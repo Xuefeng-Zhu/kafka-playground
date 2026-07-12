@@ -10,7 +10,7 @@ const replayInitial = state({
   rebuildInProgress: false,
   producedCount: 0,
 });
-const replayPivotal = state({
+const replayPrimary = state({
   ...replayInitial,
   revision: 1,
   experiment: complete("aggregate-events", 3),
@@ -20,7 +20,7 @@ const replayPivotal = state({
   producedCount: 3,
 });
 const replayContrast = state({
-  ...replayPivotal,
+  ...replayPrimary,
   revision: 2,
   experiment: complete("rebuild-projection", 5),
   cursor: "3",
@@ -36,7 +36,7 @@ const lagInitial = state({
   consumerCount: 1,
   drainEstimateMs: null,
 });
-const lagPivotal = state({
+const lagPrimary = state({
   ...lagInitial,
   revision: 1,
   virtualTimeMs: 5_000,
@@ -46,12 +46,12 @@ const lagPivotal = state({
   drainEstimateMs: 9_000,
 });
 const lagContrast = state({
-  ...lagPivotal,
+  ...lagPrimary,
   revision: 2,
   virtualTimeMs: 10_100,
   experiment: complete("recover-lag", 2),
   samples: [
-    ...lagPivotal.samples,
+    ...lagPrimary.samples,
     lagSample("lag-sample-1", 3, 9, 6, "falling"),
     lagSample("lag-sample-2", 3, 9, 0, "steady"),
   ],
@@ -64,18 +64,18 @@ const hotInitial = state({
   ...base("hot-partitions-key-skew"),
   phases: [],
 });
-const hotPivotal = state({
+const hotPrimary = state({
   ...hotInitial,
   revision: 1,
   experiment: complete("hot-key-burst", 1),
   phases: [hotPhase("phase-hot", "hot", [0, 8, 0, 0], 8)],
 });
 const hotContrast = state({
-  ...hotPivotal,
+  ...hotPrimary,
   revision: 2,
   experiment: complete("balanced-comparison", 2),
   phases: [
-    ...hotPivotal.phases,
+    ...hotPrimary.phases,
     hotPhase("phase-balanced", "balanced", [2, 2, 2, 2], 1),
   ],
 });
@@ -86,7 +86,7 @@ const compactionInitial = state({
   materialized: [],
   cleanerPasses: [],
 });
-const compactionPivotal = state({
+const compactionPrimary = state({
   ...compactionInitial,
   revision: 1,
   experiment: complete("run-compaction", 2),
@@ -103,17 +103,17 @@ const compactionPivotal = state({
   cleanerPasses: [cleaner("cleaner-compaction", "compaction", ["0", "1"])],
 });
 const compactionContrast = state({
-  ...compactionPivotal,
+  ...compactionPrimary,
   revision: 2,
   experiment: complete("expire-tombstone", 1),
-  rawLog: compactionPivotal.rawLog.map((entry) =>
+  rawLog: compactionPrimary.rawLog.map((entry) =>
     entry.id === "raw-b-delete"
       ? { ...entry, removedAtStage: "tombstone_cleanup" as const }
       : entry,
   ),
   materialized: [materialized("state-a", "A", "A2", "2")],
   cleanerPasses: [
-    ...compactionPivotal.cleanerPasses,
+    ...compactionPrimary.cleanerPasses,
     cleaner("cleaner-tombstone", "tombstone_cleanup", ["3"]),
   ],
 });
@@ -136,7 +136,7 @@ const retentionOffsetOutOfRange: NonNullable<
   recoveryOptions: ["earliest", "latest", "restore"],
   provenance: "simulated",
 };
-const retentionPivotal = state({
+const retentionPrimary = state({
   ...retentionInitial,
   revision: 1,
   virtualTimeMs: 61_200,
@@ -154,7 +154,7 @@ const retentionPivotal = state({
   lastOffsetOutOfRange: retentionOffsetOutOfRange,
 });
 const retentionContrast = state({
-  ...retentionPivotal,
+  ...retentionPrimary,
   revision: 2,
   virtualTimeMs: 61_300,
   experiment: complete("recover-retention", 1),
@@ -166,7 +166,7 @@ const cooperativeInitial = state({
   ...base("cooperative-rebalancing"),
   comparisons: [],
 });
-const cooperativePivotal = state({
+const cooperativePrimary = state({
   ...cooperativeInitial,
   revision: 1,
   experiment: complete("compare-rebalance", 3),
@@ -176,7 +176,7 @@ const cooperativePivotal = state({
   ],
 });
 const cooperativeContrast = state({
-  ...cooperativePivotal,
+  ...cooperativePrimary,
   revision: 2,
   experiment: complete("cooperative-pressure", 3),
   comparisons: [
@@ -197,7 +197,7 @@ export const historyCapacityTestCases = [
     "event-replay-sourcing",
     "Did replay append facts or rebuild derived state?",
     replayInitial,
-    replayPivotal,
+    replayPrimary,
     replayContrast,
     "projection",
     ["replay-produced-count", 0],
@@ -208,7 +208,7 @@ export const historyCapacityTestCases = [
     "consumer-lag-backpressure",
     "Why is lag rising or falling?",
     lagInitial,
-    lagPivotal,
+    lagPrimary,
     lagContrast,
     "capacity",
     ["lag-total", 0],
@@ -219,7 +219,7 @@ export const historyCapacityTestCases = [
     "hot-partitions-key-skew",
     "How does the equal-size balanced phase differ?",
     hotInitial,
-    hotPivotal,
+    hotPrimary,
     hotContrast,
     "heatmap",
     ["hot-phase-size", 0],
@@ -230,7 +230,7 @@ export const historyCapacityTestCases = [
     "log-compaction-tombstones",
     "When does a tombstone actually disappear?",
     compactionInitial,
-    compactionPivotal,
+    compactionPrimary,
     compactionContrast,
     "projection",
     ["compaction-raw-count", 0],
@@ -241,7 +241,7 @@ export const historyCapacityTestCases = [
     "retention-data-loss",
     "Why can a committed offset become unreadable?",
     retentionInitial,
-    retentionPivotal,
+    retentionPrimary,
     retentionContrast,
     "lifecycle",
     ["retention-expired", 0],
@@ -252,7 +252,7 @@ export const historyCapacityTestCases = [
     "cooperative-rebalancing",
     "Which strategy keeps more partition ownership?",
     cooperativeInitial,
-    cooperativePivotal,
+    cooperativePrimary,
     cooperativeContrast,
     "assignment",
     ["eager-kept", 0],

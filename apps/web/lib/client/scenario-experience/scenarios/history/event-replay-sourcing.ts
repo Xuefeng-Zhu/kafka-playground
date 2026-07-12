@@ -1,3 +1,4 @@
+import { compareKafkaOffsets } from "@kplay/contracts";
 import {
   experienceDefinition,
   experimentEvidence,
@@ -14,121 +15,23 @@ import {
   row,
   table,
 } from "../../helpers";
+import type { ScenarioExperienceSnapshot, ScenarioStateFor } from "../../model";
 export const replayExperience = experienceDefinition(
   "event-replay-sourcing",
   (definition, input) => {
     const { snapshot, scenarioState } = input;
     const logWindow = latestWindow(scenarioState.log);
-    const sourceTable = table(
-      "replay-source-log",
-      "Immutable source log",
-      [
-        { key: "offset", label: "Offset", align: "end" },
-        { key: "aggregate", label: "Aggregate" },
-        { key: "event", label: "Event" },
-        { key: "delta", label: "Delta", align: "end" },
-      ],
-      logWindow.items.map((entry) =>
-        row(
-          entry.id,
-          {
-            offset: evidence(
-              entry.offset,
-              entry.provenance,
-              "recent-window",
-              logWindow.bounded?.label,
-            ),
-            aggregate: evidence(
-              entry.aggregateId,
-              entry.provenance,
-              "recent-window",
-              logWindow.bounded?.label,
-            ),
-            event: evidence(
-              entry.eventName,
-              entry.provenance,
-              "recent-window",
-              logWindow.bounded?.label,
-            ),
-            delta: evidence(
-              entry.delta,
-              entry.provenance,
-              "recent-window",
-              logWindow.bounded?.label,
-            ),
-          },
-          recordFocus(
-            snapshot,
-            entry.id,
-            undefined,
-            entry.offset,
-            "replay-cursor",
-          ),
-        ),
-      ),
-      "Append original events before rebuilding a projection.",
-      logWindow.bounded,
-    );
-    const projectionTable = table(
-      "replay-projection-state",
-      "Derived projection state",
-      [
-        { key: "aggregate", label: "Aggregate" },
-        { key: "value", label: "Projected value", align: "end" },
-      ],
-      Object.entries(scenarioState.projection).map(([aggregateId, value]) =>
-        row(
-          `projection-${aggregateId}`,
-          {
-            aggregate: evidence(aggregateId, "derived", "current"),
-            value: evidence(value, "derived", "current"),
-          },
-          entityFocus("cart-projection", "projection-store"),
-        ),
-      ),
-      "The projection is empty until replay applies source events.",
-    );
+    const sourceTable = buildReplaySourceTable(snapshot, logWindow);
+    const projectionTable = buildReplayProjectionTable(scenarioState);
+    const replayCursor = scenarioState.cursor;
     const appliedCount =
-      scenarioState.cursor == null
+      replayCursor == null
         ? 0
         : scenarioState.log.filter(
-            (entry) => Number(entry.offset) <= Number(scenarioState.cursor),
+            (entry) => compareKafkaOffsets(entry.offset, replayCursor) <= 0,
           ).length;
-    const facts = [
-      fact(
-        "replay-produced-count",
-        "Produced facts",
-        evidence(scenarioState.producedCount, "simulated", "run-total"),
-      ),
-      fact(
-        "replay-log-count",
-        "Source log records",
-        evidence(scenarioState.log.length, "simulated", "run-total"),
-      ),
-      fact(
-        "replay-cursor-value",
-        "Replay cursor",
-        evidence(
-          scenarioState.cursor ?? "Before earliest",
-          "simulated",
-          "current",
-        ),
-      ),
-      fact(
-        "replay-applied-count",
-        "Events applied",
-        evidence(appliedCount, "derived", "current"),
-      ),
-      fact(
-        "replay-status",
-        "Rebuild",
-        evidence(
-          scenarioState.rebuildInProgress ? "In progress" : "Stopped",
-          "simulated",
-          "current",
-        ),
-      ),
-    ];
+    const factSet = buildReplayFacts(scenarioState, appliedCount);
+    const facts = factSet.all;
     const graph = buildScenarioGraph("event-replay-sourcing", snapshot, {
       active: scenarioState.log.length > 0,
       inactiveEdgeIds:
@@ -178,7 +81,7 @@ export const replayExperience = experienceDefinition(
         facts,
         source: sourceTable,
         projection: projectionTable,
-        cursor: facts[2].value,
+        cursor: factSet.replayCursor.value,
       },
       frameNarrative,
       undefined,
@@ -198,8 +101,137 @@ export const replayExperience = experienceDefinition(
             evidence(0, "derived", "current"),
           ),
         ],
-        scenarioState.cursor != null ? [facts[0], facts[3]] : [],
+        scenarioState.cursor != null
+          ? [factSet.producedCount, factSet.appliedCount]
+          : [],
       ),
     );
   },
 );
+
+type ReplayState = ScenarioStateFor<"event-replay-sourcing">;
+type ReplayLogEntry = ReplayState["log"][number];
+
+function buildReplayFacts(state: ReplayState, appliedCountValue: number) {
+  const producedCount = fact(
+    "replay-produced-count",
+    "Produced facts",
+    evidence(state.producedCount, "simulated", "run-total"),
+  );
+  const logRecordCount = fact(
+    "replay-log-count",
+    "Source log records",
+    evidence(state.log.length, "simulated", "run-total"),
+  );
+  const replayCursor = fact(
+    "replay-cursor-value",
+    "Replay cursor",
+    evidence(state.cursor ?? "Before earliest", "simulated", "current"),
+  );
+  const appliedCount = fact(
+    "replay-applied-count",
+    "Events applied",
+    evidence(appliedCountValue, "derived", "current"),
+  );
+  const rebuildStatus = fact(
+    "replay-status",
+    "Rebuild",
+    evidence(
+      state.rebuildInProgress ? "In progress" : "Stopped",
+      "simulated",
+      "current",
+    ),
+  );
+  return {
+    all: [
+      producedCount,
+      logRecordCount,
+      replayCursor,
+      appliedCount,
+      rebuildStatus,
+    ],
+    producedCount,
+    logRecordCount,
+    replayCursor,
+    appliedCount,
+    rebuildStatus,
+  };
+}
+
+function buildReplaySourceTable(
+  snapshot: ScenarioExperienceSnapshot,
+  logWindow: ReturnType<typeof latestWindow<ReplayLogEntry>>,
+) {
+  return table(
+    "replay-source-log",
+    "Immutable source log",
+    [
+      { key: "offset", label: "Offset", align: "end" },
+      { key: "aggregate", label: "Aggregate" },
+      { key: "event", label: "Event" },
+      { key: "delta", label: "Delta", align: "end" },
+    ],
+    logWindow.items.map((entry) =>
+      row(
+        entry.id,
+        {
+          offset: evidence(
+            entry.offset,
+            entry.provenance,
+            "recent-window",
+            logWindow.bounded?.label,
+          ),
+          aggregate: evidence(
+            entry.aggregateId,
+            entry.provenance,
+            "recent-window",
+            logWindow.bounded?.label,
+          ),
+          event: evidence(
+            entry.eventName,
+            entry.provenance,
+            "recent-window",
+            logWindow.bounded?.label,
+          ),
+          delta: evidence(
+            entry.delta,
+            entry.provenance,
+            "recent-window",
+            logWindow.bounded?.label,
+          ),
+        },
+        recordFocus(
+          snapshot,
+          entry.id,
+          undefined,
+          entry.offset,
+          "replay-cursor",
+        ),
+      ),
+    ),
+    "Append original events before rebuilding a projection.",
+    logWindow.bounded,
+  );
+}
+
+function buildReplayProjectionTable(state: ReplayState) {
+  return table(
+    "replay-projection-state",
+    "Derived projection state",
+    [
+      { key: "aggregate", label: "Aggregate" },
+      { key: "value", label: "Projected value", align: "end" },
+    ],
+    Object.entries(state.projection).map(([aggregateId, value]) =>
+      row(
+        `projection-${aggregateId}`,
+        {
+          aggregate: evidence(aggregateId, "derived", "current"),
+          value: evidence(value, "derived", "current"),
+        },
+        entityFocus("cart-projection", "projection-store"),
+      ),
+    ),
+    "The projection is empty until replay applies source events.",
+  );
+}

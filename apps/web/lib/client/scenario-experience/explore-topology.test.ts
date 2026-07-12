@@ -1,4 +1,5 @@
 import { scenarioStateIds, type ScenarioState } from "@kplay/contracts";
+import { SCENARIOS } from "@kplay/scenario-engine";
 import { describe, expect, it } from "vitest";
 import { runSnapshot } from "../run-snapshot-test-fixtures";
 import {
@@ -54,7 +55,7 @@ describe("scenario Explore topology definitions", () => {
 
   for (const entry of teachingScenarioTestManifest) {
     it(`${entry.scenarioId} projects a valid, stable extension and route`, () => {
-      const frames = [entry.initial, entry.pivotal, entry.contrast].map(
+      const frames = [entry.initial, entry.primary, entry.contrast].map(
         (state) => frameFor(entry.scenarioId, state),
       );
       const projections = frames.map((frame) => {
@@ -307,7 +308,9 @@ function frameFor(scenarioId: ScenarioExperienceId, state: ScenarioState) {
 }
 
 function partitionCount(scenarioId: ScenarioExperienceId) {
-  return scenarioId === "hot-partitions-key-skew" ? 4 : 3;
+  const scenario = SCENARIOS.find((candidate) => candidate.id === scenarioId);
+  if (!scenario) throw new Error(`Missing ${scenarioId} scenario definition`);
+  return scenario.topic.partitions;
 }
 
 function stableNode(node: {

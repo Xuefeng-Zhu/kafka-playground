@@ -4,10 +4,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
-  useState,
-  useSyncExternalStore,
   type Dispatch,
 } from "react";
 import {
@@ -34,33 +31,16 @@ export function useRunLiveUpdates({
 }) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const closeLiveUpdatesRef = useRef<() => void>(() => undefined);
-  const [deliveryStore] = useState(createLiveUpdateStore);
-  const renderToken = deliveryStore.beginRender();
-  useSyncExternalStore(
-    deliveryStore.subscribe,
-    deliveryStore.getSnapshot,
-    deliveryStore.getSnapshot,
-  );
 
   const closeLiveUpdates = useCallback(() => {
     closeLiveUpdatesRef.current();
   }, []);
 
-  useLayoutEffect(() => {
-    deliveryStore.commitRender(renderToken);
-  });
-
-  useEffect(() => {
-    const updates = deliveryStore.drain();
-    if (updates.length === 0) return;
-    startTransition(() => {
-      for (const update of updates) update();
-    });
-  });
-
   useEffect(() => {
     if (!runId) return;
     let active = true;
+    let deliveryScheduled = false;
+    let queuedUpdates: Array<() => void> = [];
     let refreshGeneration = 0;
     let refreshInFlight = false;
     let refreshQueued = false;
@@ -69,13 +49,27 @@ export function useRunLiveUpdates({
     eventSourceRef.current = source;
     const enqueueUpdate = (update: () => void) => {
       if (!active) return;
-      deliveryStore.enqueue(update);
+      queuedUpdates.push(update);
+      if (deliveryScheduled) return;
+      deliveryScheduled = true;
+      queueMicrotask(() => {
+        deliveryScheduled = false;
+        if (!active) {
+          queuedUpdates = [];
+          return;
+        }
+        const updates = queuedUpdates;
+        queuedUpdates = [];
+        startTransition(() => {
+          for (const queuedUpdate of updates) queuedUpdate();
+        });
+      });
     };
     const closeSource = () => {
       if (!active) return;
       active = false;
       refreshGeneration += 1;
-      deliveryStore.clear();
+      queuedUpdates = [];
       source.close();
       if (eventSourceRef.current === source) eventSourceRef.current = null;
     };
@@ -168,7 +162,7 @@ export function useRunLiveUpdates({
         closeLiveUpdatesRef.current = () => undefined;
       }
     };
-  }, [deliveryStore, dispatch, runId, setActionError]);
+  }, [dispatch, runId, setActionError]);
 
   return closeLiveUpdates;
 }
@@ -177,45 +171,4 @@ async function refreshSnapshot(runId: string) {
   const result = await fetchRunSnapshot(runId);
   if (!result.ok) throw new Error(result.message);
   return result.data;
-}
-
-function createLiveUpdateStore() {
-  let version = 0;
-  let queuedUpdates: Array<() => void> = [];
-  let renderToken = 0;
-  let pendingRenderToken: number | null = null;
-  const listeners = new Set<() => void>();
-
-  return {
-    beginRender() {
-      pendingRenderToken = ++renderToken;
-      return renderToken;
-    },
-    clear() {
-      queuedUpdates = [];
-    },
-    commitRender(token: number) {
-      if (pendingRenderToken === token) pendingRenderToken = null;
-    },
-    drain() {
-      const updates = queuedUpdates;
-      queuedUpdates = [];
-      return updates;
-    },
-    enqueue(update: () => void) {
-      queuedUpdates.push(update);
-      version += 1;
-      if (pendingRenderToken !== null) return;
-      for (const listener of listeners) listener();
-    },
-    getSnapshot() {
-      return version;
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
 }

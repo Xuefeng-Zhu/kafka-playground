@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { kafkaOffsetSchema } from "./kafka-offset";
 import { scenarioStateIdSchema, scenarioStateSchema } from "./scenario-state";
 import {
   isScenarioExperimentIdFor,
@@ -8,6 +9,7 @@ import {
 
 export * from "./scenario-state";
 export * from "./scenario-experiments";
+export * from "./kafka-offset";
 
 export const kafkaModeSchema = z.enum(["demo", "aiven", "remote"]);
 export type KafkaMode = z.infer<typeof kafkaModeSchema>;
@@ -145,14 +147,14 @@ export const playgroundMessageSchema = z.object({
   runId: z.string(),
   topic: z.string(),
   partition: z.number().int().nonnegative().nullable(),
-  offset: z.string().nullable(),
+  offset: kafkaOffsetSchema.nullable(),
   key: z.string().nullable(),
   value: z.record(z.string(), z.unknown()),
   headers: z.record(z.string(), z.string()),
   timestamp: z.string().nullable(),
   state: messageStateSchema,
   assignedConsumerId: z.string().nullable(),
-  committedOffset: z.string().nullable(),
+  committedOffset: kafkaOffsetSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -283,7 +285,7 @@ const scenarioExperimentEventBaseSchema = eventBaseSchema.extend({
   virtualTimeMs: z.number().int().nonnegative(),
   messageId: z.string().optional(),
   partition: z.number().int().nonnegative().optional(),
-  offset: z.string().optional(),
+  offset: kafkaOffsetSchema.optional(),
   step: z.object({
     id: z.string(),
     index: z.number().int().nonnegative(),
@@ -305,7 +307,7 @@ export const runtimeEventSchema = z
       messageId: z.string(),
       topic: z.string(),
       partition: z.number().int().nonnegative(),
-      offset: z.string(),
+      offset: kafkaOffsetSchema,
       key: z.string().nullable(),
       kafkaTimestamp: z.string().nullable(),
     }),
@@ -315,7 +317,7 @@ export const runtimeEventSchema = z
       consumerId: z.string(),
       topic: z.string(),
       partition: z.number().int().nonnegative(),
-      offset: z.string(),
+      offset: kafkaOffsetSchema,
     }),
     eventBaseSchema.extend({
       type: z.literal("consumer.partitions_assigned"),
@@ -343,7 +345,7 @@ export const runtimeEventSchema = z
       groupId: z.string(),
       topic: z.string(),
       partition: z.number().int().nonnegative(),
-      committedOffset: z.string(),
+      committedOffset: kafkaOffsetSchema,
       messageId: z.string(),
     }),
     eventBaseSchema.extend({
@@ -352,7 +354,7 @@ export const runtimeEventSchema = z
       groupId: z.string(),
       topic: z.string(),
       partition: z.number().int().nonnegative(),
-      committedOffset: z.string(),
+      committedOffset: kafkaOffsetSchema,
       messageId: z.string(),
     }),
     eventBaseSchema.extend({
@@ -361,7 +363,7 @@ export const runtimeEventSchema = z
       groupId: z.string(),
       topic: z.string(),
       partition: z.number().int().nonnegative(),
-      attemptedOffset: z.string(),
+      attemptedOffset: kafkaOffsetSchema,
       messageId: z.string(),
       errorCode: z.string(),
     }),
@@ -427,8 +429,8 @@ export const runSnapshotSchema = z
     keyStrategy: keyStrategySchema,
     processingLatencyMs: z.number().int().min(0),
     consumers: z.array(consumerSnapshotSchema),
-    latestPartitionOffsets: z.record(z.string(), z.string()),
-    latestCommittedOffsets: z.record(z.string(), z.string()),
+    latestPartitionOffsets: z.record(z.string(), kafkaOffsetSchema),
+    latestCommittedOffsets: z.record(z.string(), kafkaOffsetSchema),
     messageCounts: z.record(z.string(), z.number().int().nonnegative()),
     recentMessages: z.array(playgroundMessageSchema),
     recentEvents: z.array(runtimeEventSchema),

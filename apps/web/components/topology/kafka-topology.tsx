@@ -13,8 +13,9 @@ import { Maximize2, Minus, Network, Plus } from "lucide-react";
 import type { ScenarioExploreTopologyProjection } from "@/lib/client/scenario-experience/explore-topology";
 import { hasActiveConsumerTaskDuration } from "@/lib/client/current-consumer-task";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { deriveRuntimeTopologyState } from "@/lib/client/runtime-topology-state";
+import { useMobileTopology } from "@/lib/client/use-mobile-topology";
 import { useLiveTaskClock } from "@/lib/client/use-live-task-clock";
-import { partitionAssignments } from "./topology-cards";
 import {
   buildTopologyEdges,
   buildTopologyNodes,
@@ -74,31 +75,19 @@ function KafkaTopologyFlow({
   onSelectMessage: (messageId: string) => void;
   onSelectNode: (selection: TopologySelection) => void;
 }) {
-  const partitions = Array.from(
-    { length: snapshot.partitionCount },
-    (_, partition) => partition,
-  );
   const consumers = snapshot.consumers;
-  const assignmentByPartition = useMemo(
-    () => partitionAssignments(consumers),
-    [consumers],
-  );
-  const latestMessage = snapshot.recentMessages.at(-1) ?? null;
-  const activePartition =
-    typeof latestMessage?.partition === "number"
-      ? latestMessage.partition
-      : null;
-  const activeConsumerId =
-    activePartition === null
-      ? null
-      : (latestMessage?.assignedConsumerId ??
-        assignmentByPartition.get(activePartition)?.consumerId ??
-        null);
+  const {
+    activeConsumerId,
+    activePartition,
+    assignmentByPartition,
+    latestMessage,
+    partitions,
+  } = useMemo(() => deriveRuntimeTopologyState(snapshot), [snapshot]);
   const [layout, setLayout] = useState<TopologyLayout>("auto");
   const hasMountedRef = useRef(false);
   const topologyCanvasRef = useRef<HTMLDivElement | null>(null);
   const canvasSizeRef = useRef({ height: 0, width: 0 });
-  const isCompact = useCompactTopology();
+  const isCompact = useMobileTopology() ?? false;
   const flow = useReactFlow<TopologyNode, TopologyEdge>();
   const updateNodeInternals = useUpdateNodeInternals();
   const viewport = useViewport();
@@ -417,18 +406,4 @@ function clampZoom(nextZoom: number) {
 function handleReactFlowError(code: string, message: string) {
   if (code === "013") return;
   console.warn(`[React Flow ${code}] ${message}`);
-}
-
-function useCompactTopology() {
-  const [compact, setCompact] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 767px)");
-    const sync = () => setCompact(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return compact;
 }

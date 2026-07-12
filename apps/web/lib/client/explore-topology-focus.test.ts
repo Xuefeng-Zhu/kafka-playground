@@ -75,6 +75,58 @@ describe("Explore topology focus", () => {
     });
   });
 
+  it("resolves partition-only runtime events to core partition focus", () => {
+    const snapshot = runSnapshot();
+    const event = experimentEvent({ partition: 1 });
+
+    expect(
+      resolveExploreTopologyFocus({
+        snapshot,
+        focus: { kind: "event", id: event.eventId },
+        selectedEvent: event,
+      }).selectedCoreNode,
+    ).toEqual({ type: "partition", partition: 1 });
+  });
+
+  it("resolves consumer runtime events to existing core consumers", () => {
+    const snapshot = runSnapshot({
+      consumers: [consumerSnapshot({ consumerId: "consumer-1" })],
+    });
+    const event = consumerStartedEvent();
+
+    expect(
+      resolveExploreTopologyFocus({
+        snapshot,
+        focus: { kind: "event", id: event.eventId },
+        selectedEvent: event,
+      }).selectedCoreNode,
+    ).toEqual({ type: "consumer", consumerId: "consumer-1" });
+  });
+
+  it("resolves runtime event evidence entities through graph aliases", () => {
+    const snapshot = runSnapshot();
+    const event = experimentEvent({ entityIds: ["routing-evidence-1"] });
+
+    expect(
+      resolveExploreTopologyFocus({
+        snapshot,
+        focus: { kind: "event", id: event.eventId },
+        selectedEvent: event,
+        entityDetails: {
+          "routing-evidence-1": {
+            entityId: "routing-evidence-1",
+            title: "Routing evidence",
+            summary: "A routed record",
+            provenance: "simulated",
+            graphEntityId: "topic",
+            facts: [],
+            focus: { kind: "entity", id: "routing-evidence-1" },
+          },
+        },
+      }).selectedCoreNode,
+    ).toEqual({ type: "topic" });
+  });
+
   it("resolves evidence entities through graph aliases", () => {
     const snapshot = runSnapshot();
     expect(
@@ -205,4 +257,15 @@ function experimentEvent(
     },
     ...overrides,
   } satisfies ExperimentTransitionEvent;
+}
+
+function consumerStartedEvent(): RuntimeEvent {
+  return {
+    eventId: "consumer-event-1",
+    runId: "run-1",
+    sequence: 1,
+    occurredAt: "2026-07-09T00:00:00.000Z",
+    type: "consumer.started",
+    consumerId: "consumer-1",
+  };
 }

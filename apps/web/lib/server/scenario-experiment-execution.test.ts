@@ -89,6 +89,110 @@ describe("scenario experiment setup", () => {
     expect(harness.isEventBufferActive()).toBe(false);
     expect(harness.run.scenarioState?.experiment.status).toBe("failed");
   });
+
+  it("preserves the primary failure while attempting every recovery stage", async () => {
+    const harness = await createHarness();
+    const primaryError = new Error("observation preparation failed");
+    harness.input.prepareObservations = vi.fn().mockRejectedValue(primaryError);
+    harness.discardEventBuffer.mockImplementationOnce(() => {
+      throw new Error("buffer discard failed");
+    });
+    harness.restoreCheckpoint.mockImplementationOnce(() => {
+      harness.run.scenarioState = null;
+      throw new Error("checkpoint restore failed");
+    });
+    harness.restoreProducerStatus.mockImplementationOnce(() => {
+      throw new Error("producer status restore failed");
+    });
+    harness.resumeTimers.mockImplementationOnce(() => {
+      throw new Error("timer resume failed");
+    });
+    harness.emit.mockImplementation((type) => {
+      if (type === "scenario.experiment.failed") {
+        throw new Error("failure event emission failed");
+      }
+    });
+
+    const error = await executeScenarioExperiment(harness.input).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AggregateError);
+    const aggregate = error as AggregateError;
+    expect(aggregate.cause).toBe(primaryError);
+    expect(aggregate.errors[0]).toBe(primaryError);
+    expect(
+      aggregate.errors
+        .slice(1)
+        .map((failure) =>
+          failure instanceof Error ? failure.message : String(failure),
+        ),
+    ).toEqual([
+      "Experiment recovery failed to discard event buffer.",
+      "Experiment recovery failed to restore checkpoint.",
+      "Experiment recovery failed to emit failed event.",
+      "Experiment recovery failed to restore producer status.",
+      "Experiment recovery failed to resume timers.",
+    ]);
+    expect(harness.discardEventBuffer).toHaveBeenCalledTimes(2);
+    expect(harness.restoreCheckpoint).toHaveBeenCalledTimes(1);
+    expect(harness.restoreProducerStatus).toHaveBeenCalledTimes(1);
+    expect(harness.resumeTimers).toHaveBeenCalledTimes(1);
+    expect(harness.run.inFlightExperimentId).toBeNull();
+    expect(harness.run.scenarioState?.experiment).toMatchObject({
+      status: "failed",
+      experimentId: "trigger-acl-denial",
+      error: {
+        code: "SCENARIO_EXPERIMENT_FAILED",
+        message: "observation preparation failed",
+      },
+    });
+  });
+
+  it("clears the guard and retains completed state when timer resumption fails", async () => {
+    const harness = await createHarness();
+    harness.resumeTimers.mockImplementationOnce(() => {
+      throw new Error("timer resume failed");
+    });
+
+    const error = await executeScenarioExperiment(harness.input).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AggregateError);
+    const aggregate = error as AggregateError;
+    expect(aggregate.message).toBe("Experiment finalization failed.");
+    expect(aggregate.errors).toEqual([
+      expect.objectContaining({
+        message: "Experiment recovery failed to resume timers.",
+        cause: expect.objectContaining({ message: "timer resume failed" }),
+      }),
+    ]);
+    expect(harness.flushEventBuffer).toHaveBeenCalledTimes(1);
+    expect(harness.run.inFlightExperimentId).toBeNull();
+    expect(harness.run.scenarioState?.experiment).toMatchObject({
+      status: "completed",
+      experimentId: "trigger-acl-denial",
+    });
+  });
+
+  it("does not restore checkpoint state after cleanup supersedes a failure", async () => {
+    const harness = await createHarness();
+    harness.isCleanupSuperseded.mockReturnValue(true);
+    harness.input.prepareObservations = vi
+      .fn()
+      .mockRejectedValue(new Error("observation completed after cleanup"));
+
+    await expect(executeScenarioExperiment(harness.input)).rejects.toThrow(
+      "observation completed after cleanup",
+    );
+
+    expect(harness.discardEventBuffer).toHaveBeenCalledTimes(1);
+    expect(harness.restoreCheckpoint).not.toHaveBeenCalled();
+    expect(harness.restoreProducerStatus).not.toHaveBeenCalled();
+    expect(harness.resumeTimers).not.toHaveBeenCalled();
+    expect(harness.run.inFlightExperimentId).toBeNull();
+  });
 });
 
 async function createHarness() {
@@ -137,10 +241,12 @@ async function createHarness() {
     }
   });
   const emit = vi.fn();
+  const isCleanupSuperseded = vi.fn(() => false);
 
   const input: Parameters<typeof executeScenarioExperiment>[0] = {
     run,
     experimentId: "trigger-acl-denial",
+    isCleanupSuperseded,
     prepareObservations: async () => undefined,
     emit,
     beginEventBuffer,
@@ -161,8 +267,12 @@ async function createHarness() {
     suspendTimers,
     beginEventBuffer,
     discardEventBuffer,
+    flushEventBuffer,
     restoreCheckpoint,
+    restoreProducerStatus,
     resumeTimers,
+    emit,
+    isCleanupSuperseded,
     isEventBufferActive: () => eventBufferActive,
     setEventBufferActive: (active: boolean) => {
       eventBufferActive = active;

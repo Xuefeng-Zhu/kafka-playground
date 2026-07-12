@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo } from "react";
 import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
 import {
   focusForTopologySelection,
@@ -14,6 +14,7 @@ import type {
 } from "@/lib/client/scenario-experience/model";
 import { projectScenarioExploreTopology } from "@/lib/client/scenario-experience/explore-topology";
 import { topologyProvenance } from "@/lib/client/topology-provenance";
+import { useMobileTopology } from "@/lib/client/use-mobile-topology";
 import { SemanticTopologyList } from "./semantic-topology-list";
 
 const DesktopKafkaTopology = dynamic(
@@ -144,18 +145,4 @@ export function ExploreTopology({
       </div>
     </section>
   );
-}
-
-function useMobileTopology() {
-  const [isMobile, setIsMobile] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 767px)");
-    const sync = () => setIsMobile(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return isMobile;
 }

@@ -108,6 +108,37 @@ describe("PartitionLane", () => {
     expect(messageChip.className).toContain("bg-rose-700");
     expect(messageChip.className).not.toContain("bg-rose-400");
   });
+
+  it("renders an exact placeholder window for offsets above Number.MAX_SAFE_INTEGER", () => {
+    render(
+      <PartitionLane
+        partition={0}
+        messages={[]}
+        selectedMessageId={null}
+        selected={false}
+        active={false}
+        latestOffset="9007199254740993"
+        messageCount={0}
+        provenance="simulated"
+        onSelect={vi.fn()}
+        onSelectMessage={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByTestId("partition-placeholder-offset-0")
+        .map((placeholder) => placeholder.textContent),
+    ).toEqual([
+      "9007199254740987",
+      "9007199254740988",
+      "9007199254740989",
+      "9007199254740990",
+      "9007199254740991",
+      "9007199254740992",
+      "9007199254740993",
+    ]);
+  });
 });
 
 describe("ConsumerCard", () => {

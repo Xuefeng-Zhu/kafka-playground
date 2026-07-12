@@ -2,7 +2,6 @@ import "server-only";
 import {
   isIncompleteCleanupStatus,
   type KeyStrategy,
-  type PlaygroundMessage,
   type RemoteKafkaConfig,
   type UserSelectableKafkaMode,
   type RuntimeEvent,
@@ -10,31 +9,22 @@ import {
 } from "@kplay/contracts";
 import {
   DemoKafkaRuntimeAdapter,
-  KafkaConsumerStartupRollbackError,
   createKafkaRuntimeAdapter,
   createUserConfiguredKafkaRuntimeAdapter,
-  type ConsumedMessage,
   type KafkaRuntimeAdapter,
   type KafkaRuntimeDiagnostics,
 } from "@kplay/kafka-runtime";
 import {
   SCENARIOS,
-  createHeaders,
-  createPlaygroundValue,
   createResourceNames,
   createRunId,
-  evaluateScenarioProcessing,
   findScenario,
 } from "@kplay/scenario-engine";
 import { ApiError } from "./api-errors";
 import { getServerEnv } from "./env";
 import { logger } from "./logger";
 import { cleanupPlaygroundRun } from "./playground-cleanup";
-import {
-  boundMessages,
-  requeueMessagesForConsumer,
-  scheduleMessageProcessing,
-} from "./playground-message-lifecycle";
+import { scheduleMessageProcessing } from "./playground-message-lifecycle";
 import { clearProducerTimer, restartProducerTimer } from "./producer-scheduler";
 import {
   emitRuntimeEvent,
@@ -51,10 +41,11 @@ import {
   PlaygroundRunRegistry,
 } from "./playground-run-registry";
 import { PlaygroundRunLifecycle } from "./playground-run-lifecycle";
+import { PlaygroundRuntimeConsumers } from "./playground-runtime-consumers";
 import {
-  RunScopedWorkTracker,
-  waitForAbortableDelay,
-} from "./playground-run-scoped-work";
+  PlaygroundRuntimeMessages,
+  type PlaygroundRuntimeMessageDependencies,
+} from "./playground-runtime-messages";
 import {
   scenarioExperimentPrerequisite,
   supportsScenarioExperiment,
@@ -72,6 +63,14 @@ import {
 type BufferedRuntimeEvent = {
   type: RuntimeEvent["type"];
   payload: Record<string, unknown>;
+};
+
+export type PlaygroundRuntimeDependencies = {
+  demoAdapter?: KafkaRuntimeAdapter;
+  runRegistry?: PlaygroundRunRegistry;
+  createMessages?: (
+    dependencies: PlaygroundRuntimeMessageDependencies,
+  ) => PlaygroundRuntimeMessages;
 };
 
 export class PlaygroundRuntime {
@@ -96,12 +95,12 @@ export class PlaygroundRuntime {
       );
     },
   };
-  private readonly adapter: KafkaRuntimeAdapter = new DemoKafkaRuntimeAdapter();
+  private readonly adapter: KafkaRuntimeAdapter;
   private readonly envAdapter: KafkaRuntimeAdapter = createKafkaRuntimeAdapter(
     this.env,
     this.diagnostics,
   );
-  private readonly runs = new PlaygroundRunRegistry();
+  private readonly runs: PlaygroundRunRegistry;
   private readonly inFlightExperiments = new Map<string, Promise<void>>();
   private readonly runLifecycle = new PlaygroundRunLifecycle();
   private readonly reservedExperimentIds = new Map<
@@ -112,8 +111,38 @@ export class PlaygroundRuntime {
     string,
     BufferedRuntimeEvent[]
   >();
-  private readonly runScopedWork = new RunScopedWorkTracker();
+  private readonly messages: PlaygroundRuntimeMessages;
+  private readonly consumers: PlaygroundRuntimeConsumers;
   private shutdownStarted = false;
+
+  constructor(dependencies: PlaygroundRuntimeDependencies = {}) {
+    this.adapter = dependencies.demoAdapter ?? new DemoKafkaRuntimeAdapter();
+    this.runs = dependencies.runRegistry ?? new PlaygroundRunRegistry();
+    const createMessages =
+      dependencies.createMessages ??
+      ((messageDependencies) =>
+        new PlaygroundRuntimeMessages(messageDependencies));
+    this.messages = createMessages({
+      emit: (run, type, payload) => this.emit(run, type, payload),
+      findRun: (runId) => this.findRun(runId),
+      isCleanupRequested: (runId) =>
+        this.runLifecycle.isCleanupRequested(runId),
+      isMutationUnavailable: (run) => isRunMutationUnavailable(run),
+      mutateRun: (runId, operation, options) =>
+        this.mutateRun(runId, operation, options),
+    });
+    this.consumers = new PlaygroundRuntimeConsumers({
+      emit: (run, type, payload) => this.emit(run, type, payload),
+      findRun: (runId) => this.findRun(runId),
+      isCleanupRequested: (runId) =>
+        this.runLifecycle.isCleanupRequested(runId),
+      isMutationUnavailable: (run) => isRunMutationUnavailable(run),
+      consumerLimit: (run) => this.consumerLimit(run),
+      deliverMessage: (run, message) => this.messages.deliver(run, message),
+      handleConsumedMessage: (runId, consumerId, message) =>
+        this.messages.handleConsumed(runId, consumerId, message),
+    });
+  }
 
   scenarios() {
     return SCENARIOS;
@@ -332,93 +361,9 @@ export class PlaygroundRuntime {
   ) {
     return this.mutateRun(runId, async () => {
       const run = this.requireRun(runId, sessionId);
-      await this.produceMessage(run, override);
+      await this.messages.produce(run, override);
       return this.snapshot(runId, sessionId);
     });
-  }
-
-  private async produceMessage(run: InternalRun, override?: KeyStrategy) {
-    const keyStrategy = override ?? run.keyStrategy;
-    const eventId = crypto.randomUUID();
-    const messageKey = run.keyState.next(keyStrategy);
-    const value = createPlaygroundValue({
-      eventId,
-      runId: run.runId,
-      scenarioId: run.scenarioId,
-      sequence: run.keyState.currentSequence,
-      userId: messageKey,
-    });
-    const headers = createHeaders({
-      runId: run.runId,
-      eventId,
-      scenarioId: run.scenarioId,
-      sequence: run.keyState.currentSequence,
-      keyStrategy,
-    });
-    const now = new Date().toISOString();
-    const message: PlaygroundMessage = {
-      messageId: eventId,
-      runId: run.runId,
-      topic: run.topicName,
-      partition: null,
-      offset: null,
-      key: messageKey,
-      value,
-      headers,
-      timestamp: null,
-      state: "producing",
-      assignedConsumerId: null,
-      committedOffset: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    run.messages.push(message);
-    boundMessages(run);
-    this.emit(run, "message.producing", {
-      messageId: eventId,
-      actor: "producer",
-    });
-    let delivery;
-    try {
-      delivery = await run.adapter.produce({
-        runId: run.runId,
-        topicName: run.topicName,
-        key: messageKey,
-        value,
-        headers,
-        keyStrategy,
-      });
-    } catch (error) {
-      message.state = "failed";
-      message.updatedAt = new Date().toISOString();
-      run.messageCounts.failed += 1;
-      this.emit(run, "run.error", {
-        messageId: eventId,
-        actor: "producer",
-        message: "Message production failed.",
-      });
-      throw error;
-    }
-    message.partition = delivery.partition;
-    message.offset = delivery.offset;
-    message.timestamp = delivery.timestamp;
-    message.state = "produced";
-    message.updatedAt = new Date().toISOString();
-    run.latestPartitionOffsets[String(delivery.partition)] = delivery.offset;
-    run.messageCounts[String(delivery.partition)] =
-      (run.messageCounts[String(delivery.partition)] ?? 0) + 1;
-    run.messageCounts.produced += 1;
-    this.emit(run, "message.produced", {
-      messageId: eventId,
-      topic: delivery.topic,
-      partition: delivery.partition,
-      offset: delivery.offset,
-      key: messageKey,
-      kafkaTimestamp: delivery.timestamp,
-      actor: "producer",
-    });
-    if (run.mode === "demo") this.maybeDeliverMessage(run, message);
-    return message;
   }
 
   async addConsumer(runId: string, sessionId = DEFAULT_SESSION_ID) {
@@ -430,79 +375,7 @@ export class PlaygroundRuntime {
   }
 
   private async addConsumerToRun(run: InternalRun) {
-    const consumerLimit = this.consumerLimit(run);
-    if (this.activeConsumers(run).length >= consumerLimit) {
-      throw new ApiError(
-        "CONSUMER_LIMIT_REACHED",
-        `This scenario supports at most ${consumerLimit} consumers.`,
-        409,
-      );
-    }
-    const consumerId = this.nextConsumerId(run);
-    this.emit(run, "consumer.starting", { consumerId, actor: consumerId });
-    run.consumers.push({
-      consumerId,
-      status: "starting",
-      assignments: [],
-      processedCount: 0,
-      committedCount: 0,
-    });
-    if (run.mode !== "demo") {
-      try {
-        const handle = await run.adapter.createConsumer(run, consumerId, {
-          onAssigned: (assignments) =>
-            this.applyConsumerAssignment(run.runId, consumerId, assignments),
-          onRevoked: (assignments) =>
-            this.applyConsumerRevocation(run.runId, consumerId, assignments),
-          onMessage: (message) =>
-            this.handleConsumedMessage(run.runId, consumerId, message),
-          onError: (error) => {
-            const currentRun = this.findRun(run.runId);
-            if (
-              this.runLifecycle.isCleanupRequested(run.runId) ||
-              !currentRun ||
-              isRunMutationUnavailable(currentRun)
-            ) {
-              return;
-            }
-            logger.error(
-              { runId: run.runId, consumerId, error },
-              "Kafka consumer error",
-            );
-            this.emit(run, "run.error", {
-              message: error.message,
-              actor: consumerId,
-            });
-          },
-        });
-        run.consumerHandles.set(consumerId, handle);
-      } catch (error) {
-        const cleanupRecoveryRequired =
-          error instanceof KafkaConsumerStartupRollbackError;
-        if (cleanupRecoveryRequired) {
-          run.consumerHandles.set(consumerId, error.consumerHandle);
-          run.cleanupStatus = "failed";
-        }
-        run.consumers = run.consumers.filter(
-          (consumer) => consumer.consumerId !== consumerId,
-        );
-        this.emit(run, "run.error", {
-          actor: consumerId,
-          message: cleanupRecoveryRequired
-            ? "Consumer startup cleanup failed. Reset the run to retry cleanup."
-            : "Consumer failed to start.",
-        });
-        throw error;
-      }
-    }
-    const consumer = run.consumers.find(
-      (item) => item.consumerId === consumerId,
-    );
-    if (consumer) consumer.status = "running";
-    this.emit(run, "consumer.started", { consumerId, actor: consumerId });
-    if (run.mode === "demo") {
-      this.rebalanceAndDeliverProducedMessages(run);
-    }
+    await this.consumers.add(run);
   }
 
   async stopConsumer(
@@ -510,52 +383,11 @@ export class PlaygroundRuntime {
     consumerId: string,
     sessionId = DEFAULT_SESSION_ID,
   ) {
-    return this.mutateRun(runId, () =>
-      this.stopConsumerFromRun(runId, consumerId, sessionId),
-    );
-  }
-
-  private async stopConsumerFromRun(
-    runId: string,
-    consumerId: string,
-    sessionId: string,
-  ) {
-    const run = this.requireRun(runId, sessionId);
-    const consumer = run.consumers.find(
-      (item) => item.consumerId === consumerId,
-    );
-    if (!consumer)
-      throw new ApiError(
-        "CONSUMER_NOT_FOUND",
-        "The consumer does not exist.",
-        404,
-      );
-    if (consumer.status === "crashed") {
-      throw new ApiError(
-        "CONSUMER_ALREADY_CRASHED",
-        "The consumer has already crashed.",
-        409,
-      );
-    }
-    consumer.status = "stopping";
-    this.emit(run, "consumer.stopping", { consumerId, actor: consumerId });
-    await this.disconnectConsumerHandle(
-      run,
-      consumerId,
-      "Consumer disconnect failed",
-    );
-    if (run.mode === "demo" && consumer.assignments.length > 0) {
-      this.emitConsumerRevocation(run, consumerId, consumer.assignments);
-    }
-    run.consumers = run.consumers.filter(
-      (item) => item.consumerId !== consumerId,
-    );
-    this.emit(run, "consumer.stopped", { consumerId, actor: consumerId });
-    if (run.mode === "demo") {
-      requeueMessagesForConsumer(run, consumerId);
-      this.rebalanceAndDeliverProducedMessages(run);
-    }
-    return this.snapshot(runId, sessionId);
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      await this.consumers.stop(run, consumerId);
+      return this.snapshot(runId, sessionId);
+    });
   }
 
   async crashConsumer(
@@ -563,55 +395,11 @@ export class PlaygroundRuntime {
     consumerId: string,
     sessionId = DEFAULT_SESSION_ID,
   ) {
-    return this.mutateRun(runId, () =>
-      this.crashConsumerInRun(runId, consumerId, sessionId),
-    );
-  }
-
-  private async crashConsumerInRun(
-    runId: string,
-    consumerId: string,
-    sessionId: string,
-  ) {
-    const run = this.requireRun(runId, sessionId);
-    const consumer = run.consumers.find(
-      (item) => item.consumerId === consumerId,
-    );
-    if (!consumer)
-      throw new ApiError(
-        "CONSUMER_NOT_FOUND",
-        "The consumer does not exist.",
-        404,
-      );
-    if (consumer.status === "crashed") return this.snapshot(runId, sessionId);
-
-    this.emit(run, "consumer.crashing", {
-      consumerId,
-      actor: consumerId,
-      message: `${consumerId} is crashing.`,
+    return this.mutateRun(runId, async () => {
+      const run = this.requireRun(runId, sessionId);
+      await this.consumers.crash(run, consumerId);
+      return this.snapshot(runId, sessionId);
     });
-    await this.disconnectConsumerHandle(
-      run,
-      consumerId,
-      "Consumer crash disconnect failed",
-    );
-    const assignments = consumer.assignments;
-    if (assignments.length > 0) {
-      this.emitConsumerRevocation(run, consumerId, assignments);
-    }
-    consumer.assignments = [];
-    consumer.status = "crashed";
-    requeueMessagesForConsumer(run, consumerId);
-    this.emit(run, "consumer.crashed", {
-      consumerId,
-      actor: consumerId,
-      message: `${consumerId} crashed before a graceful shutdown.`,
-    });
-
-    if (run.mode === "demo") {
-      this.rebalanceAndDeliverProducedMessages(run);
-    }
-    return this.snapshot(runId, sessionId);
   }
 
   async runExperiment(
@@ -721,22 +509,25 @@ export class PlaygroundRuntime {
     return executeScenarioExperiment({
       run,
       experimentId,
+      isCleanupSuperseded: () =>
+        this.runLifecycle.isCleanupRequested(run.runId) ||
+        isRunMutationUnavailable(run),
       prepareObservations: () =>
         prepareScenarioExperimentObservations({
           run,
           experimentId,
           operations: {
-            produce: (keyStrategy) => this.produceMessage(run, keyStrategy),
+            produce: (keyStrategy) => this.messages.produce(run, keyStrategy),
             addConsumer: () => this.addConsumerToRun(run),
             processMessage: (messageId, expectedConsumerId, options) =>
-              this.processMessageInRun(
+              this.messages.processInRun(
                 run,
                 messageId,
                 expectedConsumerId,
                 options,
               ),
             consumerLimit: this.consumerLimit(run),
-            activeConsumers: () => this.activeConsumers(run),
+            activeConsumers: () => this.consumers.active(run),
           },
         }),
       emit: (type, payload) => this.emit(run, type, payload),
@@ -858,7 +649,10 @@ export class PlaygroundRuntime {
     checkpoint: ScenarioExperimentCheckpoint,
     sessionId: string,
   ) {
-    if (this.runLifecycle.isCleanupRequested(run.runId)) {
+    if (
+      this.runLifecycle.isCleanupRequested(run.runId) ||
+      isRunMutationUnavailable(run)
+    ) {
       clearProducerTimer(run);
       run.producerStatus = "stopped";
       for (const timer of run.processingTimers.values()) clearTimeout(timer);
@@ -879,7 +673,7 @@ export class PlaygroundRuntime {
         message,
         message.assignedConsumerId,
         (runId, scheduledMessageId, expectedConsumerId) =>
-          this.processMessage(runId, scheduledMessageId, expectedConsumerId),
+          this.messages.process(runId, scheduledMessageId, expectedConsumerId),
       );
     }
     if (run.producerStatus === "running") {
@@ -907,6 +701,7 @@ export class PlaygroundRuntime {
     type: RuntimeEvent["type"],
     payload: Record<string, unknown> = {},
   ) {
+    if (this.runLifecycle.isCleanupRequested(run.runId)) return;
     const bufferedEvents = this.bufferedExperimentEvents.get(run.runId);
     if (bufferedEvents) {
       bufferedEvents.push({ type, payload: structuredClone(payload) });
@@ -915,15 +710,12 @@ export class PlaygroundRuntime {
     emitRuntimeEvent(run, type, payload, this.env.EVENT_HISTORY_LIMIT);
   }
 
-  private nextConsumerId(run: InternalRun) {
-    const used = new Set([
-      ...run.consumerHandles.keys(),
-      ...run.consumers.map((consumer) => consumer.consumerId),
-    ]);
-    for (let index = 1; ; index += 1) {
-      const candidate = `consumer-${index}`;
-      if (!used.has(candidate)) return candidate;
-    }
+  private emitImmediately(
+    run: InternalRun,
+    type: RuntimeEvent["type"],
+    payload: Record<string, unknown> = {},
+  ) {
+    emitRuntimeEvent(run, type, payload, this.env.EVENT_HISTORY_LIMIT);
   }
 
   private scenarioForRun(run: InternalRun) {
@@ -944,10 +736,6 @@ export class PlaygroundRuntime {
     );
   }
 
-  private activeConsumers(run: InternalRun) {
-    return run.consumers.filter((consumer) => consumer.status !== "crashed");
-  }
-
   private createAdapterForRun(options: {
     mode?: UserSelectableKafkaMode;
     remoteKafkaConfig?: RemoteKafkaConfig;
@@ -961,369 +749,29 @@ export class PlaygroundRuntime {
     return this.adapter;
   }
 
-  private rebalance(run: InternalRun) {
-    const active = this.activeConsumers(run);
-    active.forEach((consumer) => {
-      if (consumer.assignments.length > 0) {
-        this.emit(run, "consumer.partitions_revoked", {
-          consumerId: consumer.consumerId,
-          assignments: consumer.assignments,
-          actor: consumer.consumerId,
-        });
-      }
-      consumer.assignments = [];
-      consumer.status = "running";
-    });
-    for (let partition = 0; partition < run.partitionCount; partition += 1) {
-      const consumer = active[partition % Math.max(active.length, 1)];
-      if (consumer)
-        consumer.assignments.push({ topic: run.topicName, partition });
-    }
-    active.forEach((consumer) => {
-      if (consumer.assignments.length > 0) {
-        this.emit(run, "consumer.partitions_assigned", {
-          consumerId: consumer.consumerId,
-          assignments: consumer.assignments,
-          actor: consumer.consumerId,
-        });
-      } else {
-        consumer.status = "idle";
-        this.emit(run, "consumer.idle", {
-          consumerId: consumer.consumerId,
-          message: "No partition assignment is available for this consumer.",
-          actor: consumer.consumerId,
-        });
-      }
-    });
-  }
-
-  private async disconnectConsumerHandle(
-    run: InternalRun,
-    consumerId: string,
-    failureMessage: string,
-  ) {
-    const handle = run.consumerHandles.get(consumerId);
-    if (!handle) return;
-    try {
-      await handle.disconnect();
-      run.consumerHandles.delete(consumerId);
-    } catch (error) {
-      logger.warn({ err: error, runId: run.runId, consumerId }, failureMessage);
-      throw error;
-    }
-  }
-
-  private emitConsumerRevocation(
-    run: InternalRun,
-    consumerId: string,
-    assignments: Array<{ topic: string; partition: number }>,
-  ) {
-    this.emit(run, "consumer.partitions_revoked", {
-      consumerId,
-      assignments,
-      actor: consumerId,
-    });
-  }
-
-  private rebalanceAndDeliverProducedMessages(run: InternalRun) {
-    this.rebalance(run);
-    for (const message of run.messages.filter(
-      (item) => item.state === "produced",
-    )) {
-      this.maybeDeliverMessage(run, message);
-    }
-  }
-
-  private maybeDeliverMessage(run: InternalRun, message: PlaygroundMessage) {
-    if (
-      message.partition === null ||
-      message.offset === null ||
-      message.state !== "produced"
-    )
-      return;
-    const consumer = run.consumers.find((candidate) =>
-      candidate.assignments.some(
-        (assignment) => assignment.partition === message.partition,
-      ),
-    );
-    if (!consumer) return;
-    message.state = "received";
-    message.assignedConsumerId = consumer.consumerId;
-    message.updatedAt = new Date().toISOString();
-    run.messageCounts.received += 1;
-    this.emit(run, "message.received", {
-      messageId: message.messageId,
-      consumerId: consumer.consumerId,
-      topic: run.topicName,
-      partition: message.partition,
-      offset: message.offset,
-      actor: consumer.consumerId,
-    });
-    scheduleMessageProcessing(
-      run,
-      message,
-      consumer.consumerId,
-      (runId, messageId, expectedConsumerId) =>
-        this.processMessage(runId, messageId, expectedConsumerId),
-    );
-  }
-
-  private handleConsumedMessage(
-    runId: string,
-    consumerId: string,
-    consumed: ConsumedMessage,
-  ) {
-    return this.runScopedWork.run(runId, (signal) =>
-      this.processConsumedMessage(runId, consumerId, consumed, signal),
-    );
-  }
-
-  private async processConsumedMessage(
-    runId: string,
-    consumerId: string,
-    consumed: ConsumedMessage,
-    signal: AbortSignal,
-  ) {
-    if (this.runLifecycle.isCleanupRequested(runId)) return;
-    const run = this.findRun(runId);
-    if (!run || isRunMutationUnavailable(run)) return;
-    const messageId =
-      consumed.headers["x-playground-event-id"] ?? crypto.randomUUID();
-    let message = run.messages.find((item) => item.messageId === messageId);
-    if (!message) {
-      const now = new Date().toISOString();
-      message = {
-        messageId,
-        runId,
-        topic: consumed.topic,
-        partition: consumed.partition,
-        offset: consumed.offset,
-        key: consumed.key,
-        value: consumed.value ?? {},
-        headers: consumed.headers,
-        timestamp: consumed.timestamp,
-        state: "produced",
-        assignedConsumerId: null,
-        committedOffset: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      run.messages.push(message);
-      boundMessages(run);
-    }
-    if (message.state !== "produced") return;
-    message.partition = consumed.partition;
-    message.offset = consumed.offset;
-    message.timestamp = consumed.timestamp;
-    message.headers = consumed.headers;
-    message.assignedConsumerId = consumerId;
-    message.state = "received";
-    message.updatedAt = new Date().toISOString();
-    run.messageCounts.received += 1;
-    this.emit(run, "message.received", {
-      messageId: message.messageId,
-      consumerId,
-      topic: consumed.topic,
-      partition: consumed.partition,
-      offset: consumed.offset,
-      actor: consumerId,
-    });
-    const delayCompleted = await waitForAbortableDelay(
-      run.processingLatencyMs,
-      signal,
-    );
-    if (!delayCompleted || this.runLifecycle.isCleanupRequested(runId)) return;
-    await this.processMessage(runId, message.messageId, consumerId);
-  }
-
-  private processMessage(
-    runId: string,
-    messageId: string,
-    expectedConsumerId?: string,
-    options: { commit?: boolean } = {},
-  ) {
-    return this.mutateRun(
-      runId,
-      async () => {
-        const run = this.findRun(runId);
-        if (!run) return;
-        await this.processMessageInRun(
-          run,
-          messageId,
-          expectedConsumerId,
-          options,
-        );
-      },
-      { cleanupBehavior: "skip" },
-    );
-  }
-
-  private async processMessageInRun(
-    run: InternalRun,
-    messageId: string,
-    expectedConsumerId?: string,
-    options: { commit?: boolean } = {},
-  ) {
-    const message = run.messages.find((item) => item.messageId === messageId);
-    if (
-      !message ||
-      message.partition === null ||
-      message.offset === null ||
-      !message.assignedConsumerId
-    )
-      return;
-    if (expectedConsumerId && message.assignedConsumerId !== expectedConsumerId)
-      return;
-    if (!["received", "processing"].includes(message.state)) return;
-    const consumer = run.consumers.find(
-      (item) => item.consumerId === message.assignedConsumerId,
-    );
-    if (!consumer) return;
-    message.state = "processing";
-    message.updatedAt = new Date().toISOString();
-    this.emit(run, "message.processing_started", {
-      messageId,
-      consumerId: consumer.consumerId,
-      actor: consumer.consumerId,
-    });
-    const scenarioOutcome = evaluateScenarioProcessing({
-      scenarioId: run.scenarioId,
-      sequence: Number(message.value.sequence ?? 0),
-      value: message.value,
-    });
-    if (scenarioOutcome) {
-      message.state = "failed";
-      message.updatedAt = new Date().toISOString();
-      run.messageCounts.failed += 1;
-      this.emit(run, "message.processing_failed", {
-        messageId,
-        consumerId: consumer.consumerId,
-        message: scenarioOutcome.message,
-        actor: consumer.consumerId,
-      });
-      return;
-    }
-    message.state = "processed";
-    consumer.processedCount += 1;
-    run.messageCounts.processed += 1;
-    this.emit(run, "message.processing_completed", {
-      messageId,
-      consumerId: consumer.consumerId,
-      actor: consumer.consumerId,
-    });
-    if (options.commit === false) return;
-    const committedOffset = String(Number(message.offset) + 1);
-    message.state = "commit_requested";
-    this.emit(run, "offset.commit_requested", {
-      consumerId: consumer.consumerId,
-      groupId: run.consumerGroupId,
-      topic: run.topicName,
-      partition: message.partition,
-      committedOffset,
-      messageId,
-      actor: consumer.consumerId,
-    });
-    try {
-      const handle = run.consumerHandles.get(consumer.consumerId);
-      if (handle) {
-        await handle.commit({
-          topic: run.topicName,
-          partition: message.partition,
-          offset: committedOffset,
-        });
-      }
-      message.state = "committed";
-      message.committedOffset = committedOffset;
-      message.updatedAt = new Date().toISOString();
-      consumer.committedCount += 1;
-      run.messageCounts.committed += 1;
-      run.latestCommittedOffsets[String(message.partition)] = committedOffset;
-      this.emit(run, "offset.committed", {
-        consumerId: consumer.consumerId,
-        groupId: run.consumerGroupId,
-        topic: run.topicName,
-        partition: message.partition,
-        committedOffset,
-        messageId,
-        actor: consumer.consumerId,
-      });
-    } catch (error) {
-      message.state = "failed";
-      run.messageCounts.failed += 1;
-      this.emit(run, "offset.commit_failed", {
-        consumerId: consumer.consumerId,
-        groupId: run.consumerGroupId,
-        topic: run.topicName,
-        partition: message.partition,
-        attemptedOffset: committedOffset,
-        messageId,
-        errorCode: error instanceof Error ? error.name : "COMMIT_FAILED",
-        actor: consumer.consumerId,
-      });
-    }
-  }
-
   private cleanup(run: InternalRun) {
-    return this.runLifecycle.cleanup(run.runId, (pendingMutations) => {
-      const pendingRunScopedWork = this.runScopedWork.cancel(run.runId);
-      return cleanupPlaygroundRun({
-        run,
-        inFlightExperiment: this.inFlightExperiments.get(run.runId),
-        pendingMutations,
-        pendingRunScopedWork,
-        emit: (type, payload) => this.emit(run, type, payload),
-      });
-    });
-  }
-
-  private applyConsumerAssignment(
-    runId: string,
-    consumerId: string,
-    assignments: Array<{ topic: string; partition: number }>,
-  ) {
-    if (this.runLifecycle.isCleanupRequested(runId)) return;
-    const run = this.findRun(runId);
-    if (!run || isRunMutationUnavailable(run)) return;
-    const consumer = run.consumers.find(
-      (item) => item.consumerId === consumerId,
+    return this.runLifecycle.cleanup(
+      run.runId,
+      (pendingMutations, retainRequestUntil) => {
+        this.bufferedExperimentEvents.delete(run.runId);
+        const inFlightExperiment = this.inFlightExperiments.get(run.runId);
+        const pendingRunScopedWork = this.messages.cancelRunScopedWork(
+          run.runId,
+        );
+        retainRequestUntil(
+          inFlightExperiment,
+          pendingMutations,
+          pendingRunScopedWork,
+        );
+        return cleanupPlaygroundRun({
+          run,
+          inFlightExperiment,
+          pendingMutations,
+          pendingRunScopedWork,
+          emit: (type, payload) => this.emitImmediately(run, type, payload),
+        });
+      },
     );
-    if (!consumer) return;
-    consumer.assignments = assignments;
-    consumer.status = assignments.length > 0 ? "running" : "idle";
-    if (assignments.length > 0) {
-      this.emit(run, "consumer.partitions_assigned", {
-        consumerId,
-        assignments,
-        actor: consumerId,
-      });
-    } else {
-      this.emit(run, "consumer.idle", {
-        consumerId,
-        message: "Kafka assigned no partitions to this consumer.",
-        actor: consumerId,
-      });
-    }
-  }
-
-  private applyConsumerRevocation(
-    runId: string,
-    consumerId: string,
-    assignments: Array<{ topic: string; partition: number }>,
-  ) {
-    if (this.runLifecycle.isCleanupRequested(runId)) return;
-    const run = this.findRun(runId);
-    if (!run || isRunMutationUnavailable(run)) return;
-    const consumer = run.consumers.find(
-      (item) => item.consumerId === consumerId,
-    );
-    if (!consumer) return;
-    consumer.assignments = [];
-    consumer.status = "running";
-    this.emit(run, "consumer.partitions_revoked", {
-      consumerId,
-      assignments,
-      actor: consumerId,
-    });
   }
 }
 

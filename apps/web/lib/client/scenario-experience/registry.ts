@@ -1,4 +1,8 @@
-import type { RuntimeEvent, ScenarioState } from "@kplay/contracts";
+import {
+  scenarioStateIds,
+  type RuntimeEvent,
+  type ScenarioState,
+} from "@kplay/contracts";
 import {
   duplicateExperience,
   retryExperience,
@@ -27,23 +31,67 @@ import type {
   ScenarioExperienceSnapshot,
 } from "./model";
 
-export const scenarioExperienceRegistry = {
-  partitioning: partitioningExperience,
-  "fan-out-load-balancing": loadBalancingExperience,
-  "at-least-once-duplicates": duplicateExperience,
-  "retry-dead-letter-queues": retryExperience,
-  "schema-evolution-karapace": schemaExperience,
-  "transactional-producers": transactionExperience,
-  "event-replay-sourcing": replayExperience,
-  "consumer-lag-backpressure": lagExperience,
-  "hot-partitions-key-skew": hotPartitionExperience,
-  "log-compaction-tombstones": compactionExperience,
-  "retention-data-loss": retentionExperience,
-  "cooperative-rebalancing": cooperativeExperience,
-  "streams-joins-windows": streamsExperience,
-  "outbox-cdc": outboxExperience,
-  "acl-least-privilege": aclExperience,
-} satisfies ScenarioExperienceDefinitionRegistry;
+const scenarioExperienceDefinitions = [
+  partitioningExperience,
+  loadBalancingExperience,
+  duplicateExperience,
+  retryExperience,
+  schemaExperience,
+  transactionExperience,
+  replayExperience,
+  lagExperience,
+  hotPartitionExperience,
+  compactionExperience,
+  retentionExperience,
+  cooperativeExperience,
+  streamsExperience,
+  outboxExperience,
+  aclExperience,
+] as const;
+
+type AnyScenarioExperienceDefinition =
+  ScenarioExperienceDefinitionRegistry[ScenarioExperienceId];
+
+type RegistryFor<
+  Definitions extends readonly AnyScenarioExperienceDefinition[],
+> = {
+  [Definition in Definitions[number] as Definition["scenarioId"]]: Definition;
+};
+
+export function createScenarioExperienceDefinitionRegistry<
+  const Definitions extends readonly AnyScenarioExperienceDefinition[],
+>(definitions: Definitions): RegistryFor<Definitions> {
+  const registry: Partial<
+    Record<ScenarioExperienceId, AnyScenarioExperienceDefinition>
+  > = {};
+
+  for (const definition of definitions) {
+    if (Object.hasOwn(registry, definition.scenarioId)) {
+      throw new Error(
+        `Duplicate scenario experience definition: ${definition.scenarioId}.`,
+      );
+    }
+    registry[definition.scenarioId] = definition;
+  }
+
+  const missingScenarioIds = scenarioStateIds.filter(
+    (scenarioId) => !Object.hasOwn(registry, scenarioId),
+  );
+  if (missingScenarioIds.length > 0) {
+    throw new Error(
+      `Missing scenario experience definitions: ${missingScenarioIds.join(", ")}.`,
+    );
+  }
+
+  // Duplicate and completeness checks above make this the exact registry
+  // represented by the input tuple, while insertion order remains unchanged.
+  return registry as RegistryFor<Definitions>;
+}
+
+export const scenarioExperienceRegistry =
+  createScenarioExperienceDefinitionRegistry(
+    scenarioExperienceDefinitions,
+  ) satisfies ScenarioExperienceDefinitionRegistry;
 
 export function isScenarioExperienceSupported(
   scenarioId: string,

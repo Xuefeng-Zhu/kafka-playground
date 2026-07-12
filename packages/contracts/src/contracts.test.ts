@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  addToKafkaOffset,
+  compareKafkaOffsets,
   connectionTestRequestSchema,
   consumerSnapshotSchema,
   createRunRequestSchema,
   getMissingRemoteKafkaConfigFields,
   isIncompleteCleanupStatus,
+  kafkaOffsetSchema,
+  kafkaOffsetWindow,
   parseRemoteKafkaBrokerList,
   remoteKafkaConfigSchema,
   runSnapshotSchema,
@@ -45,6 +49,56 @@ describe("contracts", () => {
       }),
     ).not.toThrow();
   });
+
+  it("accepts arbitrarily large nonnegative decimal Kafka offsets", () => {
+    expect(
+      kafkaOffsetSchema.parse("18446744073709551616000000000000000000"),
+    ).toBe("18446744073709551616000000000000000000");
+  });
+
+  it("compares and advances arbitrarily large Kafka offsets exactly", () => {
+    const lower = "18446744073709551616000000000000000000";
+    const higher = "18446744073709551616000000000000000001";
+
+    expect(compareKafkaOffsets(lower, higher)).toBe(-1);
+    expect(compareKafkaOffsets(higher, lower)).toBe(1);
+    expect(compareKafkaOffsets(lower, lower)).toBe(0);
+    expect(addToKafkaOffset(lower, 1n)).toBe(higher);
+    expect(() => addToKafkaOffset("0", -1n)).toThrow(RangeError);
+    expect(() => compareKafkaOffsets("-1", "0")).toThrow();
+  });
+
+  it("builds bounded Kafka offset windows without Number coercion", () => {
+    expect(kafkaOffsetWindow("9007199254740993", 3)).toEqual([
+      "9007199254740991",
+      "9007199254740992",
+      "9007199254740993",
+    ]);
+    expect(kafkaOffsetWindow("2", 7)).toEqual(["0", "1", "2"]);
+  });
+
+  it.each(["", "-1", "+1", "1.5", "1e3", " 1", "1 ", "NaN"])(
+    "rejects malformed Kafka offset %j at the contract boundary",
+    (offset) => {
+      expect(kafkaOffsetSchema.safeParse(offset).success).toBe(false);
+      expect(
+        scenarioStateSchema.safeParse({
+          ...partitioningScenarioStateFixture(null),
+          routingTraces: [
+            {
+              id: "route-1",
+              provenance: "simulated",
+              messageId: "message-1",
+              key: "key-1",
+              partition: 0,
+              offset,
+              sequence: 1,
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    },
+  );
 
   it("validates crashed consumers and crash events", () => {
     expect(() =>

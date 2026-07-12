@@ -7,7 +7,7 @@ import type { InspectorContent } from "@/components/inspector/inspector-panel";
 import type {
   EntityDetailModel,
   FocusRef,
-} from "@/lib/client/scenario-experience";
+} from "@/lib/client/scenario-experience/model";
 import type { TopologySelection } from "@/lib/client/topology-selection";
 
 export function resolveInspectorContent({

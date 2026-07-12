@@ -11,6 +11,24 @@ type SanitizedKafkaError = {
 
 type ErrorSanitizer = (error: unknown) => SanitizedKafkaError;
 
+const DEFAULT_CONSUMER_STARTUP_TIMEOUT_MS = 30_000;
+
+class ConsumerStartupCrashError extends Error {
+  readonly name = "ConsumerStartupCrashError";
+
+  constructor(error: unknown, sanitizeError: ErrorSanitizer) {
+    super(sanitizeError(error).message, { cause: error });
+  }
+}
+
+class ConsumerStartupTimeoutError extends Error {
+  readonly name = "ConsumerStartupTimeoutError";
+
+  constructor(timeoutMs: number) {
+    super(`Kafka consumer did not join its group within ${timeoutMs}ms.`);
+  }
+}
+
 export type ConsumerLifecycleSource = {
   events: {
     GROUP_JOIN: string;
@@ -53,8 +71,10 @@ export function bindConsumerLifecycleHandlers(
   callbacks: PlaygroundConsumerCallbacks,
   diagnostics: KafkaRuntimeDiagnostics,
   sanitizeError: ErrorSanitizer,
-) {
+): Promise<void> {
+  const startup = createConsumerStartupReadiness(sanitizeError);
   consumer.on(consumer.events.GROUP_JOIN, (event) => {
+    startup.markReady();
     notifyConsumerCallback(
       "consumer.assigned",
       diagnostics,
@@ -71,6 +91,7 @@ export function bindConsumerLifecycleHandlers(
     );
   });
   consumer.on(consumer.events.CRASH, (event) => {
+    startup.markCrashed(event.payload?.error);
     notifyConsumerCallback(
       "consumer.crash",
       diagnostics,
@@ -82,37 +103,95 @@ export function bindConsumerLifecycleHandlers(
       sanitizeError,
     );
   });
+  return startup.promise;
 }
 
 export async function startConsumerRun(
   consumer: ConsumerRunSource,
+  startupReadiness: Promise<void>,
   callbacks: PlaygroundConsumerCallbacks,
   diagnostics: KafkaRuntimeDiagnostics,
   sanitizeError: ErrorSanitizer,
+  startupTimeoutMs = DEFAULT_CONSUMER_STARTUP_TIMEOUT_MS,
 ) {
   try {
-    await consumer.run({
-      autoCommit: false,
-      eachMessage: async ({ topic, partition, message }) => {
-        await callbacks.onMessage({
-          topic,
-          partition,
-          offset: String(message.offset),
-          key: bufferToString(message.key),
-          value: parseJsonValue(message.value),
-          headers: normalizeHeaders(message.headers),
-          timestamp: message.timestamp ? String(message.timestamp) : null,
-        });
-      },
-    });
-  } catch (error) {
-    notifyConsumerCallback(
-      "consumer.run",
-      diagnostics,
-      () => callbacks.onError(sanitizeError(error)),
-      sanitizeError,
+    await withConsumerStartupTimeout(
+      Promise.all([
+        consumer.run({
+          autoCommit: false,
+          eachMessage: async ({ topic, partition, message }) => {
+            await callbacks.onMessage({
+              topic,
+              partition,
+              offset: String(message.offset),
+              key: bufferToString(message.key),
+              value: parseJsonValue(message.value),
+              headers: normalizeHeaders(message.headers),
+              timestamp: message.timestamp ? String(message.timestamp) : null,
+            });
+          },
+        }),
+        startupReadiness,
+      ]),
+      startupTimeoutMs,
     );
+  } catch (error) {
+    if (!(error instanceof ConsumerStartupCrashError)) {
+      notifyConsumerCallback(
+        "consumer.run",
+        diagnostics,
+        () => callbacks.onError(sanitizeError(error)),
+        sanitizeError,
+      );
+    }
     throw error;
+  }
+}
+
+function createConsumerStartupReadiness(sanitizeError: ErrorSanitizer) {
+  let settled = false;
+  let resolveStartup!: () => void;
+  let rejectStartup!: (error: ConsumerStartupCrashError) => void;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveStartup = resolve;
+    rejectStartup = reject;
+  });
+
+  // Lifecycle events can arrive before startConsumerRun begins awaiting startup.
+  // Keep an early CRASH rejection observed until the caller attaches its handler.
+  void promise.catch(() => undefined);
+
+  return {
+    promise,
+    markReady() {
+      if (settled) return;
+      settled = true;
+      resolveStartup();
+    },
+    markCrashed(error: unknown) {
+      if (settled) return;
+      settled = true;
+      rejectStartup(new ConsumerStartupCrashError(error, sanitizeError));
+    },
+  };
+}
+
+async function withConsumerStartupTimeout(
+  startup: Promise<unknown>,
+  timeoutMs: number,
+) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new ConsumerStartupTimeoutError(timeoutMs)),
+      timeoutMs,
+    );
+  });
+
+  try {
+    await Promise.race([startup, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

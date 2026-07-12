@@ -17,7 +17,7 @@ import {
 } from "@kplay/contracts";
 import { PanelRightOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScenarioLearningSurface } from "@/components/learning";
+import { ScenarioLearningSurface } from "@/components/learning/scenario-learning-surface";
 import { ExploreTopology } from "@/components/topology/explore-topology";
 import { InspectorDrawer } from "@/components/playground/inspector-drawer";
 import { resolveInspectorContent } from "@/components/playground/inspector-content";

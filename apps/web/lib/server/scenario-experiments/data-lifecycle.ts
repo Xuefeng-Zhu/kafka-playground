@@ -1,4 +1,5 @@
 import "server-only";
+import { addToKafkaOffset } from "@kplay/contracts";
 import { complete, step, upsertById } from "./shared";
 import type { ScenarioExperimentHandler, StateFor } from "./types";
 
@@ -324,9 +325,10 @@ export const buildRetentionExperiment: ScenarioExperimentHandler<
       }))
     : records;
   const firstRetained = retainedRecords.find((record) => !record.expired);
+  const lastRetained = retainedRecords.at(-1);
   const nextLogStartOffset =
     firstRetained?.offset ??
-    String(Number(retainedRecords.at(-1)?.offset ?? "-1") + 1);
+    (lastRetained ? addToKafkaOffset(lastRetained.offset, 1n) : "0");
   const committedOffset =
     state.records.length === 0 ? "1" : state.committedOffset;
   const offsetOutOfRange: NonNullable<

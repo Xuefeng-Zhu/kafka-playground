@@ -503,7 +503,7 @@ async function createKafkaConsumerHandle(
   });
   const sanitizeRuntimeError = (error: unknown) =>
     sanitizeKafkaError(error, operations.secrets());
-  bindConsumerLifecycleHandlers(
+  const startupReadiness = bindConsumerLifecycleHandlers(
     consumer as ConsumerLifecycleSource,
     run,
     callbacks,
@@ -530,6 +530,7 @@ async function createKafkaConsumerHandle(
     await consumer.subscribe({ topic: run.topicName, fromBeginning: true });
     await startConsumerRun(
       consumer as ConsumerRunSource,
+      startupReadiness,
       callbacks,
       operations.diagnostics,
       sanitizeRuntimeError,

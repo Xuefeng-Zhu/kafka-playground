@@ -4,12 +4,17 @@ import type {
   ScenarioState,
 } from "@kplay/contracts";
 
-export type TeachingScenarioTestCase = {
-  scenarioId: ScenarioState["scenarioId"];
+type TeachingScenarioState<Id extends ScenarioState["scenarioId"]> = Extract<
+  ScenarioState,
+  { scenarioId: Id }
+>;
+
+type TeachingScenarioTestCaseFor<Id extends ScenarioState["scenarioId"]> = {
+  scenarioId: Id;
   noviceQuestion: string;
-  initial: ScenarioState;
-  pivotal: ScenarioState;
-  contrast: ScenarioState;
+  initial: TeachingScenarioState<Id>;
+  primary: TeachingScenarioState<Id>;
+  contrast: TeachingScenarioState<Id>;
   expectation: {
     lensKind:
       | "routing"
@@ -23,31 +28,37 @@ export type TeachingScenarioTestCase = {
       | "heatmap"
       | "window-join";
     initialFact: readonly [id: string, value: string | number];
-    pivotalFact: readonly [id: string, value: string | number];
+    primaryFact: readonly [id: string, value: string | number];
     contrastFact: readonly [id: string, value: string | number];
   };
 };
 
+export type TeachingScenarioTestCase<
+  Id extends ScenarioState["scenarioId"] = ScenarioState["scenarioId"],
+> = Id extends ScenarioState["scenarioId"]
+  ? TeachingScenarioTestCaseFor<Id>
+  : never;
+
 export const simulated = { provenance: "simulated" as const };
 
-export function testCase(
-  scenarioId: ScenarioState["scenarioId"],
+export function testCase<const Id extends ScenarioState["scenarioId"]>(
+  scenarioId: Id,
   noviceQuestion: string,
-  initial: ScenarioState,
-  pivotal: ScenarioState,
-  contrast: ScenarioState,
+  initial: TeachingScenarioState<Id>,
+  primary: TeachingScenarioState<Id>,
+  contrast: TeachingScenarioState<Id>,
   lensKind: TeachingScenarioTestCase["expectation"]["lensKind"],
   initialFact: readonly [string, string | number],
-  pivotalFact: readonly [string, string | number],
+  primaryFact: readonly [string, string | number],
   contrastFact: readonly [string, string | number],
-): TeachingScenarioTestCase {
+): TeachingScenarioTestCaseFor<Id> {
   return {
     scenarioId,
     noviceQuestion,
     initial,
-    pivotal,
+    primary,
     contrast,
-    expectation: { lensKind, initialFact, pivotalFact, contrastFact },
+    expectation: { lensKind, initialFact, primaryFact, contrastFact },
   };
 }
 

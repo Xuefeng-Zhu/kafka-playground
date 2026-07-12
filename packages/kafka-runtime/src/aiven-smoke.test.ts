@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { addToKafkaOffset } from "@kplay/contracts";
 import {
   AivenKafkaRuntimeAdapter,
   loadServerEnv,
@@ -84,7 +85,7 @@ describe("optional real Aiven smoke", () => {
         await consumer.commit({
           topic: message.topic,
           partition: message.partition,
-          offset: String(Number(message.offset) + 1),
+          offset: addToKafkaOffset(message.offset, 1n),
         });
       } finally {
         if (consumedTimeout) clearTimeout(consumedTimeout);

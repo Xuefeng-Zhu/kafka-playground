@@ -7,7 +7,8 @@ import {
   formatTaskDuration,
   taskDurationForEvent,
 } from "@/lib/client/current-consumer-task";
-import type { FocusRef } from "@/lib/client/scenario-experience";
+import { runtimeEventMatchesFocus } from "@/lib/client/runtime-event-focus";
+import type { FocusRef } from "@/lib/client/scenario-experience/model";
 
 const filters = [
   "Messages",
@@ -187,7 +188,7 @@ export function EventTimeline({
         ) : (
           visibleEvents.map((event) => {
             const category = categoryFor(event);
-            const focused = eventMatchesFocus(event, focus);
+            const focused = runtimeEventMatchesFocus(event, focus);
             return (
               <button
                 key={event.sequence}
@@ -226,30 +227,6 @@ export function EventTimeline({
       </div>
     </div>
   );
-}
-
-function eventMatchesFocus(event: RuntimeEvent, focus: FocusRef | null) {
-  if (!focus) return false;
-  if (focus.kind === "event") return focus.id === event.eventId;
-  if (focus.kind === "message") {
-    return "messageId" in event && event.messageId === focus.id;
-  }
-  return eventEntityIds(event).includes(focus.id);
-}
-
-function eventEntityIds(event: RuntimeEvent) {
-  const candidate = event as RuntimeEvent & {
-    entityId?: unknown;
-    entityIds?: unknown;
-  };
-  return [
-    ...(typeof candidate.entityId === "string" ? [candidate.entityId] : []),
-    ...(Array.isArray(candidate.entityIds)
-      ? candidate.entityIds.filter(
-          (entityId): entityId is string => typeof entityId === "string",
-        )
-      : []),
-  ];
 }
 
 function categoryFor(event: RuntimeEvent): TimelineFilter {

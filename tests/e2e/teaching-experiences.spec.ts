@@ -93,12 +93,12 @@ for (const scenario of scenarioTeachingManifest) {
     await expect(contrastExperiment).toBeDisabled();
 
     await primaryExperiment.click();
-    const pivotal = await waitForCompletedExperiment(
+    const primary = await waitForCompletedExperiment(
       page,
       scenario.primaryExperimentId,
     );
-    assertPivotalInvariant(scenario.scenarioId, pivotal);
-    await expectRenderedEvidence(evidence, scenario.renderedEvidence.pivotal);
+    assertPrimaryInvariant(scenario.scenarioId, primary);
+    await expectRenderedEvidence(evidence, scenario.renderedEvidence.primary);
     await expect(surface).toHaveAttribute(
       "data-experiment-id",
       scenario.primaryExperimentId,
@@ -120,7 +120,7 @@ for (const scenario of scenarioTeachingManifest) {
       animations: "disabled",
     });
 
-    const pivotalRevision = numberField(pivotal, "revision");
+    const primaryRevision = numberField(primary, "revision");
     await page.reload();
     await expect(surface).toHaveAttribute(
       "data-experiment-id",
@@ -130,7 +130,7 @@ for (const scenario of scenarioTeachingManifest) {
       .poll(async () =>
         numberField(await activeScenarioState(page), "revision"),
       )
-      .toBe(pivotalRevision);
+      .toBe(primaryRevision);
 
     await expect(contrastExperiment).toBeEnabled();
     await contrastExperiment.click();
@@ -138,7 +138,7 @@ for (const scenario of scenarioTeachingManifest) {
       page,
       scenario.contrastExperimentId,
     );
-    expect(numberField(contrast, "revision")).toBeGreaterThan(pivotalRevision);
+    expect(numberField(contrast, "revision")).toBeGreaterThan(primaryRevision);
     assertContrastInvariant(scenario.scenarioId, contrast);
     await expectRenderedEvidence(evidence, scenario.renderedEvidence.contrast);
 
@@ -244,7 +244,7 @@ async function waitForCompletedExperiment(page: Page, experimentId: string) {
   return activeScenarioState(page);
 }
 
-function assertPivotalInvariant(
+function assertPrimaryInvariant(
   scenarioId: ScenarioTeachingCase["scenarioId"],
   state: Record<string, unknown>,
 ) {

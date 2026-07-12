@@ -6,7 +6,7 @@ import {
   type ScenarioExploreTopologyProjection,
 } from "@/lib/client/scenario-experience/explore-topology";
 import { runSnapshot } from "@/lib/client/run-snapshot-test-fixtures";
-import { partitionAssignments } from "./topology-cards";
+import { partitionAssignments } from "@/lib/client/runtime-topology-state";
 import {
   buildTopologyEdges,
   buildTopologyNodes,

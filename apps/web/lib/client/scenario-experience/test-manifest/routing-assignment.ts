@@ -17,7 +17,7 @@ const partitioningInitial = state({
   consumers: [],
   assignmentEpoch: 0,
 });
-const partitioningPivotal = state({
+const partitioningPrimary = state({
   ...partitioningInitial,
   revision: 1,
   experiment: complete("produce-keyed-record", 3),
@@ -31,7 +31,7 @@ const partitioningPivotal = state({
   assignmentEpoch: 1,
 });
 const partitioningContrast = state({
-  ...partitioningPivotal,
+  ...partitioningPrimary,
   revision: 2,
   experiment: complete("grow-consumer-group"),
   consumers: [
@@ -46,7 +46,7 @@ const assignmentInitial = state({
   ...base("fan-out-load-balancing"),
   epochs: [],
 });
-const assignmentPivotal = state({
+const assignmentPrimary = state({
   ...assignmentInitial,
   revision: 4,
   experiment: complete("grow-consumer-group", 4),
@@ -58,7 +58,7 @@ const assignmentPivotal = state({
   ],
 });
 const assignmentContrast = state({
-  ...assignmentPivotal,
+  ...assignmentPrimary,
   revision: 7,
   experiment: complete("produce-unkeyed-burst", 3),
 });
@@ -68,7 +68,7 @@ export const routingAssignmentTestCases = [
     "partitioning",
     "What changed in routing and commit progress?",
     partitioningInitial,
-    partitioningPivotal,
+    partitioningPrimary,
     partitioningContrast,
     "routing",
     ["routing-trace-count", 0],
@@ -79,7 +79,7 @@ export const routingAssignmentTestCases = [
     "fan-out-load-balancing",
     "Why is the fourth group member idle?",
     assignmentInitial,
-    assignmentPivotal,
+    assignmentPrimary,
     assignmentContrast,
     "assignment",
     ["assignment-members", 0],

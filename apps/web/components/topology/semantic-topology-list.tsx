@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import type { RunSnapshot } from "@kplay/contracts";
 import {
   EvidenceValueDisplay,
@@ -18,6 +18,7 @@ import type {
   Provenance,
 } from "@/lib/client/scenario-experience/model";
 import type { TopologySelection } from "@/lib/client/topology-selection";
+import { deriveRuntimeTopologyState } from "@/lib/client/runtime-topology-state";
 import {
   topologyProvenance,
   type RuntimeTopologyProvenance,
@@ -28,7 +29,6 @@ import {
   PartitionLane,
   ProducerCard,
   messagesForPartition,
-  partitionAssignments,
 } from "./topology-cards";
 
 export function SemanticTopologyList({
@@ -48,18 +48,12 @@ export function SemanticTopologyList({
   onSelectMessage: (messageId: string) => void;
   onSelectNode: (selection: TopologySelection) => void;
 }) {
-  const partitions = Array.from(
-    { length: snapshot.partitionCount },
-    (_, partition) => partition,
-  );
-  const assignmentByPartition = partitionAssignments(snapshot.consumers);
-  const latestMessage = snapshot.recentMessages.at(-1) ?? null;
-  const activePartition = latestMessage?.partition ?? null;
-  const activeConsumerId =
-    latestMessage?.assignedConsumerId ??
-    (activePartition == null
-      ? null
-      : (assignmentByPartition.get(activePartition)?.consumerId ?? null));
+  const {
+    activeConsumerId,
+    activePartition,
+    assignmentByPartition,
+    partitions,
+  } = useMemo(() => deriveRuntimeTopologyState(snapshot), [snapshot]);
   const provenance = topologyProvenance(snapshot);
   const taskNowMs = useLiveTaskClock(hasActiveConsumerTaskDuration(snapshot));
   const sharedNodeProps = {

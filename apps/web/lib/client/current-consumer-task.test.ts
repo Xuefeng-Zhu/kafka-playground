@@ -85,6 +85,26 @@ describe("currentTaskForConsumer", () => {
     expect(formatTaskDuration(tasks[0].duration)).toBe("1.5s");
   });
 
+  it("sorts offsets above Number.MAX_SAFE_INTEGER without precision loss", () => {
+    const tasks = currentTasksForConsumer(
+      runSnapshot({
+        recentMessages: [
+          taskMessage("higher", {
+            offset: "9007199254740993",
+            updatedAt: "2026-06-26T00:00:00.000Z",
+          }),
+          taskMessage("lower", {
+            offset: "9007199254740992",
+            updatedAt: "2026-06-26T00:00:01.000Z",
+          }),
+        ],
+      }),
+      "consumer-1",
+    );
+
+    expect(tasks.map((task) => task.messageId)).toEqual(["lower", "higher"]);
+  });
+
   it("shows the latest active assigned message for a consumer", () => {
     const task = currentTaskForConsumer(
       runSnapshot({

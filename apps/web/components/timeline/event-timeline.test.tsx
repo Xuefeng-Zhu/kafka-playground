@@ -75,6 +75,34 @@ describe("EventTimeline", () => {
     fireEvent.click(received);
     expect(onFocus).toHaveBeenCalledWith({ kind: "event", id: "event-2" });
   });
+
+  it.each([
+    {
+      label: "consumer alias",
+      event: rebalanceEvent(1),
+      focus: { kind: "entity" as const, id: "consumer:consumer-1" },
+    },
+    {
+      label: "assigned partition alias",
+      event: rebalanceEvent(1),
+      focus: { kind: "entity" as const, id: "partition-0" },
+    },
+    {
+      label: "explicit evidence entity",
+      event: experimentEvent(1),
+      focus: { kind: "entity" as const, id: "routing-evidence-1" },
+    },
+  ])("highlights runtime events associated with $label", ({ event, focus }) => {
+    render(
+      <EventTimeline events={[event]} focus={focus} hasSequenceGap={false} />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: new RegExp(event.type, "i") })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
 });
 
 function eventBase(sequence: number) {
@@ -133,5 +161,24 @@ function commitFailedEvent(sequence: number): RuntimeEvent {
     partition: 0,
     attemptedOffset: "1",
     errorCode: "COMMIT_FAILED",
+  };
+}
+
+function experimentEvent(sequence: number): RuntimeEvent {
+  return {
+    ...eventBase(sequence),
+    type: "scenario.experiment.transition",
+    scenarioId: "partitioning",
+    experimentId: "produce-keyed-record",
+    entityIds: ["routing-evidence-1"],
+    provenance: "simulated",
+    virtualTimeMs: 100,
+    transition: "key.hashed",
+    step: {
+      id: "route-message",
+      index: 1,
+      total: 1,
+      label: "Route message",
+    },
   };
 }

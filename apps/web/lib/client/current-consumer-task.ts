@@ -1,8 +1,9 @@
-import type {
-  MessageState,
-  PlaygroundMessage,
-  RunSnapshot,
-  RuntimeEvent,
+import {
+  compareKafkaOffsets,
+  type MessageState,
+  type PlaygroundMessage,
+  type RunSnapshot,
+  type RuntimeEvent,
 } from "@kplay/contracts";
 
 const currentTaskStates = new Set<MessageState>([
@@ -306,20 +307,17 @@ function compareMessagesByPartitionOffset(
   const leftPartition = partitionSortValue(left.partition);
   const rightPartition = partitionSortValue(right.partition);
   if (leftPartition !== rightPartition) return leftPartition - rightPartition;
-  const leftOffset = offsetSortValue(left.offset);
-  const rightOffset = offsetSortValue(right.offset);
-  if (leftOffset !== rightOffset) return leftOffset - rightOffset;
+  if (left.offset === null && right.offset !== null) return 1;
+  if (left.offset !== null && right.offset === null) return -1;
+  if (left.offset !== null && right.offset !== null) {
+    const offsetOrder = compareKafkaOffsets(left.offset, right.offset);
+    if (offsetOrder !== 0) return offsetOrder;
+  }
   return compareMessagesByUpdateTime(left, right);
 }
 
 function partitionSortValue(partition: number | null) {
   return typeof partition === "number" ? partition : Number.POSITIVE_INFINITY;
-}
-
-function offsetSortValue(offset: string | null) {
-  if (offset === null) return Number.POSITIVE_INFINITY;
-  const parsed = Number(offset);
-  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
 function compareEventsByTime(left: RuntimeEvent, right: RuntimeEvent) {

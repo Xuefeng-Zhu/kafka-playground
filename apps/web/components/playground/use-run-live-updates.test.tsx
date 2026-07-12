@@ -1,11 +1,18 @@
 import { act, render, waitFor } from "@testing-library/react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  Suspense,
+  startTransition,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunSnapshot, RuntimeEvent } from "@kplay/contracts";
 
 const fetchRunSnapshot = vi.hoisted(() => vi.fn());
 let reentrantChildRendering = false;
 let reentrantEventEmitted = false;
+let suspendedEventEmitted = false;
 
 vi.mock("@/lib/client/playground-api", () => ({
   fetchRunSnapshot,
@@ -18,6 +25,7 @@ describe("useRunLiveUpdates", () => {
     FakeEventSource.instances = [];
     reentrantChildRendering = false;
     reentrantEventEmitted = false;
+    suspendedEventEmitted = false;
     fetchRunSnapshot.mockReset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });
@@ -208,6 +216,42 @@ describe("useRunLiveUpdates", () => {
       ),
     ).toEqual([]);
     consoleError.mockRestore();
+  });
+
+  it("delivers updates after a render is interrupted by Suspense", async () => {
+    fetchRunSnapshot.mockReturnValue(new Promise(() => undefined));
+    const onDelivery = vi.fn();
+    let interruptRender: (() => void) | null = null;
+
+    render(
+      <Suspense fallback={<span>Suspended</span>}>
+        <InterruptibleLiveUpdatesHarness
+          onDelivery={onDelivery}
+          onInterruptReady={(interrupt) => {
+            interruptRender = interrupt;
+          }}
+        />
+      </Suspense>,
+    );
+
+    await waitFor(() => expect(interruptRender).not.toBeNull());
+    act(() => {
+      interruptRender?.();
+    });
+
+    await waitFor(() => expect(suspendedEventEmitted).toBe(true));
+    await waitFor(() => expect(onDelivery).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      FakeEventSource.latest().emit("producer.started", {
+        ...runtimeEventFixture,
+        eventId: "event-after-interruption",
+        sequence: 2,
+        type: "producer.started",
+      });
+    });
+
+    await waitFor(() => expect(onDelivery).toHaveBeenCalledTimes(2));
   });
 
   it("coalesces overlapping refreshes and skips stale snapshots", async () => {
@@ -409,6 +453,38 @@ function EmitLiveEventDuringRender() {
   }
   return null;
 }
+
+function InterruptibleLiveUpdatesHarness({
+  onDelivery,
+  onInterruptReady,
+}: {
+  onDelivery: () => void;
+  onInterruptReady: (interrupt: () => void) => void;
+}) {
+  const [suspend, setSuspend] = useState(false);
+  const dispatch = useCallback(() => {
+    onDelivery();
+  }, [onDelivery]);
+  const setActionError = useCallback(() => undefined, []);
+  useRunLiveUpdates({ dispatch, runId: "run-1", setActionError });
+  useEffect(() => {
+    onInterruptReady(() => {
+      startTransition(() => setSuspend(true));
+    });
+  }, [onInterruptReady]);
+
+  return suspend ? <EmitLiveEventAndSuspend /> : null;
+}
+
+function EmitLiveEventAndSuspend(): never {
+  if (!suspendedEventEmitted) {
+    suspendedEventEmitted = true;
+    FakeEventSource.latest().emit("run.started", runtimeEventFixture);
+  }
+  throw suspendedRender;
+}
+
+const suspendedRender = new Promise<never>(() => undefined);
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
