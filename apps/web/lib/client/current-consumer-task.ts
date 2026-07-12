@@ -36,18 +36,6 @@ export type TaskDuration =
       endedAt: null;
     };
 
-export function currentTaskForConsumer(
-  snapshot: RunSnapshot,
-  consumerId: string,
-  nowMs = Date.now(),
-): ConsumerTask | null {
-  const message = activeTaskMessagesForConsumer(snapshot, consumerId)
-    .sort(compareMessagesByUpdateTime)
-    .at(-1);
-
-  return message ? toConsumerTask(message, snapshot.recentEvents, nowMs) : null;
-}
-
 export function currentTasksForConsumer(
   snapshot: RunSnapshot,
   consumerId: string,

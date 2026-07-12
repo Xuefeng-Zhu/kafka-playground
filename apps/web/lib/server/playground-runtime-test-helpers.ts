@@ -40,11 +40,14 @@ export async function createPlaygroundRuntimeTestHarness(
 
 export function createDeferred<T = void>() {
   let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
-  const promise = new Promise<T>((settle) => {
+  let reject: (reason?: unknown) => void = () => undefined;
+  const promise = new Promise<T>((settle, fail) => {
     resolve = settle;
+    reject = fail;
   });
   return {
     promise,
+    reject,
     resolve,
   };
 }

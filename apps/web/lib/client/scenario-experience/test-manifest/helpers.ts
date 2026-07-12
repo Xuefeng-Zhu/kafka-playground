@@ -66,6 +66,21 @@ export function state<T extends ScenarioState>(value: T): T {
   return value;
 }
 
+export function completedState<Id extends ScenarioState["scenarioId"]>(
+  previous: TeachingScenarioState<Id>,
+  experimentId: ScenarioExperimentId,
+  revision: number,
+  changes: Partial<TeachingScenarioState<Id>> = {},
+  totalSteps = 1,
+): TeachingScenarioState<Id> {
+  return state({
+    ...previous,
+    ...changes,
+    revision,
+    experiment: complete(experimentId, totalSteps),
+  } as TeachingScenarioState<Id>);
+}
+
 export function base<const Id extends ScenarioState["scenarioId"]>(
   scenarioId: Id,
 ) {

@@ -13,7 +13,10 @@ import {
   type ScenarioExperimentObservations,
   type ScenarioExperimentTransition,
 } from "./scenario-experiments";
-import type { ScenarioExperimentCheckpoint } from "./scenario-experiment-transaction";
+import {
+  ScenarioExperimentTransaction,
+  type ScenarioExperimentCheckpoint,
+} from "./scenario-experiment-transaction";
 
 type ExecuteScenarioExperimentInput = {
   run: InternalRun;
@@ -46,16 +49,10 @@ type ExecutionFailure = {
 type ExperimentExecutionContext = {
   input: ExecuteScenarioExperimentInput;
   startedAtVirtualMs: number;
-  checkpoint?: ScenarioExperimentCheckpoint;
-  timerSuspensionAttempted: boolean;
-  eventBufferInitializationAttempted: boolean;
-  eventBufferFinalized: boolean;
+  transaction: ScenarioExperimentTransaction;
   totalSteps: number;
-  checkpointRestored: boolean;
-  producerStatusRestored: boolean;
   failure?: ExecutionFailure;
   completedSnapshot?: RunSnapshot;
-  recoveryFailures: Error[];
 };
 
 export async function executeScenarioExperiment(
@@ -92,13 +89,8 @@ function createExecutionContext(
   return {
     input,
     startedAtVirtualMs: input.run.virtualTimeMs,
-    timerSuspensionAttempted: false,
-    eventBufferInitializationAttempted: false,
-    eventBufferFinalized: false,
+    transaction: new ScenarioExperimentTransaction(input),
     totalSteps: 0,
-    checkpointRestored: false,
-    producerStatusRestored: false,
-    recoveryFailures: [],
   };
 }
 
@@ -112,11 +104,9 @@ async function performExperiment(context: ExperimentExecutionContext) {
 
 function initializeExperiment(context: ExperimentExecutionContext) {
   const { input } = context;
-  context.checkpoint = input.captureCheckpoint();
-  context.timerSuspensionAttempted = true;
-  input.suspendTimers();
-  context.eventBufferInitializationAttempted = true;
-  input.beginEventBuffer();
+  context.transaction.captureCheckpoint();
+  context.transaction.suspendTimers();
+  context.transaction.beginEventBuffer();
 
   const preview = buildScenarioExperimentResult({
     state: requireScenarioState(input.run),
@@ -251,14 +241,11 @@ function completeExperiment(
 function captureCompletedSnapshot(context: ExperimentExecutionContext) {
   const { input } = context;
   if (cleanupSupersededExperiment(context)) {
-    discardInitializedEventBuffer(context);
+    context.transaction.discardEventBuffer();
     return input.snapshot();
   }
-  const checkpoint = requireCheckpoint(context);
-  input.restoreProducerStatus(checkpoint);
-  context.producerStatusRestored = true;
-  input.flushEventBuffer();
-  context.eventBufferFinalized = true;
+  context.transaction.restoreProducerStatus();
+  context.transaction.flushEventBuffer();
   return input.snapshot();
 }
 
@@ -266,35 +253,12 @@ function recoverFailedExperiment(
   context: ExperimentExecutionContext,
   error: unknown,
 ) {
-  discardInitializedEventBuffer(context);
+  context.transaction.discardEventBuffer();
   if (cleanupSupersededExperiment(context)) return;
-  restoreCapturedCheckpoint(context);
+  context.transaction.restoreCheckpoint();
   const failure = describeExperimentFailure(error);
   markExperimentFailed(context, failure);
   emitExperimentFailed(context, failure);
-}
-
-function discardInitializedEventBuffer(context: ExperimentExecutionContext) {
-  if (
-    !context.eventBufferInitializationAttempted ||
-    context.eventBufferFinalized
-  ) {
-    return;
-  }
-  attemptRecovery(context, "discard event buffer", () => {
-    context.input.discardEventBuffer();
-    context.eventBufferFinalized = true;
-  });
-}
-
-function restoreCapturedCheckpoint(context: ExperimentExecutionContext) {
-  const checkpoint = context.checkpoint;
-  if (!checkpoint) return;
-  attemptRecovery(context, "restore checkpoint", () => {
-    context.input.restoreCheckpoint(checkpoint);
-    context.checkpointRestored = true;
-    context.producerStatusRestored = true;
-  });
 }
 
 function describeExperimentFailure(error: unknown) {
@@ -312,7 +276,7 @@ function markExperimentFailed(
 ) {
   const { run, experimentId } = context.input;
   const stateForFailure =
-    run.scenarioState ?? context.checkpoint?.scenarioState;
+    run.scenarioState ?? context.transaction.checkpoint?.scenarioState;
   if (!stateForFailure) return;
   run.scenarioState = updateExperimentProgress(stateForFailure, {
     status: "failed",
@@ -330,7 +294,7 @@ function emitExperimentFailed(
   failure: ReturnType<typeof describeExperimentFailure>,
 ) {
   const { run, experimentId, emit } = context.input;
-  attemptRecovery(context, "emit failed event", () => {
+  context.transaction.attemptRecovery("emit failed event", () => {
     emit("scenario.experiment.failed", {
       scenarioId: run.scenarioId,
       experimentId,
@@ -350,26 +314,11 @@ function emitExperimentFailed(
 }
 
 function finalizeExperiment(context: ExperimentExecutionContext) {
-  finalizeCheckpoint(context);
-  finalizeEventBuffer(context);
+  if (!cleanupSupersededExperiment(context)) {
+    context.transaction.finalizeCheckpoint();
+  }
+  context.transaction.finalizeEventBuffer();
   context.input.run.inFlightExperimentId = null;
-}
-
-function finalizeCheckpoint(context: ExperimentExecutionContext) {
-  if (cleanupSupersededExperiment(context)) return;
-  const checkpoint = context.checkpoint;
-  if (!checkpoint) return;
-  if (!context.checkpointRestored && !context.producerStatusRestored) {
-    attemptRecovery(context, "restore producer status", () => {
-      context.input.restoreProducerStatus(checkpoint);
-      context.producerStatusRestored = true;
-    });
-  }
-  if (context.timerSuspensionAttempted) {
-    attemptRecovery(context, "resume timers", () => {
-      context.input.resumeTimers(checkpoint);
-    });
-  }
 }
 
 function cleanupSupersededExperiment(context: ExperimentExecutionContext) {
@@ -382,31 +331,13 @@ function cleanupSupersededExperiment(context: ExperimentExecutionContext) {
   );
 }
 
-function finalizeEventBuffer(context: ExperimentExecutionContext) {
-  if (
-    !context.eventBufferInitializationAttempted ||
-    context.eventBufferFinalized
-  ) {
-    return;
-  }
-  attemptRecovery(context, "discard event buffer during finalization", () => {
-    try {
-      context.input.discardEventBuffer();
-    } finally {
-      // Do not keep retrying a finalizer that consistently throws. The
-      // aggregate error retains the failure for the caller and logs.
-      context.eventBufferFinalized = true;
-    }
-  });
-}
-
 function resolveExecutionResult(context: ExperimentExecutionContext) {
   if (context.failure) return throwExecutionFailure(context);
-  if (context.recoveryFailures.length > 0) {
+  if (context.transaction.recoveryFailures.length > 0) {
     throw new AggregateError(
-      context.recoveryFailures,
+      context.transaction.recoveryFailures,
       "Experiment finalization failed.",
-      { cause: context.recoveryFailures[0] },
+      { cause: context.transaction.recoveryFailures[0] },
     );
   }
   if (!context.completedSnapshot) {
@@ -417,9 +348,9 @@ function resolveExecutionResult(context: ExperimentExecutionContext) {
 
 function throwExecutionFailure(context: ExperimentExecutionContext): never {
   const primaryError = context.failure?.error;
-  if (context.recoveryFailures.length === 0) throw primaryError;
+  if (context.transaction.recoveryFailures.length === 0) throw primaryError;
   throw new AggregateError(
-    [primaryError, ...context.recoveryFailures],
+    [primaryError, ...context.transaction.recoveryFailures],
     `${errorMessage(primaryError)} Experiment recovery also failed.`,
     { cause: primaryError },
   );
@@ -435,27 +366,6 @@ function updateExperimentProgress(
 function requireScenarioState(run: InternalRun): ScenarioState {
   if (run.scenarioState) return run.scenarioState;
   throw new Error("Scenario experiment state is unavailable during execution.");
-}
-
-function requireCheckpoint(
-  context: ExperimentExecutionContext,
-): ScenarioExperimentCheckpoint {
-  if (context.checkpoint) return context.checkpoint;
-  throw new Error("Scenario experiment checkpoint is unavailable.");
-}
-
-function attemptRecovery(
-  context: ExperimentExecutionContext,
-  stage: string,
-  operation: () => void,
-) {
-  try {
-    operation();
-  } catch (error) {
-    context.recoveryFailures.push(
-      new Error(`Experiment recovery failed to ${stage}.`, { cause: error }),
-    );
-  }
 }
 
 function errorMessage(error: unknown) {

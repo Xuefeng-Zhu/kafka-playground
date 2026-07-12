@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeEvent } from "@kplay/contracts";
 import { playgroundMessage, runSnapshot } from "./run-snapshot-test-fixtures";
 import {
-  currentTaskForConsumer,
   currentTasksForConsumer,
   formatDurationMs,
   formatTaskDuration,
   taskDurationForMessage,
 } from "./current-consumer-task";
 
-describe("currentTaskForConsumer", () => {
+describe("currentTasksForConsumer", () => {
   it("returns all active assigned messages for a consumer sorted by partition and offset", () => {
     const tasks = currentTasksForConsumer(
       runSnapshot({
@@ -103,87 +102,6 @@ describe("currentTaskForConsumer", () => {
     );
 
     expect(tasks.map((task) => task.messageId)).toEqual(["lower", "higher"]);
-  });
-
-  it("shows the latest active assigned message for a consumer", () => {
-    const task = currentTaskForConsumer(
-      runSnapshot({
-        recentEvents: [
-          receivedEvent("older", "consumer-1", "2026-06-26T00:00:00.000Z", 1),
-          receivedEvent("newer", "consumer-1", "2026-06-26T00:00:01.000Z", 2),
-        ],
-        recentMessages: [
-          taskMessage("older", {
-            offset: "3",
-            state: "processing",
-            updatedAt: "2026-06-26T00:00:00.000Z",
-            value: { payload: { idempotencyKey: "payment-older" } },
-          }),
-          taskMessage("newer", {
-            offset: "4",
-            state: "received",
-            updatedAt: "2026-06-26T00:00:01.000Z",
-            value: { payload: { idempotencyKey: "payment-newer" } },
-          }),
-        ],
-      }),
-      "consumer-1",
-      Date.parse("2026-06-26T00:00:02.500Z"),
-    );
-
-    expect(task).toMatchObject({
-      idempotencyKey: "payment-newer",
-      label: "payment-newer",
-      messageId: "newer",
-      partitionOffset: "P0@4",
-      state: "received",
-    });
-    expect(task ? formatTaskDuration(task.duration) : "").toBe("1.5s");
-  });
-
-  it("ignores terminal and other-consumer messages", () => {
-    const task = currentTaskForConsumer(
-      runSnapshot({
-        recentMessages: [
-          taskMessage("committed", {
-            state: "committed",
-            updatedAt: "2026-06-26T00:00:02.000Z",
-          }),
-          taskMessage("failed", {
-            state: "failed",
-            updatedAt: "2026-06-26T00:00:03.000Z",
-          }),
-          taskMessage("other", {
-            assignedConsumerId: "consumer-2",
-            state: "processing",
-            updatedAt: "2026-06-26T00:00:04.000Z",
-          }),
-        ],
-      }),
-      "consumer-1",
-    );
-
-    expect(task).toBeNull();
-  });
-
-  it("falls back to message ID when there is no idempotency key", () => {
-    const task = currentTaskForConsumer(
-      runSnapshot({
-        recentMessages: [
-          taskMessage("message-without-key", {
-            value: { payload: { action: "page_view" } },
-          }),
-        ],
-      }),
-      "consumer-1",
-    );
-
-    expect(task).toMatchObject({
-      duration: { status: "unknown" },
-      idempotencyKey: null,
-      label: "message-without-key",
-      messageId: "message-without-key",
-    });
   });
 
   it("derives committed task duration from receipt to commit", () => {

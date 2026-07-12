@@ -1,5 +1,5 @@
 import type { TeachingScenarioTestCase } from "./helpers";
-import { base, complete, simulated, state, testCase } from "./helpers";
+import { base, completedState, simulated, state, testCase } from "./helpers";
 
 const streamsInitial = state({
   ...base("streams-joins-windows"),
@@ -8,28 +8,36 @@ const streamsInitial = state({
   joins: [],
   lateRecords: [],
 });
-const streamsPrimary = state({
-  ...streamsInitial,
-  revision: 1,
-  experiment: complete("window-pair", 3),
-  inputs: [
-    streamInput("order-42", "orders", "42", 1_000, 1_000, "joined"),
-    streamInput("payment-42", "payments", "42", 1_500, 1_600, "joined"),
-    streamInput("order-99", "orders", "99", 2_000, 2_000, "unmatched"),
-  ],
-  windows: [streamWindow("window-0")],
-  joins: [streamJoin("join-row-42", "join-42", "42", "order-42", "payment-42")],
-});
-const streamsContrast = state({
-  ...streamsPrimary,
-  revision: 2,
-  experiment: complete("late-arrival", 2),
-  inputs: [
-    ...streamsPrimary.inputs,
-    streamInput("payment-99", "payments", "99", 2_200, 7_500, "late"),
-  ],
-  lateRecords: ["payment-99"],
-});
+const streamsPrimary = completedState(
+  streamsInitial,
+  "window-pair",
+  1,
+  {
+    inputs: [
+      streamInput("order-42", "orders", "42", 1_000, 1_000, "joined"),
+      streamInput("payment-42", "payments", "42", 1_500, 1_600, "joined"),
+      streamInput("order-99", "orders", "99", 2_000, 2_000, "unmatched"),
+    ],
+    windows: [streamWindow("window-0")],
+    joins: [
+      streamJoin("join-row-42", "join-42", "42", "order-42", "payment-42"),
+    ],
+  },
+  3,
+);
+const streamsContrast = completedState(
+  streamsPrimary,
+  "late-arrival",
+  2,
+  {
+    inputs: [
+      ...streamsPrimary.inputs,
+      streamInput("payment-99", "payments", "99", 2_200, 7_500, "late"),
+    ],
+    lateRecords: ["payment-99"],
+  },
+  2,
+);
 
 const outboxInitial = state({
   ...base("outbox-cdc"),
@@ -39,30 +47,36 @@ const outboxInitial = state({
   publishes: [],
   dedupeLedger: [],
 });
-const outboxPrimary = state({
-  ...outboxInitial,
-  revision: 1,
-  experiment: complete("cdc-batch", 4),
-  dbTransactions: [dbTransaction()],
-  wal: [wal()],
-  connectorAttempts: [connectorAttempt("connector-row-1", 1, "published")],
-  publishes: [publish("publish-row-1", "cdc-message-1", false)],
-  dedupeLedger: [],
-});
-const outboxContrast = state({
-  ...outboxPrimary,
-  revision: 2,
-  experiment: complete("retry-cdc", 2),
-  connectorAttempts: [
-    ...outboxPrimary.connectorAttempts,
-    connectorAttempt("connector-row-2", 2, "retried"),
-  ],
-  publishes: [
-    ...outboxPrimary.publishes,
-    publish("publish-row-2", "cdc-message-1-retry", true),
-  ],
-  dedupeLedger: [ledger(1)],
-});
+const outboxPrimary = completedState(
+  outboxInitial,
+  "cdc-batch",
+  1,
+  {
+    dbTransactions: [dbTransaction()],
+    wal: [wal()],
+    connectorAttempts: [connectorAttempt("connector-row-1", 1, "published")],
+    publishes: [publish("publish-row-1", "cdc-message-1", false)],
+    dedupeLedger: [],
+  },
+  4,
+);
+const outboxContrast = completedState(
+  outboxPrimary,
+  "retry-cdc",
+  2,
+  {
+    connectorAttempts: [
+      ...outboxPrimary.connectorAttempts,
+      connectorAttempt("connector-row-2", 2, "retried"),
+    ],
+    publishes: [
+      ...outboxPrimary.publishes,
+      publish("publish-row-2", "cdc-message-1-retry", true),
+    ],
+    dedupeLedger: [ledger(1)],
+  },
+  2,
+);
 
 const aclInitial = state({
   ...base("acl-least-privilege"),
@@ -70,27 +84,36 @@ const aclInitial = state({
   attempts: [],
   lastHighlightedCell: null,
 });
-const aclPrimary = state({
-  ...aclInitial,
-  revision: 1,
-  experiment: complete("trigger-acl-denial", 2),
-  attempts: [aclAttempt("acl-denied", "write", "denied", true, null)],
-  lastHighlightedCell: {
-    principal: "orders-service",
-    operation: "write",
-    resource: "orders",
+const aclPrimary = completedState(
+  aclInitial,
+  "trigger-acl-denial",
+  1,
+  {
+    attempts: [aclAttempt("acl-denied", "write", "denied", true, null)],
+    lastHighlightedCell: {
+      principal: "orders-service",
+      operation: "write",
+      resource: "orders",
+    },
   },
-});
-const aclContrast = state({
-  ...aclPrimary,
-  revision: 2,
-  experiment: complete("grant-required-permission", 2),
-  policies: [...aclPrimary.policies, policy("policy-write", "write", "allow")],
-  attempts: [
-    ...aclPrimary.attempts,
-    aclAttempt("acl-allowed", "write", "allowed", false, "policy-write"),
-  ],
-});
+  2,
+);
+const aclContrast = completedState(
+  aclPrimary,
+  "grant-required-permission",
+  2,
+  {
+    policies: [
+      ...aclPrimary.policies,
+      policy("policy-write", "write", "allow"),
+    ],
+    attempts: [
+      ...aclPrimary.attempts,
+      aclAttempt("acl-allowed", "write", "allowed", false, "policy-write"),
+    ],
+  },
+  2,
+);
 
 export const pipelineAccessTestCases = [
   testCase(

@@ -1,7 +1,7 @@
 import type { TeachingScenarioTestCase } from "./helpers";
 import {
   base,
-  complete,
+  completedState,
   consumer,
   epoch,
   position,
@@ -17,51 +17,61 @@ const partitioningInitial = state({
   consumers: [],
   assignmentEpoch: 0,
 });
-const partitioningPrimary = state({
-  ...partitioningInitial,
-  revision: 1,
-  experiment: complete("produce-keyed-record", 3),
-  routingTraces: [
-    route("route-a-1", "message-a-1", "A", 0, "0", 1),
-    route("route-b-1", "message-b-1", "B", 1, "0", 2),
-    route("route-a-2", "message-a-2", "A", 0, "1", 3),
-  ],
-  partitionPositions: [position(0, "1", "2"), position(1, "0", "1")],
-  consumers: [consumer("consumer-1", [0, 1], "running")],
-  assignmentEpoch: 1,
-});
-const partitioningContrast = state({
-  ...partitioningPrimary,
-  revision: 2,
-  experiment: complete("grow-consumer-group"),
-  consumers: [
-    consumer("consumer-1", [0], "running"),
-    consumer("consumer-2", [1], "running"),
-    consumer("consumer-3", [], "idle"),
-  ],
-  assignmentEpoch: 2,
-});
+const partitioningPrimary = completedState(
+  partitioningInitial,
+  "produce-keyed-record",
+  1,
+  {
+    routingTraces: [
+      route("route-a-1", "message-a-1", "A", 0, "0", 1),
+      route("route-b-1", "message-b-1", "B", 1, "0", 2),
+      route("route-a-2", "message-a-2", "A", 0, "1", 3),
+    ],
+    partitionPositions: [position(0, "1", "2"), position(1, "0", "1")],
+    consumers: [consumer("consumer-1", [0, 1], "running")],
+    assignmentEpoch: 1,
+  },
+  3,
+);
+const partitioningContrast = completedState(
+  partitioningPrimary,
+  "grow-consumer-group",
+  2,
+  {
+    consumers: [
+      consumer("consumer-1", [0], "running"),
+      consumer("consumer-2", [1], "running"),
+      consumer("consumer-3", [], "idle"),
+    ],
+    assignmentEpoch: 2,
+  },
+);
 
 const assignmentInitial = state({
   ...base("fan-out-load-balancing"),
   epochs: [],
 });
-const assignmentPrimary = state({
-  ...assignmentInitial,
-  revision: 4,
-  experiment: complete("grow-consumer-group", 4),
-  epochs: [
-    epoch(1, [[0, 1, 2]], []),
-    epoch(2, [[0, 2], [1]], []),
-    epoch(3, [[0], [1], [2]], []),
-    epoch(4, [[0], [1], [2], []], ["consumer-4"]),
-  ],
-});
-const assignmentContrast = state({
-  ...assignmentPrimary,
-  revision: 7,
-  experiment: complete("produce-unkeyed-burst", 3),
-});
+const assignmentPrimary = completedState(
+  assignmentInitial,
+  "grow-consumer-group",
+  4,
+  {
+    epochs: [
+      epoch(1, [[0, 1, 2]], []),
+      epoch(2, [[0, 2], [1]], []),
+      epoch(3, [[0], [1], [2]], []),
+      epoch(4, [[0], [1], [2], []], ["consumer-4"]),
+    ],
+  },
+  4,
+);
+const assignmentContrast = completedState(
+  assignmentPrimary,
+  "produce-unkeyed-burst",
+  7,
+  {},
+  3,
+);
 
 export const routingAssignmentTestCases = [
   testCase(

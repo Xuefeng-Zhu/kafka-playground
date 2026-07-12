@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { runSnapshot } from "@/lib/client/run-snapshot-test-fixtures";
+import {
+  consumerSnapshot,
+  playgroundMessage,
+  runSnapshot,
+} from "@/lib/client/run-snapshot-test-fixtures";
 import {
   projectScenarioExploreTopology,
   type ScenarioExploreTopologyProjection,
@@ -102,6 +106,55 @@ describe("SemanticTopologyList", () => {
     expect(
       screen.getByRole("button", { name: "Inspect producer" }).className,
     ).toContain("w-full");
+  });
+
+  it("preserves core partition, message, and consumer selection callbacks", () => {
+    const onSelectMessage = vi.fn();
+    const onSelectNode = vi.fn();
+    render(
+      <SemanticTopologyList
+        snapshot={runSnapshot({
+          consumers: [consumerSnapshot()],
+          recentMessages: [
+            playgroundMessage({
+              assignedConsumerId: "consumer-1",
+              state: "processing",
+            }),
+          ],
+          messageCounts: {
+            produced: 1,
+            received: 1,
+            processed: 0,
+            committed: 0,
+            failed: 0,
+            "0": 1,
+          },
+        })}
+        scenarioTopology={null}
+        selectedMessageId={null}
+        selectedNode={null}
+        selectedScenarioNodeId={null}
+        onSelectMessage={onSelectMessage}
+        onSelectNode={onSelectNode}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("partition-message-message-1"));
+    expect(onSelectMessage).toHaveBeenCalledWith("message-1");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Inspect partition 0" }),
+    );
+    expect(onSelectNode).toHaveBeenCalledWith({
+      type: "partition",
+      partition: 0,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Inspect consumer-1" }));
+    expect(onSelectNode).toHaveBeenCalledWith({
+      type: "consumer",
+      consumerId: "consumer-1",
+    });
   });
 
   it("renders the runtime core route when the scenario graph does not replace it", () => {

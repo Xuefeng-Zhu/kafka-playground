@@ -98,6 +98,55 @@ describe("PlaygroundRuntime message cleanup", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("does not record a late commit failure after cleanup times out", async () => {
+    vi.useFakeTimers();
+    const { getInternalRun, messages, runtime } =
+      await createPlaygroundRuntimeTestHarness();
+    let snapshot = await runtime.createRun("partitioning");
+    snapshot = await runtime.addConsumer(snapshot.runId);
+    snapshot = await runtime.produceOne(snapshot.runId);
+    const internalRun = getInternalRun();
+    if (!internalRun) throw new Error("Missing internal run");
+    const messageId = snapshot.recentMessages.at(-1)?.messageId;
+    if (!messageId) throw new Error("Missing pending message");
+    const processingTimer = internalRun.processingTimers.get(messageId);
+    if (processingTimer) clearTimeout(processingTimer);
+    internalRun.processingTimers.delete(messageId);
+    const commitStarted = createDeferred();
+    const pendingCommit = createDeferred();
+    internalRun.consumerHandles.set("consumer-1", {
+      consumerId: "consumer-1",
+      commit: async () => {
+        commitStarted.resolve();
+        await pendingCommit.promise;
+      },
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const processing = messages.process(
+      snapshot.runId,
+      messageId,
+      "consumer-1",
+    );
+    await commitStarted.promise;
+    const reset = runtime.reset(snapshot.runId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(reset).resolves.toEqual({
+      cleanupStatus: "partially_completed",
+    });
+    const failedBeforeCommitSettles = internalRun.messageCounts.failed;
+    const eventCountBeforeCommitSettles = internalRun.events.length;
+
+    pendingCommit.reject(new Error("commit unavailable"));
+    await expect(processing).resolves.toBeUndefined();
+
+    expect(
+      internalRun.messages.find((message) => message.messageId === messageId),
+    ).toMatchObject({ state: "commit_requested" });
+    expect(internalRun.messageCounts.failed).toBe(failedBeforeCommitSettles);
+    expect(internalRun.events).toHaveLength(eventCountBeforeCommitSettles);
+  });
+
   it("retains only failed handles after partial cleanup and completes on retry", async () => {
     const { logger } = await import("./logger");
     vi.spyOn(logger, "warn").mockImplementation(() => undefined);

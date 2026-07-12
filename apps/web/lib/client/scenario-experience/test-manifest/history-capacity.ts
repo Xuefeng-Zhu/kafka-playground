@@ -1,6 +1,6 @@
 import type { ScenarioState } from "@kplay/contracts";
 import type { TeachingScenarioTestCase } from "./helpers";
-import { base, complete, simulated, state, testCase } from "./helpers";
+import { base, completedState, simulated, state, testCase } from "./helpers";
 
 const replayInitial = state({
   ...base("event-replay-sourcing"),
@@ -10,24 +10,30 @@ const replayInitial = state({
   rebuildInProgress: false,
   producedCount: 0,
 });
-const replayPrimary = state({
-  ...replayInitial,
-  revision: 1,
-  experiment: complete("aggregate-events", 3),
-  log: [replayEvent(0, 1), replayEvent(1, 1), replayEvent(2, -1)],
-  cursor: "3",
-  projection: { "cart-1": 1 },
-  producedCount: 3,
-});
-const replayContrast = state({
-  ...replayPrimary,
-  revision: 2,
-  experiment: complete("rebuild-projection", 5),
-  cursor: "3",
-  rebuildInProgress: false,
-  projection: { "cart-1": 1 },
-  producedCount: 3,
-});
+const replayPrimary = completedState(
+  replayInitial,
+  "aggregate-events",
+  1,
+  {
+    log: [replayEvent(0, 1), replayEvent(1, 1), replayEvent(2, -1)],
+    cursor: "3",
+    projection: { "cart-1": 1 },
+    producedCount: 3,
+  },
+  3,
+);
+const replayContrast = completedState(
+  replayPrimary,
+  "rebuild-projection",
+  2,
+  {
+    cursor: "3",
+    rebuildInProgress: false,
+    projection: { "cart-1": 1 },
+    producedCount: 3,
+  },
+  5,
+);
 
 const lagInitial = state({
   ...base("consumer-lag-backpressure"),
@@ -36,49 +42,49 @@ const lagInitial = state({
   consumerCount: 1,
   drainEstimateMs: null,
 });
-const lagPrimary = state({
-  ...lagInitial,
-  revision: 1,
+const lagPrimary = completedState(lagInitial, "build-lag", 1, {
   virtualTimeMs: 5_000,
-  experiment: complete("build-lag", 1),
   samples: [lagSample("lag-sample-0", 8, 2, 18, "rising")],
   partitions: [lagPartition(0, 7), lagPartition(1, 5), lagPartition(2, 6)],
   drainEstimateMs: 9_000,
 });
-const lagContrast = state({
-  ...lagPrimary,
-  revision: 2,
-  virtualTimeMs: 10_100,
-  experiment: complete("recover-lag", 2),
-  samples: [
-    ...lagPrimary.samples,
-    lagSample("lag-sample-1", 3, 9, 6, "falling"),
-    lagSample("lag-sample-2", 3, 9, 0, "steady"),
-  ],
-  partitions: [lagPartition(0, 0), lagPartition(1, 0), lagPartition(2, 0)],
-  consumerCount: 3,
-  drainEstimateMs: 0,
-});
+const lagContrast = completedState(
+  lagPrimary,
+  "recover-lag",
+  2,
+  {
+    virtualTimeMs: 10_100,
+    samples: [
+      ...lagPrimary.samples,
+      lagSample("lag-sample-1", 3, 9, 6, "falling"),
+      lagSample("lag-sample-2", 3, 9, 0, "steady"),
+    ],
+    partitions: [lagPartition(0, 0), lagPartition(1, 0), lagPartition(2, 0)],
+    consumerCount: 3,
+    drainEstimateMs: 0,
+  },
+  2,
+);
 
 const hotInitial = state({
   ...base("hot-partitions-key-skew"),
   phases: [],
 });
-const hotPrimary = state({
-  ...hotInitial,
-  revision: 1,
-  experiment: complete("hot-key-burst", 1),
+const hotPrimary = completedState(hotInitial, "hot-key-burst", 1, {
   phases: [hotPhase("phase-hot", "hot", [0, 8, 0, 0], 8)],
 });
-const hotContrast = state({
-  ...hotPrimary,
-  revision: 2,
-  experiment: complete("balanced-comparison", 2),
-  phases: [
-    ...hotPrimary.phases,
-    hotPhase("phase-balanced", "balanced", [2, 2, 2, 2], 1),
-  ],
-});
+const hotContrast = completedState(
+  hotPrimary,
+  "balanced-comparison",
+  2,
+  {
+    phases: [
+      ...hotPrimary.phases,
+      hotPhase("phase-balanced", "balanced", [2, 2, 2, 2], 1),
+    ],
+  },
+  2,
+);
 
 const compactionInitial = state({
   ...base("log-compaction-tombstones"),
@@ -86,37 +92,42 @@ const compactionInitial = state({
   materialized: [],
   cleanerPasses: [],
 });
-const compactionPrimary = state({
-  ...compactionInitial,
-  revision: 1,
-  experiment: complete("run-compaction", 2),
-  rawLog: [
-    compactedRecord("raw-a1", "0", "A", "A1", "compaction"),
-    compactedRecord("raw-b1", "1", "B", "B1", "compaction"),
-    compactedRecord("raw-a2", "2", "A", "A2", null),
-    compactedRecord("raw-b-delete", "3", "B", null, null),
-  ],
-  materialized: [
-    materialized("state-a", "A", "A2", "2"),
-    materialized("state-b", "B", null, "3"),
-  ],
-  cleanerPasses: [cleaner("cleaner-compaction", "compaction", ["0", "1"])],
-});
-const compactionContrast = state({
-  ...compactionPrimary,
-  revision: 2,
-  experiment: complete("expire-tombstone", 1),
-  rawLog: compactionPrimary.rawLog.map((entry) =>
-    entry.id === "raw-b-delete"
-      ? { ...entry, removedAtStage: "tombstone_cleanup" as const }
-      : entry,
-  ),
-  materialized: [materialized("state-a", "A", "A2", "2")],
-  cleanerPasses: [
-    ...compactionPrimary.cleanerPasses,
-    cleaner("cleaner-tombstone", "tombstone_cleanup", ["3"]),
-  ],
-});
+const compactionPrimary = completedState(
+  compactionInitial,
+  "run-compaction",
+  1,
+  {
+    rawLog: [
+      compactedRecord("raw-a1", "0", "A", "A1", "compaction"),
+      compactedRecord("raw-b1", "1", "B", "B1", "compaction"),
+      compactedRecord("raw-a2", "2", "A", "A2", null),
+      compactedRecord("raw-b-delete", "3", "B", null, null),
+    ],
+    materialized: [
+      materialized("state-a", "A", "A2", "2"),
+      materialized("state-b", "B", null, "3"),
+    ],
+    cleanerPasses: [cleaner("cleaner-compaction", "compaction", ["0", "1"])],
+  },
+  2,
+);
+const compactionContrast = completedState(
+  compactionPrimary,
+  "expire-tombstone",
+  2,
+  {
+    rawLog: compactionPrimary.rawLog.map((entry) =>
+      entry.id === "raw-b-delete"
+        ? { ...entry, removedAtStage: "tombstone_cleanup" as const }
+        : entry,
+    ),
+    materialized: [materialized("state-a", "A", "A2", "2")],
+    cleanerPasses: [
+      ...compactionPrimary.cleanerPasses,
+      cleaner("cleaner-tombstone", "tombstone_cleanup", ["3"]),
+    ],
+  },
+);
 
 const retentionInitial = state({
   ...base("retention-data-loss"),
@@ -136,61 +147,78 @@ const retentionOffsetOutOfRange: NonNullable<
   recoveryOptions: ["earliest", "latest", "restore"],
   provenance: "simulated",
 };
-const retentionPrimary = state({
-  ...retentionInitial,
-  revision: 1,
-  virtualTimeMs: 61_200,
-  experiment: complete("advance-retention", 3),
-  records: [
-    retainedRecord("retention-record-0", "0", 0, true),
-    retainedRecord("retention-record-1", "1", 100, true),
-    retainedRecord("retention-record-2", "2", 200, true),
-    retainedRecord("retention-record-3", "3", 300, false),
-    retainedRecord("retention-record-4", "4", 400, false),
-  ],
-  cutoffVirtualMs: 1_000,
-  logStartOffset: "3",
-  error: retentionOffsetOutOfRange,
-  lastOffsetOutOfRange: retentionOffsetOutOfRange,
-});
-const retentionContrast = state({
-  ...retentionPrimary,
-  revision: 2,
-  virtualTimeMs: 61_300,
-  experiment: complete("recover-retention", 1),
-  committedOffset: "3",
-  error: null,
-});
+const retentionPrimary = completedState(
+  retentionInitial,
+  "advance-retention",
+  1,
+  {
+    virtualTimeMs: 61_200,
+    records: [
+      retainedRecord("retention-record-0", "0", 0, true),
+      retainedRecord("retention-record-1", "1", 100, true),
+      retainedRecord("retention-record-2", "2", 200, true),
+      retainedRecord("retention-record-3", "3", 300, false),
+      retainedRecord("retention-record-4", "4", 400, false),
+    ],
+    cutoffVirtualMs: 1_000,
+    logStartOffset: "3",
+    error: retentionOffsetOutOfRange,
+    lastOffsetOutOfRange: retentionOffsetOutOfRange,
+  },
+  3,
+);
+const retentionContrast = completedState(
+  retentionPrimary,
+  "recover-retention",
+  2,
+  {
+    virtualTimeMs: 61_300,
+    committedOffset: "3",
+    error: null,
+  },
+);
 
 const cooperativeInitial = state({
   ...base("cooperative-rebalancing"),
   comparisons: [],
 });
-const cooperativePrimary = state({
-  ...cooperativeInitial,
-  revision: 1,
-  experiment: complete("compare-rebalance", 3),
-  comparisons: [
-    rebalance("rebalance-eager", "eager", [], [0, 1, 2], [0, 1, 2]),
-    rebalance("rebalance-cooperative", "cooperative_sticky", [0, 2], [1], [1]),
-  ],
-});
-const cooperativeContrast = state({
-  ...cooperativePrimary,
-  revision: 2,
-  experiment: complete("cooperative-pressure", 3),
-  comparisons: [
-    rebalance("rebalance-eager", "eager", [], [0, 1, 2], [0, 1, 2], true),
-    rebalance(
-      "rebalance-cooperative",
-      "cooperative_sticky",
-      [0],
-      [1, 2],
-      [1, 2],
-      true,
-    ),
-  ],
-});
+const cooperativePrimary = completedState(
+  cooperativeInitial,
+  "compare-rebalance",
+  1,
+  {
+    comparisons: [
+      rebalance("rebalance-eager", "eager", [], [0, 1, 2], [0, 1, 2]),
+      rebalance(
+        "rebalance-cooperative",
+        "cooperative_sticky",
+        [0, 2],
+        [1],
+        [1],
+      ),
+    ],
+  },
+  3,
+);
+const cooperativeContrast = completedState(
+  cooperativePrimary,
+  "cooperative-pressure",
+  2,
+  {
+    comparisons: [
+      rebalance("rebalance-eager", "eager", [], [0, 1, 2], [0, 1, 2], true),
+      rebalance(
+        "rebalance-cooperative",
+        "cooperative_sticky",
+        [0],
+        [1, 2],
+        [1, 2],
+        true,
+      ),
+    ],
+  },
+  3,
+);
 
 export const historyCapacityTestCases = [
   testCase(

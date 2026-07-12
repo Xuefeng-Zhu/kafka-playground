@@ -292,6 +292,7 @@ export class PlaygroundRuntimeMessages {
         actor: consumer.consumerId,
       });
     } catch (error) {
+      if (this.cleanupSuperseded(run)) return;
       message.state = "failed";
       run.messageCounts.failed += 1;
       this.dependencies.emit(run, "offset.commit_failed", {

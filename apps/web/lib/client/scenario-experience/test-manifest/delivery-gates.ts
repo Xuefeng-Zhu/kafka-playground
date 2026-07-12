@@ -1,48 +1,57 @@
 import type { TeachingScenarioTestCase } from "./helpers";
-import { base, complete, simulated, state, testCase } from "./helpers";
+import { base, completedState, simulated, state, testCase } from "./helpers";
 
 const duplicateInitial = state({
   ...base("at-least-once-duplicates"),
   deliveries: [],
   sideEffects: [],
 });
-const duplicatePrimary = state({
-  ...duplicateInitial,
-  revision: 3,
-  experiment: complete("crash-and-redeliver", 3),
-  deliveries: [
-    delivery("delivery-1", 1, false),
-    delivery("delivery-2", 2, true),
-  ],
-  sideEffects: [sideEffect("payment-42", 2, 1)],
-});
-const duplicateContrast = state({
-  ...duplicatePrimary,
-  revision: 4,
-  experiment: complete("duplicate-risk-records", 1),
-});
+const duplicatePrimary = completedState(
+  duplicateInitial,
+  "crash-and-redeliver",
+  3,
+  {
+    deliveries: [
+      delivery("delivery-1", 1, false),
+      delivery("delivery-2", 2, true),
+    ],
+    sideEffects: [sideEffect("payment-42", 2, 1)],
+  },
+  3,
+);
+const duplicateContrast = completedState(
+  duplicatePrimary,
+  "duplicate-risk-records",
+  4,
+);
 
 const retryInitial = state({
   ...base("retry-dead-letter-queues"),
   records: [],
 });
-const retryPrimary = state({
-  ...retryInitial,
-  revision: 1,
-  virtualTimeMs: 1_100,
-  experiment: complete("transient-recovery", 3),
-  records: [retryRecord("retry-transient", "transient", "succeeded", 2)],
-});
-const retryContrast = state({
-  ...retryPrimary,
-  revision: 2,
-  virtualTimeMs: 4_200,
-  experiment: complete("poison-to-dlq", 3),
-  records: [
-    ...retryPrimary.records,
-    retryRecord("retry-poison", "poison", "dlq", 3),
-  ],
-});
+const retryPrimary = completedState(
+  retryInitial,
+  "transient-recovery",
+  1,
+  {
+    virtualTimeMs: 1_100,
+    records: [retryRecord("retry-transient", "transient", "succeeded", 2)],
+  },
+  3,
+);
+const retryContrast = completedState(
+  retryPrimary,
+  "poison-to-dlq",
+  2,
+  {
+    virtualTimeMs: 4_200,
+    records: [
+      ...retryPrimary.records,
+      retryRecord("retry-poison", "poison", "dlq", 3),
+    ],
+  },
+  3,
+);
 
 const schemaInitial = state({
   ...base("schema-evolution-karapace"),
@@ -50,52 +59,64 @@ const schemaInitial = state({
   topicRecordCount: 0,
   attempts: [],
 });
-const schemaPrimary = state({
-  ...schemaInitial,
-  revision: 1,
-  experiment: complete("compatible-schema", 2),
-  activeVersion: 1,
-  topicRecordCount: 1,
-  attempts: [schemaAttempt("schema-attempt-v2", 2, true)],
-});
-const schemaContrast = state({
-  ...schemaPrimary,
-  revision: 2,
-  experiment: complete("trigger-schema-rejection", 2),
-  attempts: [
-    ...schemaPrimary.attempts,
-    schemaAttempt("schema-attempt-v3", 3, false),
-  ],
-});
+const schemaPrimary = completedState(
+  schemaInitial,
+  "compatible-schema",
+  1,
+  {
+    activeVersion: 1,
+    topicRecordCount: 1,
+    attempts: [schemaAttempt("schema-attempt-v2", 2, true)],
+  },
+  2,
+);
+const schemaContrast = completedState(
+  schemaPrimary,
+  "trigger-schema-rejection",
+  2,
+  {
+    attempts: [
+      ...schemaPrimary.attempts,
+      schemaAttempt("schema-attempt-v3", 3, false),
+    ],
+  },
+  2,
+);
 
 const transactionInitial = state({
   ...base("transactional-producers"),
   transactions: [],
 });
-const transactionPrimary = state({
-  ...transactionInitial,
-  revision: 1,
-  experiment: complete("transaction-pair", 2),
-  transactions: [
-    transaction("txn-1", "committed", ["txn-1-r1", "txn-1-r2"], true),
-  ],
-});
-const transactionContrast = state({
-  ...transactionPrimary,
-  revision: 2,
-  experiment: complete("abort-and-dedupe", 2),
-  transactions: [
-    ...transactionPrimary.transactions,
-    transaction("txn-2", "aborted", ["txn-2-r1"], false),
-    {
-      ...transaction("txn-3", "committed", ["txn-3-r1"], true),
-      dedupe: [
-        { producerSequence: 3, accepted: true },
-        { producerSequence: 3, accepted: false },
-      ],
-    },
-  ],
-});
+const transactionPrimary = completedState(
+  transactionInitial,
+  "transaction-pair",
+  1,
+  {
+    transactions: [
+      transaction("txn-1", "committed", ["txn-1-r1", "txn-1-r2"], true),
+    ],
+  },
+  2,
+);
+const transactionContrast = completedState(
+  transactionPrimary,
+  "abort-and-dedupe",
+  2,
+  {
+    transactions: [
+      ...transactionPrimary.transactions,
+      transaction("txn-2", "aborted", ["txn-2-r1"], false),
+      {
+        ...transaction("txn-3", "committed", ["txn-3-r1"], true),
+        dedupe: [
+          { producerSequence: 3, accepted: true },
+          { producerSequence: 3, accepted: false },
+        ],
+      },
+    ],
+  },
+  2,
+);
 
 export const deliveryGateTestCases = [
   testCase(
